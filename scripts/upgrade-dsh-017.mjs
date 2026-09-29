@@ -42,6 +42,11 @@ const LOG = path.join(ROOT, 'state', `dsh-upgrade-${stamp}.log`);
 const RESULT = path.join(ROOT, 'state', `dsh-upgrade-${stamp}-RESULT.txt`);
 const checks = [];
 
+// WMI 启动的进程拿到的是系统 PATH（未必含 node 全局目录），DSH_HOME 也可能缺失。
+// 所有子步骤（npm / setup-dsh / verify / DSH 本身）都继承 process.env，所以一次钉好。
+process.env.DSH_HOME = DSH_HOME;
+process.env.PATH = `D:\\nodejs16;D:\\nodejs16\\node_global;${process.env.PATH || ''}`;
+
 fs.mkdirSync(path.dirname(LOG), { recursive: true });
 function W(msg) {
   const line = `${new Date().toISOString()} ${msg}`;
@@ -141,8 +146,18 @@ W(`stopped leftover MCP child PIDs: ${mcpPids.join(',') || '(none)'}`);
 const free3080 = !(await portOpen(3080, 2));
 check('DSH stopped (3080 free)', free3080);
 
-// 4) 升级 DSH
-const inst = runStep('cmd.exe', ['/c', `"${NPM_CMD}" install -g @deepseek-ai/dsh@${TARGET}`], 'npm-install');
+// 4) 升级 DSH。
+//    注意命令形态：spawnSync('cmd.exe', ['/c', `"${NPM}" ...`]) 里的引号会被 Node 转义成
+//    \"D:\...\npm.cmd\"，cmd 直接报「不是内部或外部命令」——第一次升级就是这样失败的。
+//    用参数数组（不引号、不经 shell）才是稳的。
+let inst = runStep('cmd.exe', ['/c', NPM_CMD, 'install', '-g', `@deepseek-ai/dsh@${TARGET}`], 'npm-install');
+if (inst.status !== 0 || dshVersion() !== TARGET) {
+  // 网络/文件锁抖动时再试一次；仍失败就保留旧版本继续启动（不把环境留在半死状态）。
+  W('npm-install 第一次没有成功，10 秒后重试一次');
+  await sleep(10000);
+  inst = runStep('cmd.exe', ['/c', NPM_CMD, 'install', '-g', '--no-audit', '--no-fund', `@deepseek-ai/dsh@${TARGET}`], 'npm-install-retry');
+}
+runStep('cmd.exe', ['/c', NPM_CMD, 'ls', '-g', '--depth=0'], 'npm-ls');
 const afterVersion = dshVersion();
 W(`after: dsh=${afterVersion}`);
 check(`dsh installed = ${TARGET}`, afterVersion === TARGET, `exit=${inst.status} version=${afterVersion}`);
