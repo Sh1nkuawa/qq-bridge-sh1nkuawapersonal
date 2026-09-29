@@ -26,12 +26,14 @@ console.log('  autoReadback                = ' + v.autoReadback);
 const audioDir = path.resolve(ROOT, v.dir ?? 'audio');
 console.log(`  语音库目录 ${audioDir} → ${fs.existsSync(audioDir) ? '存在，' + fs.readdirSync(audioDir).length + ' 个文件' : '不存在'}`);
 
-console.log('\n=== 控制台语音面板 ===');
+console.log('\n=== 控制台语音面板（「语音库与语音发送（调试）」组）===');
 const idx = consoleHtml.indexOf('data-v2-tool="sendVoice"');
 const groupAt = consoleHtml.lastIndexOf('<summary>', idx);
 const groupEnd = consoleHtml.indexOf('</summary>', groupAt);
-console.log('  所在分组标题: ' + consoleHtml.slice(groupAt + 9, groupEnd));
-for (const id of ['voiceSendBtn', 'voiceEntries', 'voicePick', 'voiceTarget']) {
+console.log('  工具勾选所在分组: ' + consoleHtml.slice(groupAt + 9, groupEnd));
+const panelAt = consoleHtml.indexOf('语音库与语音发送');
+console.log('  调试面板分组: ' + (panelAt >= 0 ? '✅ 存在' : '❌ 缺失'));
+for (const id of ['voiceRefreshBtn', 'voiceSendTarget', 'voiceSendDryRun', 'voiceSendBtn', 'voiceList']) {
   console.log(`  ${consoleHtml.includes(`id="${id}"`) ? '✅' : '❌'} id="${id}"`);
 }
 
