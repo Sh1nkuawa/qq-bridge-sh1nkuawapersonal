@@ -131,6 +131,7 @@ import {
 } from './moderation.js';
 import { DEFAULT_IMAGE_ACK_TEMPLATES, pickImageAckLine } from './persona-lines.js';
 import { analyzeImageRequest, shouldSendEarlyAck, pickImageMention } from './image-ack.js';
+import { isMalformedResponse, planMalformedRetry, noteMalformedRetry } from './turn-retry.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -795,6 +796,13 @@ function loadConfig() {
       autoReplyCheckMs: 30000,
       agentPreset: 'qq-chat-v2',
       provideRecommendations: true,
+      // [qq-bridge 本地补丁] 回合级错误的重试策略：目前只对「工具参数不是合法 JSON」
+      // （MALFORMED_RESPONSE，模型偶发把中文正文写成不带引号的裸文本）自动重发一次。
+      // DSH 自己的重试策略不覆盖这个错误码，不补的话整回合直接判死、群里只会看到一句报错。
+      errorRetry: {
+        malformedMax: 2,      // 同一时间窗内最多自动重试几次
+        windowMs: 180000,     // 计数窗口
+      },
       tools: {
         getPrompt: true,
         getUnread: true,
@@ -11664,7 +11672,15 @@ async function main() {
       }
       return lines.join('\n') + '\n\n';
     })();
-    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine;
+    // [qq-bridge 本地补丁] 上一轮因为工具参数不是合法 JSON 被判失败时，把原因写进这一轮提示，
+    // 让模型知道「要重发、字符串要带引号」。消费一次即清空，避免长期占上下文。
+    const retryLine = (() => {
+      const hint = st.retryHint;
+      if (!hint) return '';
+      st.retryHint = '';
+      return `【上一次失败，请重发】${hint}\n\n`;
+    })();
+    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
@@ -13118,9 +13134,44 @@ async function main() {
                   await sendToQQ(key, plain);
                 }
               } else if (ended.reason.kind === 'error') {
-                const msg = ended.reason.error?.message ?? '未知错误';
+                const errInfo = ended.reason.error ?? {};
+                const msg = errInfo.message ?? '未知错误';
+                const code = String(errInfo.code ?? '');
                 const safeMsg = shouldAuditKey(key) && SENSITIVE_RE.test(msg) ? '（含敏感信息，已隐藏）' : msg.slice(0, 500);
-                await sendToQQ(key, `⚠️ agent 处理出错：${safeMsg}`);
+                // [qq-bridge 本地补丁] 这一支原来**不写任何本地日志**，却把原始技术文案直接丢进群里
+                // （实测 2026-09-29 17:48/17:51 两次把「DeepSeek Messages stream: tool input is
+                // invalid JSON」发到了群里）。群友看不懂，出问题时本地还查不到痕迹。
+                // 现在：本地必记 + 私聊 owner 技术细节 + 群里只说人话（能自动重试时先不说）。
+                log(`⚠️ agent 回合出错 (${key})${code ? ' [' + code + ']' : ''}: ${safeMsg}`);
+                appendActivity(`${key} agent 回合出错：${code ? code + ' ' : ''}${safeMsg.slice(0, 120)}`);
+                const stErr = socialState(key);
+                // 工具参数不是合法 JSON：模型偶发（典型：messages 里的中文忘了加引号），
+                // 而 DSH 的重试策略只覆盖 EMPTY_RESPONSE/RATE_LIMIT/SERVER/TIMEOUT，
+                // MALFORMED_RESPONSE 会直接判死整个回合 —— 桥接自己补一次重试更划算。
+                // 策略本身在 src/turn-retry.mjs（纯函数，有单测）。
+                const malformed = isMalformedResponse({ code, message: msg });
+                const plan = planMalformedRetry({ state: stErr, cfg });
+                let retried = false;
+                if (malformed && plan.allowed && !socialV2.paused && cfg.socialV2?.enabled !== false) {
+                  noteMalformedRetry(stErr);
+                  stErr.retryHint = plan.hint;
+                  retried = true;
+                  log(`[reserved2] ${key} 工具参数 JSON 非法，安排自动重试（第 ${plan.attempt}/${plan.max} 次）`);
+                  appendActivity(`${key} 工具参数 JSON 非法 → 自动重试（第 ${plan.attempt}/${plan.max} 次）`);
+                  scheduleWakeV2(key, `retry:malformed:${plan.attempt}`);
+                }
+                // 技术细节只给 owner（不影响群里的人设与观感）。
+                try {
+                  await sendOwnerDM(`⚠️ 群 ${key} 的 agent 回合出错\n代码：${code || '（未提供）'}\n信息：${safeMsg}`
+                    + (retried ? `\n已自动重试（第 ${plan.attempt}/${plan.max} 次）。` : '')
+                    + (malformed ? '\n（该错误码 DSH 不会自己重试，桥接已按 socialV2.errorRetry 配置处理。）' : ''));
+                } catch (error) {
+                  log(`owner 报错通知发送失败：${error?.message ?? error}`);
+                }
+                if (!retried) {
+                  // 重试已用尽或不是可重试的错：群里给一句人话，别再抛技术栈。
+                  await sendToQQ(key, '⚠️ 我这边卡了一下，这条没处理成功，稍后再试。');
+                }
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {

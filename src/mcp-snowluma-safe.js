@@ -757,7 +757,7 @@ server.tool(
   {
     groupId: z.union([z.number(), z.string()]).describe('群号（必须在白名单内）'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    messages: z.union([z.array(z.string()).min(1), z.string()]).describe('要发送的消息数组，每条为纯文本；也兼容传入 JSON 数组字符串')
+    messages: z.union([z.array(z.string()).min(1), z.string()]).describe('要发送的消息数组，每条为纯文本；也兼容传入 JSON 数组字符串。**参数必须是合法 JSON**：文本要加引号，不要把整段话写成不带引号的裸文本。')
   },
   async ({ groupId, token, messages }) => {
     try {
@@ -799,7 +799,7 @@ server.tool(
   {
     key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('要发送的内容：字符串=一条；数组=分多条'),
+    messages: z.union([z.string(), z.array(z.string()).min(1)]).describe('要发送的内容：一条就传字符串（**记得写引号**，例如 "在的"）；多条传字符串数组（例如 ["在的","叫我干嘛"]）。参数必须是合法 JSON——不要把整段话写成不带引号的裸文本（实测这样会让整回合被判失败）。'),
     replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
     atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中用于点名某个人；与引用二选一即可，不要滥用）'),
     gapMode: z.enum(['auto', 'fixed', 'byLength']).optional().describe('auto=桥接随机；fixed=固定间隔；byLength=按字数计算'),

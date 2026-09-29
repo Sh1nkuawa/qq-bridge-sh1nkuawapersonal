@@ -108,6 +108,10 @@
     "autoReplyCheckMs": 30000,
     "agentPreset": "qq-chat-v2",
     "provideRecommendations": true,
+    "errorRetry": {
+      "malformedMax": 2,
+      "windowMs": 180000
+    },
     "tools": {
       "getPrompt": true,
       "getUnread": true,
