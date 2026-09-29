@@ -74,7 +74,8 @@ test('social autonomy and visual, forwarding, sticker and web capabilities remai
     'qq_collect_sticker', 'qq_sticker_note', 'qq_get_self_image',
     'qq_set_sticker_remark', '只有管理端明确开启后才能用',
     'qq_list_voices', 'qq_send_voice', 'verified=true 才代表这条语音确实落地',
-    '语音**默认是关闭的**', '不要假装发了语音',
+    // 2026-09-29：语音开关打开后，第 16 条从「默认没开、别重试」改成「什么时候该发 + 频率上限」。
+    '发语音（管理员已开启）', '音效/梗段', '一天最多 3 条', '绝不连发', '不要假装发了语音',
     'mcp__web-search-safe__web_search', 'mcp__web-search-safe__web_fetch',
   ]) assert.ok(prefix.includes(text), `missing capability or voice rule: ${text}`);
 });
@@ -97,6 +98,19 @@ test('autonomy limits and the observation escape hatch stay described', () => {
     // 指定成员唤醒
     'triggers.speakerIds', '不凭记忆乱填',
   ]) assert.ok(prefix.includes(text), `missing rule: ${text}`);
+});
+
+test('the wake prompt offers the voice library every turn and can count today\'s usage', () => {
+  // 为什么单独钉住：语音没有自然的触发时机 —— 只把用法写在预设/工具描述里，模型几乎不会用。
+  // 2026-09-29 的做法是照贴纸/表情包，在每轮唤醒提示里注入「有什么可用 + 什么时候用 + 今天几条」，
+  // 这条契约防止以后有人顺手把它删掉（删了不会让任何其它测试变红）。
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  assert.match(bridge, /const voiceLine = \(\(\) => \{/);
+  assert.match(bridge, /【语音】语音库现有：/);
+  assert.match(bridge, /\+ voiceLine \+/);
+  // 今日配额：发送记录要打标记，计数函数要存在
+  assert.match(bridge, /entry\.sentVoice = true;/);
+  assert.match(bridge, /function countVoiceSentTodayV2\(st\)/);
 });
 
 console.log(`reserved2 persona prefix: ${prefix.length} characters (not a model-token estimate)`);

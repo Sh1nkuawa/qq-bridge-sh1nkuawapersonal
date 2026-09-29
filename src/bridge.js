@@ -54,6 +54,8 @@ import {
 import { compactModelMessage } from './qq-model-view.js';
 import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
+// 收到别人的语音 → 文字（见 voice-transcribe.js：回填式/等待式两种接入）
+import { applyVoiceTranscript, buildVoiceTranscript, settleVoiceTranscript, transcribeVoiceMessage } from './voice-transcribe.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
@@ -132,6 +134,7 @@ import {
 import { DEFAULT_IMAGE_ACK_TEMPLATES, pickImageAckLine } from './persona-lines.js';
 import { analyzeImageRequest, shouldSendEarlyAck, pickImageMention } from './image-ack.js';
 import { isMalformedResponse, planMalformedRetry, noteMalformedRetry } from './turn-retry.mjs';
+import { decideSnowlumaAction, normalizeSnowlumaWatchConfig } from './snowluma-liveness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -803,6 +806,15 @@ function loadConfig() {
         malformedMax: 2,      // 同一时间窗内最多自动重试几次
         windowMs: 180000,     // 计数窗口
       },
+      // [qq-bridge 本地补丁] SnowLuma 链路存活的判定参数（见 src/snowluma-liveness.mjs）。
+      // 半死连接（对端不再投递但 socket 没关）不会触发 SDK 的 reconnect，只能靠自己探活。
+      snowluma: {
+        enabled: true,
+        idleProbeMs: 300000,      // 静默多久开始探活（get_status）
+        hardReconnectMs: 720000,  // 静默多久/探活失败就强制重连
+        tickMs: 30000,            // 检查周期
+        probeTimeoutMs: 10000,    // 探活超时（当前由 SDK 自身超时兜底）
+      },
       tools: {
         getPrompt: true,
         getUnread: true,
@@ -993,6 +1005,27 @@ function loadConfig() {
     loudness: 'normal',
     ffmpegPath: '',
     autoReadback: true,
+    // ── 「听懂语音」：收到别人的语音 → 转写文本 ──────────────────────────────
+    // 与上面的 enabled **互不依赖**：enabled 管「AI 能不能发语音」，transcribe 管
+    // 「AI 能不能听懂语音」。默认关闭的理由与发语音一致：每次转写都要打一次 QQ 的识别
+    // 服务，而群里语音通常只占少数消息 —— 由运维显式打开更稳妥。
+    transcribe: false,
+    // 单次等待上限。SnowLuma 内部等 QQ 回推最长 20s，我们必须更短：一条语音不该把
+    // 消息处理链路的预算吃光（拿不到就重试，见 transcribeAttempts）。
+    transcribeTimeoutMs: 5000,
+    // 尝试次数：QQ 的语音识别是异步的，第一次空手而归是常态，隔一会儿再问通常就有了。
+    transcribeAttempts: 2,
+    transcribeRetryMs: 800,
+    // 回填进消息文本后保留的最大字符数（与 recentMessages 的 200 字截断保持一致）。
+    transcribeMaxChars: 200,
+    // 「等待式」接入（chat / closed-agent）最多等多久 —— 那些模式没有回填机制。
+    transcribeInlineWaitMs: 8000,
+    // ── 「发语音」的每轮提示（唤醒提示词里的【语音】块）─────────────────────
+    // 只在 includeInPrompt 未关、且 AI 通道真开着（enabled + tools.sendVoice）时注入：
+    // 关了就别在提示词里撩它。promptDailyMax 只是**软上限**（写进提示让它自己收手），
+    // 真正的硬上限仍然是 maxPerMinute / maxPerHour。
+    includeInPrompt: true,
+    promptDailyMax: 3,
     ...(cfg.socialV2?.voice ?? {})
   };
 
@@ -1270,7 +1303,7 @@ function withTimeout(promise, ms, label) {
 }
 
 async function segmentsToText(segments, options = {}) {
-  const { resolveAtName, resolveReply, includeReply = true } = options ?? {};
+  const { resolveAtName, resolveReply, includeReply = true, recordText = '' } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
   if (typeof segments === 'string') return segments.trim();
   const out = [];
@@ -1291,7 +1324,7 @@ async function segmentsToText(segments, options = {}) {
       }
       case 'face': out.push(`[表情${d.id ?? ''}]`); break;
       case 'image': out.push('[图片]'); break;
-      case 'record': out.push('[语音]'); break;
+      case 'record': out.push(recordText || '[语音]'); break;
       case 'video': out.push('[视频]'); break;
       case 'file': out.push(`[文件${d.name ?? ''}]`); break;
       case 'reply': {
@@ -1526,6 +1559,61 @@ async function main() {
       ffmpegPath: process.env.FFMPEG_PATH || v.ffmpegPath || null,
       autoReadback: v.autoReadback !== false
     };
+  }
+
+  /**
+   * 「听懂语音」（收到别人的语音 → 转写文本）的配置。
+   *
+   * 与 voiceCfg() 分开是有意的：voiceCfg().enabled 管的是「AI 能不能**发**语音」，这里管的是
+   * 「AI 能不能**听懂**语音」，两者互不依赖（关了发语音也照样该听得懂别人说什么）。
+   */
+  function voiceTranscribeCfg() {
+    const v = cfg.socialV2?.voice ?? {};
+    return {
+      enabled: v.transcribe === true,
+      timeoutMs: Number(v.transcribeTimeoutMs) > 0 ? Number(v.transcribeTimeoutMs) : 5000,
+      attempts: Number(v.transcribeAttempts) > 0 ? Number(v.transcribeAttempts) : 2,
+      retryMs: Number(v.transcribeRetryMs) >= 0 ? Number(v.transcribeRetryMs) : 800,
+      maxChars: Number(v.transcribeMaxChars) > 0 ? Number(v.transcribeMaxChars) : 200,
+      inlineWaitMs: Number(v.transcribeInlineWaitMs) > 0 ? Number(v.transcribeInlineWaitMs) : 8000
+    };
+  }
+
+  /** 起一个语音转写任务（永不 reject：失败折成 { ok:false, error }）。 */
+  function startVoiceTranscribe(messageId, tcfg) {
+    return transcribeVoiceMessage({
+      messageId,
+      httpUrl: cfg.snowluma?.httpUrl,
+      accessToken: cfg.snowluma?.accessToken,
+      attempts: tcfg.attempts,
+      timeoutMs: tcfg.timeoutMs,
+      retryDelayMs: tcfg.retryMs
+    }).catch((error) => ({ ok: false, error: error?.message ?? String(error), attempts: 0 }));
+  }
+
+  /**
+   * 把转写结果回填进**已经入库**的那条消息：原地改写 recentMessages / unread 共享的同一个对象。
+   *
+   * 为什么按 messageId 反查，而不是"取数组最后一条"：SDK 的 WS 事件是并发派发的，两条消息
+   * 的处理可能交错走到这里，按下标取会把 B 的转写写进 A 的文本里。
+   *
+   * 找不到（已经被 100 条窗口挤掉）就什么都不做 —— 转写只是锦上添花，不该影响消息管线。
+   */
+  function backfillVoiceTranscript(key, messageId, result) {
+    const st = getSocialV2State(key);
+    const list = Array.isArray(st?.recentMessages) ? st.recentMessages : [];
+    const msg = [...list].reverse().find((m) => m && m.messageId && String(m.messageId) === String(messageId));
+    if (!msg) return false;
+    const ok = applyVoiceTranscript(msg, result, { maxChars: voiceTranscribeCfg().maxChars });
+    if (ok) {
+      // 回填要落盘：否则重启后转写文本丢了，只剩占位符。
+      saveSocialV2State();
+      log(`[voice] ${key} 语音已转写（${result?.attempts ?? '?'} 次尝试）：${String(result?.text ?? '').slice(0, 60)}`);
+      appendActivity(`${key} [voice] 语音转写：${String(result?.text ?? '').slice(0, 60)}`);
+    } else {
+      log(`[voice] ${key} 语音未能转写（messageId=${messageId}）：${result?.error ?? '空结果'}`);
+    }
+    return ok;
   }
 
   function voiceLibrary() {
@@ -1764,6 +1852,25 @@ async function main() {
     }
   }
 
+  /**
+   * 数「今天我已经发出去几条语音」（只用于唤醒提示里的软上限提醒）。
+   *
+   * 数据来源是自己写进 recentMessages 的发送记录（recordVoiceSentV2 打 `sentVoice: true`），
+   * 所以重启后仍然有效；老记录（没有这个字段的年代）用文本前缀兜底。
+   * 数不准没有功能后果 —— 它只影响提示词里那句话，硬上限另有 voiceBudgetCheck。
+   */
+  function countVoiceSentTodayV2(st) {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const since = midnight.getTime();
+    const list = Array.isArray(st?.recentMessages) ? st.recentMessages : [];
+    return list.filter((m) => {
+      if (!m || m.isSelf !== true) return false;
+      if (Number(m.at ?? m.time ?? 0) < since) return false;
+      return m.sentVoice === true || /^\[语音/.test(String(m.text ?? ''));
+    }).length;
+  }
+
   /** 把「我发了条语音」写进二代会话的 recentMessages，让 AI 自己知道刚发过什么。 */
   function recordVoiceSentV2(key, sent, label) {
     const st = getSocialV2State(key);
@@ -1779,6 +1886,9 @@ async function main() {
       isSelf: true,
       at: Date.now()
     };
+    // 标记「这条是自己发出去的语音」：唤醒提示里的今日配额要数它（见 countVoiceSentTodayV2）。
+    // 用独立字段而不是靠 text 前缀，是因为 label 是模型自己写的（可能是「说了句晚安」这种）。
+    entry.sentVoice = true;
     st.recentMessages.push(entry);
     if (st.recentMessages.length > 200) st.recentMessages = st.recentMessages.slice(-200);
     st.lastAiReplyAt = entry.at;
@@ -11621,6 +11731,30 @@ async function main() {
       }
     })();
     const preSleepMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
+    // [qq-bridge 本地补丁] 「发语音」策略 + 语音库清单（2026-09-29 起 voice.enabled 打开）。
+    // 为什么必须每轮注入：语音和表情包不一样，它**没有自然的触发时机** —— 只把用法写在工具
+    // 描述里，模型几乎不会想起来用它（实测口头引导不做，它永远只打字）。所以这里照贴纸/表情包
+    // 的做法给出「有什么可用 + 什么时候用 + 今天还剩几条」。
+    // 注意库内容是音效/梗段，不是可以念台词的 TTS，提示词里要如实说明，别让它以为能"说话"。
+    const voiceLine = (() => {
+      const vc = voiceCfg();
+      if (!vc.enabled || !v2ToolEnabled('sendVoice')) return '';
+      if (cfg.socialV2?.voice?.includeInPrompt === false) return '';
+      let names = [];
+      try { names = voiceLibrary().map((v) => v.name).filter(Boolean); } catch { names = []; }
+      if (!names.length) return '';
+      const dailyMax = Number(cfg.socialV2?.voice?.promptDailyMax) > 0 ? Number(cfg.socialV2.voice.promptDailyMax) : 3;
+      const sentToday = countVoiceSentTodayV2(st);
+      const shown = names.slice(0, 10);
+      const list = shown.join('、') + (names.length > shown.length ? ` 等 ${names.length} 条` : '');
+      const quota = sentToday >= dailyMax
+        ? `今天你已经发了 ${sentToday} 条，**到上限了**：今天别再发语音，用文字和表情包。`
+        : `今天你已发 ${sentToday} 条（一天最多 ${dailyMax} 条）。`;
+      return `【语音】语音库现有：${list}。想「出声」时用 qq_send_voice（voice 传文件名，可省扩展名；返回 verified=true 才算真发出去）。`
+        + `这些是**音效/梗段**，用来表达情绪，不是念台词：适合被逗笑/想大叫、无语或疑惑、兴奋附和、道晚安；`
+        + `不适合正经问答、解释事情、严肃或敏感话题、别人正等你回话时、能用表情包解决的地方。`
+        + `一段对话最多 1 条，不要连发、也不要替代正常回话（发完不必再说「我刚发了语音」）。${quota}\n\n`;
+    })();
     const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。\n\n';
     const replyTiming = replyTimingV2(st);
     const replyLine = `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_messages(purpose="reply", quietMs=${replyTiming.quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(replyTiming.remainingQuietMs / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。\n\n`;
@@ -11735,7 +11869,7 @@ async function main() {
       st.retryHint = '';
       return `【上一次失败，请重发】${hint}\n\n`;
     })();
-    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
@@ -12207,8 +12341,24 @@ async function main() {
     const resolveReply = (messageId) => resolveReplyInfo(kind, id, messageId, event.self_id);
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
-    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply });
-    const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false });
+    // 「听懂语音」：这条消息里有 record 段就起一个转写任务（见 voice-transcribe.js）。
+    // 为什么**不**在入库前 await 它：SDK 的 WS 事件是并发派发的（dispatchEvent 不 await），
+    // 语音消息若在这里等几秒，它会晚于其后到达的文本消息入库，seq 单调递增的假设就破了
+    // —— AI 会看到"先被回复、后提问"。所以 reserved2 走"先按原时序入库、拿到转写再原地
+    // 回填"；其它模式（chat / closed-agent）没有回填机制，只能限时等一下，超时就保留占位符。
+    const voiceTCfg = voiceTranscribeCfg();
+    const voiceMessageId = String(event.message_id ?? event.msg_id ?? '').trim();
+    const hasRecordSeg = Array.isArray(event.message) && event.message.some((seg) => seg?.type === 'record');
+    const voiceTask = hasRecordSeg && voiceTCfg.enabled && voiceMessageId
+      ? startVoiceTranscribe(voiceMessageId, voiceTCfg)
+      : null;
+    let recordText = '';
+    if (voiceTask && currentMode !== 'reserved2') {
+      const settled = await settleVoiceTranscript(voiceTask, { timeoutMs: voiceTCfg.inlineWaitMs });
+      recordText = settled.ok ? buildVoiceTranscript(settled.text) : '';
+    }
+    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, recordText });
+    const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, recordText });
     const mediaList = extractMediaFromSegments(event.message ?? []);
     const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
     const seqRef = event.message_seq != null ? String(event.message_seq) : '';
@@ -12441,6 +12591,14 @@ async function main() {
       const atSelf = Array.isArray(event?.message)
         && event.message.some((seg) => seg?.type === 'at' && String(seg?.data?.qq) === String(event?.self_id ?? ''));
       appendSocialV2Message(key, sender, textContent, plainContent, quoteTargetIsSelf, isOwner, event.message_id ?? event.msg_id ?? null, mediaList, event.user_id ?? null, extractForwardIds(event.message ?? []), atSelf);
+      // 语音转写是异步的：入库时还是占位符 `[语音]`，拿到转写后再原地回填那条消息
+      // （默认 8s 的唤醒合并窗口远大于常见的 1~2s 识别耗时，AI 读到的通常已是转写文本）。
+      // 失败/超时就保持占位符 —— 转写是锦上添花，绝不能让消息入库受它影响。
+      if (voiceTask && voiceMessageId) {
+        void voiceTask
+          .then((result) => backfillVoiceTranscript(key, voiceMessageId, result))
+          .catch((error) => log(`[voice] 语音转写回填异常 ${key}：${error?.message ?? error}`));
+      }
       // 二代同样收集群聊黑话学习素材（AI 自主提交之外，桥接仍自动提取高频陌生词）
       if (kind === 'group') feedSlangWindow(key, sender, plainContent);
       if (socialV2.paused) {
@@ -13356,19 +13514,79 @@ async function main() {
     reconnect: true
   });
 
+  // [qq-bridge 本地补丁] SnowLuma 链路存活看门狗（判定逻辑在 src/snowluma-liveness.mjs）。
+  //
+  // 事故（2026-09-29 19:17）：桥接进程活着、WS 也没报 close，但群友 19:17:50 的「@机器人 …」
+  // **没进桥接**——SnowLuma 日志里有这条 [Event]，桥接活动日志里一个字都没有；几分钟后
+  // SnowLuma 才打出 read ECONNRESET。SDK 的 reconnect 只在显式 close 时触发，"半死连接"
+  // 不会触发，于是"桥接活着但收发全废"，只能靠人手工重启。
+  // 现在按**入站活动**判活：静默 5 分钟探活一次（get_status），探活失败或静默 12 分钟强制重连。
+  let lastSnowlumaAliveAt = Date.now();
+  let snowlumaLastProbeAt = 0;
+  let snowlumaProbeInFlight = false;
+  let snowlumaProbeFailed = false;
+  const touchSnowlumaActivity = () => { lastSnowlumaAliveAt = Date.now(); snowlumaProbeFailed = false; };
+  function startSnowlumaWatchdog() {
+    const wc = normalizeSnowlumaWatchConfig(cfg);
+    if (!wc.enabled) { log('[snowluma] 链路看门狗已关闭（socialV2.snowluma.enabled=false）'); return; }
+    log(`[snowluma] 链路看门狗已启用：静默 ${Math.round(wc.idleProbeMs / 1000)}s 探活、`
+      + `${Math.round(wc.hardReconnectMs / 1000)}s 或探活失败即强制重连（每 ${Math.round(wc.tickMs / 1000)}s 检查）`);
+    setInterval(() => {
+      const d = decideSnowlumaAction({
+        now: Date.now(),
+        lastAliveAt: lastSnowlumaAliveAt,
+        idleProbeMs: wc.idleProbeMs,
+        hardReconnectMs: wc.hardReconnectMs,
+        lastProbeAt: snowlumaLastProbeAt,
+        probeInFlight: snowlumaProbeInFlight,
+        probeFailed: snowlumaProbeFailed,
+      });
+      if (d.action === 'none') return;
+      if (d.action === 'probe') {
+        snowlumaLastProbeAt = Date.now();
+        snowlumaProbeInFlight = true;
+        log(`[snowluma] ${d.reason}…`);
+        Promise.resolve()
+          .then(() => bot.getStatus())
+          .then((st) => {
+            // 探活成功：可能只是群里真没人说话，把水位推到"现在"，避免同一段静默被反复探活。
+            touchSnowlumaActivity();
+            log(`[snowluma] 探活成功：链路正常（online=${st?.online ?? '?'}）`);
+          })
+          .catch((error) => {
+            snowlumaProbeFailed = true;
+            log(`⚠️ [snowluma] 探活失败：${error?.message ?? error} —— 判定链路已死，强制重连`);
+          })
+          .finally(() => { snowlumaProbeInFlight = false; });
+        return;
+      }
+      // reconnect：先重置判定水位再重连，避免每轮 tick 都重连一次
+      snowlumaProbeFailed = false;
+      lastSnowlumaAliveAt = Date.now();
+      log(`⚠️ [snowluma] ${d.reason} —— 强制重连 SnowLuma（${bot.url ?? cfg.snowluma.wsUrl}）`);
+      try { bot.close(1000, 'stale-link'); } catch { /* 已经断了就算了 */ }
+      setTimeout(() => { try { bot.connect(); } catch (error) { log(`[snowluma] 重连异常：${error?.message ?? error}`); } }, 1000);
+    }, wc.tickMs);
+  }
+
   bot.onPrivateMessage(async (event) => {
     if (event.user_id === event.self_id) return;
+    touchSnowlumaActivity();
     try { await handleIncoming('private', event.user_id, event, cfg); } catch (error) { log('处理私聊消息出错:', error?.message ?? error); }
   });
   bot.onGroupMessage(async (event) => {
     if (event.sender?.user_id === event.self_id || event.user_id === event.self_id) return;
+    touchSnowlumaActivity();
     try { await handleIncoming('group', event.group_id, event, cfg); } catch (error) { log('处理群消息出错:', error?.message ?? error); }
   });
   bot.onNotice('notify', async (event) => {
+    touchSnowlumaActivity();
     try { await handlePokeNotice(event); } catch (error) { log('处理拍一拍事件出错:', error?.message ?? error); }
   });
 
   bot.on('open', () => {
+    // 新连接落地：存活水位归零，别让"上次断开前的静默"立刻触发探活。
+    touchSnowlumaActivity();
     // 用实际连接地址（自愈后可能与 config 里的初值不同，别打印过期的那个）
     const connectedUrl = bot.url ?? cfg.snowluma.wsUrl;
     log(`SnowLuma 已连接：${connectedUrl}`);
@@ -13482,6 +13700,7 @@ async function main() {
     syncStickerLibrary(true).catch((error) => log('启动预热表情库失败:', error?.message ?? error));
   }
   startDshWatch();
+  startSnowlumaWatchdog();
   startConsoleServer();
 
   await pumpMux();

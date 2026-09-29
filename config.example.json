@@ -308,7 +308,15 @@
       "loudness": "normal",
       "ffmpegPath": "",
       "ffprobePath": "",
-      "autoReadback": true
+      "autoReadback": true,
+      "transcribe": false,
+      "transcribeTimeoutMs": 5000,
+      "transcribeAttempts": 2,
+      "transcribeRetryMs": 800,
+      "transcribeMaxChars": 200,
+      "transcribeInlineWaitMs": 8000,
+      "includeInPrompt": true,
+      "promptDailyMax": 3
     },
     "proactive": {
       "enabled": true,

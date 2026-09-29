@@ -29,7 +29,15 @@ const dirs = fs.readdirSync(root)
 
 const dir = dirs[dirs.length - 1];
 console.log(`会话: ${dir.n}  (mtime ${new Date(dir.t).toLocaleString('sv')})\n`);
-const txt = readSession(path.join(root, dir.n, 'session.v3.jsonl.zstd'));
+// DSH 会随版本改会话文件名（v3 → v4）：两个都试，别让诊断脚本因为一个扩展名就静默失效。
+const sessionFile = ['session.v4.jsonl.zstd', 'session.v3.jsonl.zstd']
+  .map((n) => path.join(root, dir.n, n))
+  .find((p) => fs.existsSync(p));
+if (!sessionFile) {
+  console.error(`找不到会话文件（${dir.n}）：既没有 session.v4.jsonl.zstd 也没有 session.v3.jsonl.zstd`);
+  process.exit(1);
+}
+const txt = readSession(sessionFile);
 const events = [];
 for (const line of txt.split('\n')) {
   if (!line.trim()) continue;

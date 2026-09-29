@@ -23,6 +23,9 @@ console.log('  maxPerMinute / maxPerHour   = ' + v.maxPerMinute + ' / ' + v.maxP
 console.log('  defaultVolume / loudness    = ' + v.defaultVolume + ' / ' + v.loudness);
 console.log('  ffmpegPath                  = ' + JSON.stringify(v.ffmpegPath ?? ''));
 console.log('  autoReadback                = ' + v.autoReadback);
+  console.log('  transcribe（收语音转写）      = ' + (v.transcribe === true) + (v.transcribe === true ? '' : '（默认关闭）'));
+  console.log('  transcribe 超时/尝试次数      = ' + (v.transcribeTimeoutMs ?? 5000) + 'ms / ' + (v.transcribeAttempts ?? 2) + ' 次');
+  console.log('  transcribe 重试间隔/回填上限  = ' + (v.transcribeRetryMs ?? 800) + 'ms / ' + (v.transcribeMaxChars ?? 200) + ' 字');
 const audioDir = path.resolve(ROOT, v.dir ?? 'audio');
 console.log(`  语音库目录 ${audioDir} → ${fs.existsSync(audioDir) ? '存在，' + fs.readdirSync(audioDir).length + ' 个文件' : '不存在'}`);
 

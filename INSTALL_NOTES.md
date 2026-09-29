@@ -802,6 +802,149 @@ owner 私聊审批 / owner 命令 / 8 个路由 / 唤醒提示【群管理】段
 - 另外：我为了加载配置结束过一次桥接进程，但当时**没有守护窗口在跑**（owner 那次是用资源管理器起的），
   机器人离线约 6 分钟（18:47→18:53），随后我用 WMI 重新拉起（脱离 DSH）。以后动它前先确认有没有守护窗口。
 
+## 十六、语音：开启「发」+ 新增「听」（2026-09-29）
+
+owner 要求「给 bot 加语音功能」。先盘点现状，再决定动不动代码：
+
+**现状（结论：发语音的能力早就写完了，只是关着）**
+- 发送链路完整（`voice-core.js` 共享实现 + 桥接 `sendVoiceV2`/`sendVoiceForV2` + SnowLuma `record` 段），
+  `audio/` 里也已经有 8 条音频；但 `config.json` 里 `tools.sendVoice=false`、`voice.enabled=false`，
+  所以 MCP 连 `qq_send_voice` / `qq_list_voices` 都没注册（这条是**进程启动时**读配置决定的）。
+- **收**语音一直只写成占位符 `[语音]`（`segmentsToText` / `forward.js`），AI 完全听不到内容。
+- 仓库里**没有** TTS（文字转语音），SnowLuma 自带的 `get_ai_record` / `send_group_ai_record` 也没接。
+
+**A. 打开现成的发送能力（只改配置，零代码）**
+- `socialV2.tools.sendVoice: true`、`socialV2.voice.enabled: true`。
+- ⚠️ **改完必须重启 DSH**（不只是重启桥接）：MCP 工具表是 `mcp-snowluma-safe.js` 启动时按配置注册的。
+  在重启 DSH 之前，AI 侧不会出现这两个工具（旧会话里工具清单是缓存住的）。
+- 另外 `socialV2.voice.enabled` 只关 AI 通道：`/api/voice/send`（CLI）与控制台试发面板不受它限制，
+  所以「CLI 能发、AI 不能发」时先查开关与工具注册，不是内核坏了。
+
+**C. 新增「听懂语音」（收语音 → 转写，需要代码）**
+- 新增 `src/voice-transcribe.js`：`fetchPttText`（POST `/fetch_ptt_text`，只读）+
+  `transcribeVoiceMessage`（空结果自动重试；一切失败折成 `{ok:false}`，**永不抛**）+
+  `settleVoiceTranscript`（限时等待）+ `applyVoiceTranscript`（原地回填）。
+- `src/bridge.js` 接入点：`voiceTranscribeCfg()` / `startVoiceTranscribe()` / `backfillVoiceTranscript()`；
+  `segmentsToText` 新增 `recordText` 选项；`handleIncoming` 里按 `record` 段启动任务。
+- 配置（`socialV2.voice`）：`transcribe: true`、`transcribeTimeoutMs: 5000`、`transcribeAttempts: 2`、
+  `transcribeRetryMs: 800`、`transcribeMaxChars: 200`、`transcribeInlineWaitMs: 8000`。
+- **为什么是「先入库、再原地回填」而不是「等转写好了再入库」**：`@snowluma/sdk` 的 WS 事件是
+  **并发派发**的（`websocket-client.js` 里 `void this.dispatchEvent(...)`，不 await）。若在这条语音上
+  等 1~3 秒，它会晚于其后到达的文本消息入库，`seq` 单调递增的假设就破了 —— AI 会看到「先被回复、
+  后提问」。回填不动时序，代价只是极短时间内那条显示成 `[语音]`（唤醒合并窗口默认 8s，远大于常见的
+  1~2s 识别耗时）。回填**按 messageId 反查**那条消息，不按数组下标取（并发下按下标取会张冠李戴）。
+- 失败表现：识别没回来 → 重试一次；仍拿不到/纯音乐/网关不通 → 保持 `[语音]`，只写日志。
+  **绝不**因转写失败丢消息、堵消息或改变发送行为。成功日志：`[voice] <key> 语音已转写（N 次尝试）：…`。
+
+**验证到什么程度**
+- `scripts/test-voice-transcribe.mjs`（新增，37 条断言：URL/鉴权/参数形状、HTTP 与 retcode 失败、
+  重试、超时、reject、回填只替换第一个 `[语音]`、文字+语音共存不丢原文、200 字截断不切坏 emoji、空结果不改文本）
+  → 通过；`node scripts/run-offline-tests.mjs` **44/44 通过**（新增用例已自动纳入）。
+- 真机 dry-run（不发送、只解析+探测）：AI 通道 `/api/socialV2/send-voice` 传 `dryRun:true` → `200 ok`，
+  `哇哦` 能模糊匹配到 `哇哦.mp3`，`../../config.json` 被边界拒绝（400）。
+- 网关契约探针：假 message_id → `status:failed, retcode:100, 消息不存在或已被撤回`（与解析器一致）；
+  无 token → 401。
+- **待验证**：还没有**真人发来的语音**经过这条链路（本机历史状态里 0 条语音）。谁在群里发一条语音，
+  看 `state/bridge.log` 有没有 `[voice] … 语音已转写` 即可确认（失败则是「语音未能转写（messageId=…）」）。
+
+**踩到的坑（留给以后）**
+1. **用管道调用 `restart.bat` 会挂住**：`cmd /c restart.bat 2>&1 | Out-String` 里，被 `start` 拉起的
+   守护窗口继承了管道的 stdout，PowerShell 会一直等管道关闭 → 命令永不返回（桥接其实已经起来了）。
+   正确姿势：直接双击 `restart.bat`，或 `Start-Process cmd -ArgumentList '/c','start.bat' -WorkingDirectory D:\dsh\qq-bridge`。
+   处理挂住的作业时**别杀整棵进程树**（守护窗口和桥接都是它的后代），只 `Stop-Process` 那个 powershell 就行。
+2. 回填时的会话状态用 `getSocialV2State(key)`，它在会话刚被 `/reset` 的极小窗口里会把空会话建回来；
+   影响只是控制台多一个空会话，没有功能后果（真在意可改成 `socialV2.conversations.get(canonicalV2Key(key))`）。
+
+**改动文件**：`src/voice-transcribe.js`（新增）、`src/bridge.js`、`scripts/test-voice-transcribe.mjs`（新增）、
+`scripts/probe-voice-status.mjs`（补 transcribe 输出）、`config.json`（两个开关 + 6 个 transcribe 项）、
+`config.example.json`、`README.md`、`docs/README.md`、`docs/FOLDER_MAP.md`、`docs/guides/VOICE.md`（新建，补上文档索引里一直悬空的链接）。
+
+**还没做**（详见 `docs/guides/VOICE.md` 第五节）：TTS；SnowLuma 的 `get_ai_record` / `send_group_ai_record`；
+合并转发里的语音转写（`forward.js` 的纯函数渲染仍是 `[语音]`）。
+
+### 16.2 让它真的会开口：预设引导 + 每轮提示注入（2026-09-29 续）
+
+owner 追问「这个语音 bot 什么时候会主动调用」，查完发现答案是「**几乎永远不会**」，于是补上引导层。
+
+**现状（为什么原来一条都不会发）**
+- 桥接里**没有任何自动/定时调用语音的机制**：语音只发生在 AI 的某个回合里，由它自己决定。
+- 而预设第 16 条当时写着「语音**默认是关闭的**…报『语音功能已关闭』是正常状态，**不要重试**…
+  继续打字即可」—— 开关打开之后这句话反而在劝阻模型用它。
+- 唤醒提示词里完全没有语音（对比贴纸/表情包都有 strategy + 清单注入），工具描述里只有一句
+  「偶尔发一条即可」。**2026-09-29 实测：只改预设、不注入提示词，它一条都不发。**
+
+**改动**
+1. 预设第 16 条重写（源 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml`）：「已开启 + 适合/不适合场景
+   + 一段对话最多 1 条、一天最多 3 条、绝不连发 + 失败姿态（不重试/不假装发了）」，并**如实说明库里
+   是音效/梗段**，不是能念台词的 TTS（`audio/` 里 8 条全是笑声/疑惑/愤怒/音乐这类）。
+2. 唤醒提示新增 `【语音】` 块（`bridge.js` 的 `voiceLine`，`buildWakePromptV2` 里 `+ voiceLine +`）：
+   每轮给出**实时语音库清单** + 场景 + 「今天你已发 N 条（一天最多 3 条）」，到上限就直接写「今天别再发」。
+   照的是贴纸/表情包那套（`stickerLine`/`memeLine`）。开关 `voice.includeInPrompt`。
+3. 配套：`recordVoiceSentV2` 给自己发出去的语音记录打 `sentVoice: true`；新增 `countVoiceSentTodayV2()`；
+   配置加 `voice.includeInPrompt`（默认 true）、`voice.promptDailyMax`（默认 3，**软上限**，
+   写进提示让它自己收手；硬上限仍是 `maxPerMinute`/`maxPerHour`）。
+4. 契约测试更新：`scripts/test-qq-preset-contract.mjs` 原本断言旧文案「语音**默认是关闭的**」（删掉就变红），
+   改成断言新的场景/频率文案，并**新增一条测试**钉住唤醒提示里的 `voiceLine` + `sentVoice` + `countVoiceSentTodayV2`
+   （这三样被顺手删掉不会让任何其它测试变红）。
+
+**生效流程（漏一步就不生效）**：改源 → `node scripts/build-agent-preset-patches.mjs` 重新生成产物
+（手改产物会被 `--check` 判不一致）→ `node scripts/setup-dsh.mjs` 同步进 profile（bundle 是 junction，
+改完立刻可见）→ **重启 DSH**（preset 才会被重新装载）。
+
+**验证**：真机低噪音唤醒一次（`POST /api/socialV2/wake`，reason=replyCheck，没有产生任何群消息），
+再解 DSH 会话记录（`session.v4.jsonl.zstd`，多帧 zstd）确认提示词里确实有：
+「【语音】语音库现有：哎呦我去.mp3、…、呦吼吼吼.mp3。…今天你已发 0 条（一天最多 3 条）。」✅
+
+**顺带修**：`scripts/dump-session-tail.mjs` / `probe-session-search.mjs` / `probe-affinity-prompt.mjs`
+写死了 `session.v3.jsonl.zstd`，而当前 DSH 写的是 **v4** —— 这三个诊断脚本此前是**静默失效**的。
+已改成「v4 优先、v3 兜底」并冒烟跑通。
+
+### 16.3 事故：桥接「假死」7 分钟，19:17 的 @ 没人回（2026-09-29 晚）
+
+owner 问「19.17 被 @ 后为什么没有回复」。查完的结论：**不是 AI 不回，是桥接瞎了。**
+
+**证据链**
+- SnowLuma 日志确认那条 @ 到了网关：
+  `19:17:50 OK [Event] 群 [梅川 嗨丝的大父群(541026885)] | [梦想成为三角洲大神(3390867239)] @264346863 你能找到的数学学院的所有导的研究方向大概统计一下 不用太细`；
+  之后 19:21:27（引用 +「回复一下」）、19:22:12「？」、19:22:26、19:22:32「我在加功能」、19:22:44 共 **6 条**都没人处理。
+- 但这些消息**从未进过桥接**：`state/social-v2.json` 的 `lastIncomingAt` 停在 **19:12:16**（`lastUnreadSeq=3108`），
+  最近消息里没有任何 seq>3108 的条目；`state/qq-activity.log` 在 19:13–19:23 之间也没有「消息已入未读」。
+- 桥接从 **19:16:04 起整体不响应**：DSH 会话记录（`session-ced82c49`）里，模型这一轮的每个桥接类工具调用
+  （`qq_wait_for_messages` / `qq_get_unread_messages` / `qq_get_recent_messages` / `qq_social_state` /
+  `qq_report_feedback`）全部 `fetch failed`，而**直连 SnowLuma** 的 `snowluma_status` / `qq_status` 正常。
+  模型自己判断出「Confirmed outage」，重试约 40 秒后写了一条 feedback，并在群里说
+  「群里的问答已经发出去了，但之后桥接的消息类接口整片挂了，收尾动作没做成」，19:16:42 结束回合。
+- 进程**没死，是卡住**：19:17~19:18 我列进程时它还活着（PID 38560 + 守护窗口 916），
+  但 `state/bridge.log` 从 19:14:29 之后**一行都没有**（既无堆栈也无退出日志）——事件循环被阻塞，
+  HTTP 与 WS 一起哑掉，后面的消息自然既读不到也处理不了。
+- 恢复时间：**19:23:01** 我重启桥接（杀掉卡死进程、起新实例）后才正常。owner 感知到的「被 @ 没回复」
+  就是这 7 分钟。
+
+**雪上加霜（这次的锅是我的）**：19:23:01 那次重启是我从 **DSH 会话里**跑的 `restart.bat`，
+守护窗口与桥接因此挂在 DSH 的进程树上；19:26 按 owner 要求关闭 DSH 时，进程树被一起收走
+（SnowLuma 日志 19:26:03 的 `read ECONNRESET` 就是桥接的 socket 被带走），桥接从此**完全离线**
+（无进程、3100 无监听），直到 **19:32:51** 用桌面「启动Bot」重新拉起（PID 1952，已确认
+`/api/status` 40ms 响应、SnowLuma 与 DSH 均已连接）。
+👉 **教训：不要在 DSH 会话里跑 `restart.bat` / `start.bat`**（它是 DSH 的子进程，DSH 一关就一起没），
+要在桌面/独立窗口里起。
+
+**另一个真实缺口**：`D:\dsh\tools\start-bot.bat` 拉起桥接用的是
+`start "qq-bridge" /D "%BR_DIR%" "%NODE%" src\bridge.js` —— **直接起 `bridge.js`，没有 `start.bat` 的
+崩溃重启守护**。所以《重启后拉起Bot.md》里「它自带守护脚本 start.bat（崩溃自动重启）」只在用
+`qq-bridge\start.bat` / `restart.bat` 起的时候成立；走启动器这条路，桥接卡死/崩溃后**没有任何东西
+会把它拉回来**（今天就瞎了 7 分钟，19:26–19:32 又完全离线）。
+
+**待办（建议，尚未做）**
+1. **外部看门狗**（最有效）：每 30s 探一次 `http://127.0.0.1:3100/api/status`，连续 N 次超时就杀掉并重启，
+   看门狗自己的日志落文件。只有进程**外面**的看门狗能救「事件循环卡死」——进程内的定时器会一起卡死。
+2. 或者让启动器改走 `start.bat`（带守护循环），代价是多一个常驻 cmd 窗口。
+3. 桥接内部加 WS 存活心跳（长时间无帧 → 主动探活 → 失败就 `socket.close()` 触发 SDK 重连）：
+   能救「半开连接」，但救不了卡死。
+
+**为什么没有堆栈**：进程是卡住不是崩溃，`uncaughtException` 兜底（bridge.js:13662）不会触发；
+守护窗口的 stdout/stderr 也没落盘（`state/bridge-stderr.log` 仍是 18:42 那次的内容）。
+要抓住下一次，得先落实第 1 条，或给 `start.bat` 加输出重定向。
+
 
 
 

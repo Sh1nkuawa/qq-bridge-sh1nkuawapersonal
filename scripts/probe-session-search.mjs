@@ -30,8 +30,11 @@ const dirs = fs.readdirSync(root)
 const t = (ms) => new Date(Number(ms)).toLocaleString('sv');
 
 for (const d of dirs) {
-  const f = path.join(root, d.n, 'session.v3.jsonl.zstd');
-  if (!fs.existsSync(f)) continue;
+  // DSH 会随版本改会话文件名（v3 → v4）：两个都试，别让诊断脚本因为一个扩展名就静默失效。
+  const f = ['session.v4.jsonl.zstd', 'session.v3.jsonl.zstd']
+    .map((n) => path.join(root, d.n, n))
+    .find((p) => fs.existsSync(p));
+  if (!f) continue;
   const txt = readSession(f);
   if (keyword && !txt.includes(keyword)) continue;
   console.log(`\n================ ${d.n}（最后写入 ${t(d.t)}）================`);
