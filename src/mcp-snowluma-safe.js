@@ -360,9 +360,14 @@ server.tool(
       }
 
       // 1) 前置校验（不扣配额）：必须被 @ + 正文以「生图」开头 + 未超日限额
+      // ⚠️ 必须带 `x-agent-token` 头：桥接 v0.1.7 起把「智能体调用」集中把关（agentApi 会
+      // 自动加 `x-agent-call: 1`），只要声明是智能体调用，就必须给出**有效的会话令牌头**，
+      // 光把 token 放在 body 里会被判 401（"智能体调用必须携带有效的会话令牌"）。
+      // 2026-09-29 实测：生图工具因为漏了这个头，模型调了两次都被拒，群里只看到失败。
       const pre = await agentApi('/api/socialV2/image-request', {
         method: 'POST',
         body: JSON.stringify({ key, token, consume: false }),
+        headers: { 'x-agent-token': token },
         timeoutMs: 20000,
       });
       if (!pre?.ok) {
@@ -381,6 +386,7 @@ server.tool(
       const quota = await agentApi('/api/socialV2/image-request', {
         method: 'POST',
         body: JSON.stringify({ key, token, consume: true }),
+        headers: { 'x-agent-token': token },
         timeoutMs: 20000,
       });
       const imageCfg = loadConfig()?.socialV2?.image ?? {};

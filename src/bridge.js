@@ -7689,6 +7689,10 @@ async function main() {
           }
           const freshMs = (Number(cfg.socialV2?.image?.mentionFreshMs) || 180000);
           const dailyLimit = (Number(cfg.socialV2?.image?.dailyLimit) || 5);
+          // 生图前缀（默认「生图」）：必须在下面所有用到它的地方**之前**声明 ——
+          // 曾经它被写在票据判断之后，于是每次生图请求都在这里抛
+          // `Cannot access 'prefix' before initialization`（TDZ），整个接口 500。
+          const prefix = String(cfg.socialV2?.image?.prefix ?? '生图');
           // [qq-bridge 本地补丁] 优先用"唤醒那一刻签发的票据"：被 @ 唤醒的回合开始时重新起算有效期，
           // 之后哪怕桥接排队/看门狗拖了几分钟，这一轮的生图请求依然算数。
           // 没有票据时退回"最近一次 @ + 时间窗"的老逻辑（例如 private 会话）。
@@ -7703,7 +7707,6 @@ async function main() {
           });
           const m = (ticket && ticketOk ? ticket : null) || recentMention || (!ticket ? st.lastMention : null);
           const inWindow = Boolean(m) && (ticket && m === ticket ? true : Date.now() - Number(m.at || 0) <= Math.max(freshMs, 10 * 60 * 1000));
-          const prefix = String(cfg.socialV2?.image?.prefix ?? '生图');
           // @ 提到的人在文本里表现为 "@昵称"，而 @ 必然在「生图」之前，所以不能直接判断
           // "以生图开头"。判断逻辑抽到 src/image-ack.js 的 analyzeImageRequest()，
           // 与"群里看到请求就即时回执"共用同一套规则，避免两处不一致。
@@ -9893,6 +9896,18 @@ async function main() {
           pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.slice(-50) : [],
           memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
           affinity: st.affinity && typeof st.affinity === 'object' ? st.affinity : { members: {}, updatedAt: 0 },
+          // [qq-bridge 本地补丁] 生图相关的短命状态也要落盘。
+          // 为什么要落：这些字段以前只在内存里，桥接一重启（守护窗口/升级/手工重启都很常见）
+          // 就全丢 —— 后果是"图还在画"变成模型眼里的"没这回事"（它就会编"还没出来/已经失败"），
+          // 或者刚回过开场白、还没人调用工具的那单被彻底遗忘（群里永远等不到图）。
+          imageTicket: st.imageTicket || null,   // "@机器人" 的时效票据（工具受理时校验）
+          imageAck: st.imageAck || null,         // 最近一次开场白（同一条请求去重）
+          imagePending: st.imagePending || null, // 桥接已回开场白、但还没人调用 qq_generate_image
+          imageJob: st.imageJob || null,         // 后台正在生图
+          imageFail: st.imageFail || null,       // 最近一次失败（权威状态，防止模型说"还在画"）
+          imageDone: st.imageDone || null,       // 最近一次成功
+          retryHint: st.retryHint || null,       // 上一轮工具参数 JSON 非法 → 本轮重发提示
+          malformedRetry: st.malformedRetry || null,
           seenForwardIds: Array.from(seenForwardIds.get(key) || []).slice(-1000)
         };
       }
