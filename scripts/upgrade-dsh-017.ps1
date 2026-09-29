@@ -26,6 +26,8 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $root "state\dsh-upgrade-$stamp.log"
 $result = Join-Path $root "state\dsh-upgrade-$stamp-RESULT.txt"
 $script:checks = New-Object System.Collections.ArrayList
+# 脚本里用相对路径调 setup-dsh.mjs / verify-*.mjs，先钉住工作目录。
+Set-Location $root
 
 function W([string]$m) {
   $line = "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')) $m"
@@ -38,9 +40,9 @@ function Assert([string]$name, [bool]$ok, [string]$detail = '') {
   W "$mark $name$(if ($detail) { " -- $detail" })"
 }
 
-function Run([string]$exe, [string[]]$argv, [string]$label) {
-  W "RUN $label : $exe $($argv -join ' ')"
-  $out = & $exe @argv 2>&1 | Out-String
+function Run([string]$exe, [string[]]$cmdArgs, [string]$label) {
+  W "RUN $label : $exe $($cmdArgs -join ' ')"
+  $out = & $exe @cmdArgs 2>&1 | Out-String
   $code = $LASTEXITCODE
   Add-Content -Path $log -Value $out -Encoding UTF8
   W "$label exit=$code"
