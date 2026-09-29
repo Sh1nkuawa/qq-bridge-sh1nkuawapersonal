@@ -945,6 +945,24 @@ owner 问「19.17 被 @ 后为什么没有回复」。查完的结论：**不是
 守护窗口的 stdout/stderr 也没落盘（`state/bridge-stderr.log` 仍是 18:42 那次的内容）。
 要抓住下一次，得先落实第 1 条，或给 `start.bat` 加输出重定向。
 
+**状态更新（2026-09-29 19:55 前后，另一个会话补记 —— 避免重复劳动）**
+
+- 上面「待办 #2」**已完成**：`D:\dsh\tools\start-bot.bat` 拉起桥接已改走守护循环 ——
+  `if exist "%BR_DIR%\start.bat" start "qq-bridge guard" /D "%BR_DIR%" cmd /c start.bat`
+  （没有 `start.bat` 时回退原来的裸 `node src\bridge.js`）。owner 已同意多一个常驻 cmd 窗口。
+  该文件是 **GBK + CRLF**，所以改动是**纯 ASCII 字节级替换**（非 ASCII 字节数 632 未变、CRLF 未变、
+  按 GBK 回读中文正常），备份在 `D:\dsh\tools\start-bot.bat.bak-guard-patch`；
+  两条分支都在 `tools\_lbtest` 沙盒里复刻同样的嵌套块验证过（有/无 start.bat）。
+  👉 **请勿重复做 #2**；若要做，注意别按 UTF-8 重写这个 .bat。
+- 覆盖范围提醒：这一步只解决「进程退出/崩溃」（守护循环 5 秒后重启）。
+  **它救不了事件循环卡死**（卡死时进程还在，守护不会重启），所以**待办 #1（外部看门狗）仍是唯一对症项**，
+  已约定由正在处理本节的那个会话实现。
+- 另外桥接内部已加 **WS 链路看门狗**（`src/snowluma-liveness.mjs` + `scripts/test-snowluma-liveness.mjs`，
+  提交 `eb77302`）：入站事件刷新存活水位，静默 5 分钟发一次 `get_status` 探活，探活失败或静默 12 分钟
+  强制 `close + connect`；参数在 `socialV2.snowluma`。它只覆盖「半开连接」，与 #1 是两件事、不冲突。
+- 该提交（`eb77302`）是我用 `git add -A` 收的尾，**把本节 16.3 也一起提交了**（当时没注意到有并行会话）。
+  已改规矩：此后只 `git add` 明确列出的文件。
+
 
 
 
