@@ -4,7 +4,7 @@
 
 > ⚠️ **本仓库是个人衍生副本，不是上游官方仓库。**
 > 上游：[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)（作者 **Derpyu520**）；本副本基于上游 `v0.1.5` / 提交 `dea3ce8`。
-> **上游未附 LICENSE**：署名、许可证状态与免责说明见 **[NOTICE.md](NOTICE.md)**；本副本新增/改了什么见 `INSTALL_NOTES.md` 与 `docs/`。
+> 上游自 `v0.1.7` 起采用 **MIT** 许可证，其 `LICENSE` 已随本仓库保留；署名与免责说明见 **[NOTICE.md](NOTICE.md)**。本副本新增/改了什么见 `INSTALL_NOTES.md` 与 `docs/`。
 
 > 📘 详细内外核说明书见 **[docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)**（架构、数据流、配置全解、调试与改进指南）。
 >
