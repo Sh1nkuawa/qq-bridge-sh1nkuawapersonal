@@ -238,7 +238,12 @@ console.log('接线存在性（静态检查，防止“改了模块忘了接线�
   });
   ok('bridge 唤醒提示里注入了 memeLine', () => {
     assert.match(bridge, /const memeLine = \(\(\) => \{/);
-    assert.match(bridge, /stickerLine \+ memeLine \+ adminLine \+ preSleepLine/);
+    // 上游 v0.1.7 的拼接顺序里多了 replyLine 等，这里只断言「memeLine/adminLine 确实在 base 里」。
+    const baseLine = bridge.split('\n').find((l) => l.includes('const base = roleLine'));
+    assert.ok(baseLine, '找不到 buildWakePromptV2 的 base 拼接行');
+    for (const part of ['memeLine', 'adminLine', 'preSleepLine', 'affinityLine']) {
+      assert.ok(baseLine.includes(part), `base 拼接里缺 ${part}`);
+    }
   });
 
   const mcp = read('src/mcp-snowluma-safe.js');
@@ -246,7 +251,12 @@ console.log('接线存在性（静态检查，防止“改了模块忘了接线�
     ok(`MCP 含 ${s}`, () => assert.ok(mcp.includes(s), `缺少 ${s}`));
   }
   ok('MCP 的 qq_send_meme 不接受 message 参数（单气泡）', () => {
-    const block = mcp.slice(mcp.indexOf("'qq_send_meme'"), mcp.indexOf("'qq_get_self_image'"));
+    // 结束标记用紧随其后的 qq_group_admin_info（顺序可能随合并变化，不能再假设
+    // qq_get_self_image 在它后面——上游 v0.1.7 的注册顺序里 self_image 在前）。
+    const from = mcp.indexOf("'qq_send_meme'");
+    const to = mcp.indexOf("'qq_group_admin_info'");
+    assert.ok(from >= 0 && to > from, '找不到 qq_send_meme 注册块');
+    const block = mcp.slice(from, to);
     assert.ok(!/message:\s*z\.string\(\)/.test(block), '不该有 message 参数');
     assert.match(block, /不能带文字/);
   });
@@ -265,8 +275,9 @@ console.log('接线存在性（静态检查，防止“改了模块忘了接线�
   });
 
   const preset = read('dsh/agent-presets/qq-chat-v2/agent.cordis.yml');
-  ok('预设含 26.1 本地表情包库规则与工具速查', () => {
-    assert.match(preset, /26\.1 【本地表情包库/);
+  ok('预设含本地表情包库规则', () => {
+    // 编号随上游 preset 改版顺延（上游 v0.1.7 之后本副本的规则挂在 17~23 段）。
+    assert.match(preset, /【本地表情包库/);
     assert.ok(preset.includes('qq_send_meme'), '预设未提到 qq_send_meme');
   });
   const live = path.join(process.env.USERPROFILE || process.env.HOME || '', '.dsh', '.agent-presets', 'qq-chat-v2', 'agent.cordis.yml');

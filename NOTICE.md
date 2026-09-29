@@ -8,7 +8,7 @@
 | --- | --- |
 | 原仓库 | <https://github.com/Derpyu520/qq-bridge> |
 | 原作者 | **Derpyu520**（GitHub） |
-| 本副本基于 | 版本 `v0.1.5`，上游提交 `dea3ce8`（2026-09-18） |
+| 本副本基于 | 版本 `v0.1.7`（上游 `main`，2026-09 合并；此前的部署基线是 `v0.1.5` / 提交 `dea3ce8`） |
 | 上游 README | 见本仓库 `README.md` / `README.en.md`（保留原文与其中的作者链接） |
 
 原始的架构、协议适配、控制台、MCP 安全子集、preset 体系等绝大部分代码来自原作者 Derpyu520，**版权归原作者**。
@@ -30,12 +30,12 @@ MIT License
 Copyright (c) 2026 Derpyu520 and qq-bridge / QSH contributors
 ```
 
-本副本基于 `v0.1.5`（当时上游尚无 LICENSE 文件），现已把上游这份 `LICENSE` 一并放入本仓库，
-以符合 MIT「随副本保留版权与许可声明」的要求。
+本副本最初基于 `v0.1.5`（当时上游尚无 LICENSE 文件），之后已合并上游 `v0.1.7`，
+采用的就是上游那份 MIT `LICENSE`，以符合 MIT「随副本保留版权与许可声明」的要求。
 
 - 上游代码版权归 **Derpyu520 and qq-bridge / QSH contributors**，按 MIT 授权使用、修改与再分发；
 - 本副本作者新增的文件（上文列出的那些）同样以 MIT 提供，但需保留上游版权声明；
-- 若日后升级到上游 `v0.1.7`，请直接沿用上游 `LICENSE` 与本文件。
+- 合并上游新版本时，请直接沿用上游 `LICENSE` 与本文件（署名与来源说明不要删）。
 
 ## 不要提交的东西
 

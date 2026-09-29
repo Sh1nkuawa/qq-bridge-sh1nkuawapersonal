@@ -107,7 +107,9 @@ ensureMember(members, '1001', '群友G', cfg).score = 70;
 ensureMember(members, '1002', '群友A', cfg).score = 30;
 ensureMember(members, '1003', '梅川 义敷', cfg).score = -5;
 const panel = formatAffinityPanel(members, [{ userId: '1001' }, { userId: '1002' }, { userId: '1003' }, { userId: '9999' }], cfg);
-ok('包含在场三人', panel.includes('卿头') && panel.includes('库库') && panel.includes('义敷'));
+// 断言口径修正：面板里出现的是**这次传进去的在场人名**（此前写的是真实群友昵称，
+// 和 fixtures 无关，属于永远不可能成立的历史残留断言）。
+ok('包含在场三人', panel.includes('群友G') && panel.includes('群友A') && panel.includes('义敷'));
 ok('不含不在场的人', !panel.includes('9999'));
 ok('含"绝不能说出口"约束', panel.includes('绝不能说出口'));
 ok('含语气档说明', panel.includes('语气档') || panel.includes('语气要求'));

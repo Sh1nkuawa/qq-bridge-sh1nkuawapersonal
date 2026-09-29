@@ -1,6 +1,22 @@
 # qq-bridge 安装记录（本机 D:\dsh\qq-bridge）
 
 安装时间：本次会话 · 目标 DSH 版本 `0.1.5-rc.1`
+最近更新：**已合并上游 `v0.1.7`**（分支 `upgrade/v0.1.7`，适配 DSH `0.1.7-rc.2`）
+
+---
+
+## 〇、合并上游 v0.1.7（本次新增，先看这段）
+
+上游 v0.1.7 是一次大改版。合并时**保留上游结构 + 重挂本副本的本地特性**，要点：
+
+| 方面 | 上游 v0.1.7 的变化 | 本副本的处理 |
+|---|---|---|
+| 鉴权 | 不再从 guard 日志读 launch token；改用 `~/.dsh/.credentials.yaml` 里的浏览器会话签名密钥**离线铸造 Cookie** | 采用上游实现；本副本此前的 `dsh.authCookie` 补丁不再需要（已是死代码） |
+| agent preset | preset 从 `~/.dsh/.agent-presets/<name>/` 目录改为 profile 里一条 `@deepseek-ai/dsh-agent-preset` 行；由 `plugins/qq-agent-presets/` 提供，patch 文件由 `scripts/build-agent-preset-patches.mjs` 生成 | 采用上游机制；本副本的规则（本地表情包库/卡牌图/余额/生图/关系档/投喂/群管理）重挂进 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml` 的 **17~23 条**，改 preset 后要重新跑生成脚本 |
+| 工具守卫 | `qq-tool-restrict.mjs` 权威实现移到 `plugins/qq-agent-presets/qq-tool-restrict.mjs`（preset 内文件只剩 re-export 壳） | 已把本副本的白名单前缀 `mcp__qq-wait__` 补进权威实现（否则「等待」工具会被安全边界误杀） |
+| MCP 工具注册 | 新增 `TOOL_CONFIG_FLAGS` 注册期过滤（关掉的工具不注册，省 token） | 本副本的 6 个工具（`qq_send_meme` / `qq_group_admin_info` / `qq_request_mute` / `qq_propose_announcement` / `qq_generate_image` / `qq_get_balance`）已登记进该表 |
+| 语音 | 新增 `qq_send_voice` / `qq_list_voices`，语音工具独立到仓库上一级 `../voice-tool/` | 语音默认**关闭**（`socialV2.voice.enabled=false`、`tools.sendVoice=false`）；本机未安装 `../voice-tool/`，因此语音相关用例（`test-voice*`、`test-console-static`、`test-encoding`、`test-snowluma-conn`）跑不了，属预期 |
+| 审计测试 | `audit-bridge-harness.mjs` 重写（vm 里跑真实 bridge） | 该 harness 改成**按 bridge.js 的 import 自动注入 src/ 本地模块**，否则漏注入就会以 `xxx is not defined` 假失败 |
 
 ---
 

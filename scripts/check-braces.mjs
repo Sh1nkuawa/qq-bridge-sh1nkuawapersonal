@@ -59,8 +59,8 @@ export function scanBraces(src) {
     if (OPEN.has(ch)) { stack.push({ ch, line, virtual: false }); prev = ch; word = ''; i++; continue; }
     if (CLOSE[ch]) {
       const top = stack.pop();
-      if (!top) return { ok: false, line, msg: `第 ${line} 行出现多余的 '${ch}'（栈已空）` };
-      if (top.ch !== CLOSE[ch]) return { ok: false, line, msg: `第 ${line} 行 '${ch}' 与第 ${top.line} 行的 '${top.ch}' 不匹配` };
+      if (!top) return { ok: false, line, msg: `第 ${line} 行出现多余的 '${ch}'（栈已空）`, stack };
+      if (top.ch !== CLOSE[ch]) return { ok: false, line, msg: `第 ${line} 行 '${ch}' 与第 ${top.line} 行的 '${top.ch}' 不匹配`, stack };
       if (top.virtual) { mode = 'tpl'; prev = '}'; i++; continue; }
       prev = ch; word = ''; i++; continue;
     }
@@ -70,11 +70,11 @@ export function scanBraces(src) {
     i++;
   }
   if (mode === 'sq' || mode === 'dq' || mode === 'tpl' || mode === 'regex' || mode === 'block') {
-    return { ok: false, line, msg: `文件结束时仍处于 ${mode}（字符串/模板/正则/注释没闭合，起始可能在更早处）` };
+    return { ok: false, line, msg: `文件结束时仍处于 ${mode}（字符串/模板/正则/注释没闭合，起始可能在更早处）`, stack };
   }
   if (stack.length) {
     const last = stack[stack.length - 1];
-    return { ok: false, line, msg: `文件结束仍差闭合：第 ${last.line} 行的 '${last.ch}' 没关上（还差 ${stack.length} 个）` };
+    return { ok: false, line, msg: `文件结束仍差闭合：第 ${last.line} 行的 '${last.ch}' 没关上（还差 ${stack.length} 个）`, stack };
   }
   return { ok: true, line };
 }

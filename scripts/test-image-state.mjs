@@ -30,7 +30,9 @@ ok('本地图引用 "local:" 能被识别', /function localPathOfMedia/.test(bri
 ok('引用我的图但本地已丢 → 提前报错，不烧 codex', /REF_IMAGE_LOST/.test(bridge));
 
 console.log('## 预设规则：只有"进行中"那行才允许说正在画');
-ok('预设含 29.6.1 生图状态口径', /29\.6\.1 【生图状态只信提示里的那两行】/.test(preset));
+// 编号会随上游 preset 改版顺延（本副本重挂到 17~23 段后是 20.6.1），所以按内容断言不按编号。
+ok('预设含生图状态口径', /【生图状态只信提示里的那两行】/.test(preset)
+  && /【后台正在生图】/.test(preset) && /【生图结果：失败】/.test(preset));
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
 process.exit(fail === 0 ? 0 : 1);

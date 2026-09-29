@@ -303,12 +303,16 @@ async function bingSearch(query) {
   let rssCount = 0;
   let tavilyError = '';
   let tavilyCount = 0;
+  // [qq-bridge 本地补丁] 三个来源的失败原因都留下来：全都失败时必须让模型看到**为什么**失败
+  // （例如"内网地址/重定向被拒""DNS 解析失败"），而不是回一个空的 results 让它以为"网上没这内容"。
+  const errors = [];
   try {
     const tavily = await tavilySearch(query);
     tavilyCount = tavily.results.length;
     if (tavilyCount) candidates.push({ results: tavily.results, source: 'tavily', answer: tavily.answer });
   } catch (error) {
     tavilyError = String(error?.message ?? error);
+    errors.push(`tavily: ${tavilyError}`);
   }
   // Tavily 命中且相关性够高时就不必再打 Bing 了（省一次网络往返）。
   const tavilyOk = candidates.length > 0 && relevanceScore(candidates[0].results, query) >= 0.5;
@@ -317,19 +321,20 @@ async function bingSearch(query) {
       const html = await bingSearchHtml(query);
       htmlCount = html.results.length;
       if (htmlCount) candidates.push({ results: html.results, source: 'bing-html' });
-    } catch { /* 落到 RSS */ }
+    } catch (error) { errors.push(`bing-html: ${String(error?.message ?? error)}`); /* 落到 RSS */ }
     try {
       const items = await bingSearchRss(query);
       rssCount = items.length;
       if (rssCount) candidates.push({ results: items, source: 'bing-rss' });
-    } catch { /* 都不行就返回空 */ }
+    } catch (error) { errors.push(`bing-rss: ${String(error?.message ?? error)}`); /* 都不行就返回空 */ }
   }
 
   if (!candidates.length) {
     return {
       query, results: [], source: 'none',
       counts: { tavily: tavilyCount, html: htmlCount, rss: rssCount },
-      ...(tavilyError ? { tavilyError } : {})
+      ...(tavilyError ? { tavilyError } : {}),
+      ...(errors.length ? { errors } : {})
     };
   }
 
@@ -412,7 +417,7 @@ async function bingSearchHtml(query) {
   return { query, results };
 }
 
-const server = new McpServer({ name: 'web-search-safe', version: '0.1.5' });
+const server = new McpServer({ name: 'web-search-safe', version: '0.1.7' });
 
 server.tool(
   'web_search',
@@ -429,6 +434,14 @@ server.tool(
     }
     try {
       const result = await bingSearch(clean);
+      // 三个来源全失败 ⇒ 这是**失败**，不是"网上没这内容"：必须回 isError 把原因说清楚，
+      // 否则模型会把空结果当成事实依据（"搜不到相关资料"）继续往下说。
+      if (Array.isArray(result?.results) && result.results.length === 0) {
+        const why = Array.isArray(result.errors) && result.errors.length
+          ? result.errors.join('；')
+          : '所有搜索来源都没有返回结果';
+        return { content: [{ type: 'text', text: `搜索失败：${why}` }], isError: true };
+      }
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       return {
