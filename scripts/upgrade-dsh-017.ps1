@@ -11,7 +11,10 @@
 # contain non-ASCII text and dies silently.
 param(
   [string]$Target = '0.1.7-rc.2',
-  [switch]$SkipBackup
+  [switch]$SkipBackup,
+  # 启动后先等这么久再动 DSH：给正在收尾的对话回合留出把话说完的时间
+  # （DSH 一停，当前 agent 会话就断了，来不及输出的内容会丢）。
+  [int]$GraceSeconds = 45
 )
 
 $ErrorActionPreference = 'Continue'
@@ -60,6 +63,10 @@ function PortOpen([int]$port, [int]$timeoutSec) {
 
 W "=== DSH upgrade to $Target (stamp $stamp) ==="
 W "DSH_HOME=$env:DSH_HOME"
+if ($GraceSeconds -gt 0) {
+  W "grace: waiting $GraceSeconds s before touching DSH (let the current chat turn finish)"
+  Start-Sleep -Seconds $GraceSeconds
+}
 
 # ---- 0. record current versions ------------------------------------------------
 $dshPkg = 'D:\nodejs16\node_global\node_modules\@deepseek-ai\dsh\package.json'
