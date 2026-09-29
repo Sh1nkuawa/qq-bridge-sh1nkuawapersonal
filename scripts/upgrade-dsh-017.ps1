@@ -12,8 +12,10 @@
 param(
   [string]$Target = '0.1.7-rc.2',
   [switch]$SkipBackup,
-  # 启动后先等这么久再动 DSH：给正在收尾的对话回合留出把话说完的时间
-  # （DSH 一停，当前 agent 会话就断了，来不及输出的内容会丢）。
+  # Wait this long before touching DSH: stopping DSH kills the running agent session,
+  # so the current chat turn needs a moment to finish writing its reply.
+  # (Keep this file ASCII-only: PS 5.1 mis-parses UTF-8-without-BOM files that contain
+  #  non-ASCII text, and a mangled byte can even swallow the following newline.)
   [int]$GraceSeconds = 45
 )
 
@@ -29,7 +31,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $root "state\dsh-upgrade-$stamp.log"
 $result = Join-Path $root "state\dsh-upgrade-$stamp-RESULT.txt"
 $script:checks = New-Object System.Collections.ArrayList
-# 脚本里用相对路径调 setup-dsh.mjs / verify-*.mjs，先钉住工作目录。
+# setup-dsh.mjs / verify-*.mjs are invoked with relative paths below, so pin the workdir first.
 Set-Location $root
 
 function W([string]$m) {
