@@ -100,6 +100,15 @@ const LOCAL_EXECUTION_TOOLS = [
 const KNOWN_DANGEROUS_GLOBAL_TOOLS = [
   // 本地执行面（见上）
   ...LOCAL_EXECUTION_TOOLS,
+  // [qq-bridge 本地补丁] 0.1.7-rc.2 实测仍会进 QQ 会话 schema 的「插件/资源」类工具：
+  //   find_dsh_plugin（去 GitHub 搜插件）、list_mcp_resources / list_mcp_resource_templates /
+  //   read_mcp_resource（读 MCP 资源）。
+  // 它们对"仿真群友"毫无用处，却会白占每次请求的 schema token，并诱导模型去调一个注定被
+  // 执行期白名单拒绝的工具（2026-09-29 在真实 qq-chat-v2 会话的工具清单里实测到）。
+  'find_dsh_plugin',
+  'list_mcp_resources',
+  'list_mcp_resource_templates',
+  'read_mcp_resource',
   // dsh-super-injector / 开发注入器（0.1.7-rc.2 实测注册的全局工具）
   // 说明：这些名字是**运行时**才出现的（注入即注册、卸载即消失），所以只能尽力 restrict；
   // 真正的边界是下面的执行期白名单。

@@ -32,7 +32,10 @@ ok('开关是开着的', normal.body?.enabled === true);
 ok('能渲染出多条不同文案', (normal.body?.samples ?? []).length >= 3, `${(normal.body?.samples ?? []).length} 条`);
 console.log('  普通群友会看到：');
 for (const s of normal.body?.samples ?? []) console.log('   ·', s);
-ok('文案带请求者名字或明确说在画', (normal.body?.samples ?? []).every((s) => /库库|画|收到/.test(s)));
+// 口径：每条回执要么点到请求者名字，要么明确表达"接下了/在画"。
+// 模板池是会增补的（例如"行，等我几分钟"），所以用一组同义表达而不是只认 "画/收到"。
+ok('文案带请求者名字或明确说在画', (normal.body?.samples ?? []).every((s) => /群友A|库库|画|收到|稍等|等我|别急|记上|安排|接了|就来|整/.test(s)),
+  (normal.body?.samples ?? []).join(' | '));
 ok('文案里没有残缺的"还剩 次"', (normal.body?.samples ?? []).every((s) => !/还剩\s*次|remaining/.test(s)));
 
 const owner = await post('/api/socialV2/image-ack-preview', { name: '群主', isOwner: true });
@@ -96,4 +99,7 @@ ok('受理接口与即时回执共用同一套判断', /analyzeImageRequest\(raw
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
 console.log('\n下一步（真机验证）：在群里 @机器人 发一条「生图 一只戴墨镜的鲸鱼」，');
 console.log('应该会先看到一句「收到，画着呢…」，1~4 分钟后自动收到图并被 @。');
-process.exit(fail === 0 ? 0 : 1);
+// 本用例刚跑过真实 fetch（undici 的 keep-alive socket 还在收尾），Windows 上直接
+// process.exit() 会撞 libuv 断言 `!(handle->flags & UV_HANDLE_CLOSING)`（exit 0xC0000409），
+// 于是一个「29 通过 0 失败」的用例被记成崩溃。改用 exitCode 让事件循环自己排空。
+process.exitCode = fail === 0 ? 0 : 1;

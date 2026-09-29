@@ -75,4 +75,6 @@ const logTail = fs.readFileSync(path.join(ROOT, 'state', 'bridge.log'), 'utf8').
 ok('日志里有图库载入记录', /\[meme\] 本地图库已载入 \d+ 张/.test(logTail), (logTail.match(/\[meme\][^\n]*/) ?? ['(无)'])[0]);
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
-process.exit(fail === 0 ? 0 : 1);
+// 本用例刚跑过真实 fetch，Windows 上直接 process.exit() 会撞 libuv 断言
+// `!(handle->flags & UV_HANDLE_CLOSING)`（0xC0000409），把「13 通过 0 失败」记成崩溃。
+process.exitCode = fail === 0 ? 0 : 1;
