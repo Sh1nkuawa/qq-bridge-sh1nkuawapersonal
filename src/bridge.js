@@ -966,6 +966,9 @@ function loadConfig() {
     mentionFreshMs: 180000,   // 「@机器人」记录的时效窗口：3 分钟
     timeoutSec: 600,          // codex-image.ps1 的超时
     outDir: '',               // 留空则用 %TEMP%\qq-bridge-images
+    // [qq-bridge 本地补丁] 「待办：生图请求」的提示有效期：桥接替模型回过开场白后，
+    // 只要模型还没调用 qq_generate_image，就在唤醒提示里催它（默认 15 分钟）。
+    pendingTtlMs: 900000,
     ...(cfg.socialV2.image ?? {})
   };
 
@@ -7765,6 +7768,11 @@ async function main() {
             };
             // 票据一次性：用过就作废，防止同一轮里被重复消费。
             st.imageTicket = null;
+            // [qq-bridge 本地补丁] 真受理了 ⇒ 那条"待办：生图请求"就算完成，清掉它。
+            // （起因见 maybeSendEarlyImageAck：桥接会替模型先回一句开场白，模型于是
+            //  以为"桥接自己会画"，实测直接不调用工具、群里永远等不到图。清票与提示
+            //  是一对：提示告诉它"你还没调用"，调用成功后这里把提示撤掉。）
+            st.imagePending = null;
             saveSocialV2State();
             // [qq-bridge 本地补丁] 群里的即时提示："收到，画着呢"。
             // 起因（owner 2026-09-28）：生图是异步的，受理后群里 1~4 分钟没有任何动静，
@@ -8424,7 +8432,7 @@ async function main() {
    * 文案从 persona-lines.js 的模板池随机抽，保持人设口吻；可用 ackEnabled=false 关闭。
    * @param {{early?:boolean}} options early=true 表示这是"看到请求就先回执"（不等模型回合）
    */
-  async function sendImageAck(key, { senderId, senderName, isOwner, remaining, early = false, requestId = null }) {
+  async function sendImageAck(key, { senderId, senderName, isOwner, remaining, early = false, requestId = null, text = '' }) {
     const ic = cfg.socialV2?.image ?? {};
     const st = getSocialV2State(key);
     // 已经回过执就别再说第二遍 —— 但**只对同一条请求**去重（按消息 id）。
@@ -8447,6 +8455,19 @@ async function main() {
       await sendToQQ(key, line);
       recordSelfMessage(key, line, { imageAck: true });
       st.imageAck = { at: Date.now(), text: line, senderId: String(senderId ?? ''), requestId: requestId ? String(requestId) : null, early: early === true };
+      // [qq-bridge 本地补丁] 记一条"待办：生图请求"。
+      // 为什么需要：桥接替模型回了开场白（"收到，画着呢"），但**真正开始画必须由模型调用
+      // qq_generate_image**。实测模型会把那句开场白当成本身已经受理，于是整轮都不调用工具，
+      // 群里看到"等我几分钟"后再无音讯（2026-09-29 owner 实测）。这里留一张票，
+      // 由唤醒提示明确告诉它"你还没调用工具，不调用就永远不会出图"；受理成功后清票。
+      st.imagePending = {
+        at: Date.now(),
+        requestId: requestId ? String(requestId) : null,
+        senderId: String(senderId ?? ''),
+        senderName: String(senderName ?? ''),
+        text: String(text ?? '').slice(0, 160),
+        early: early === true,
+      };
       saveSocialV2State();
       appendActivity(`${key} [image] 已回执${early ? '（即时）' : ''}开始生图：${line}`);
       log(`[image] 已提示开始生图${early ? '（即时）' : ''} ${key}（请求 ${requestId ?? '未知'}）：${line}`);
@@ -8497,7 +8518,8 @@ async function main() {
       isOwner,
       remaining: isOwner ? null : Math.max(0, dailyLimit - used),
       early: true,
-      requestId
+      requestId,
+      text: String(text ?? ''),
     });
   }
   // 最近一次发送是否全部成功（按 key）。调用方据此决定要不要刷新「我发过言了」的时间戳 ——
@@ -11625,7 +11647,25 @@ async function main() {
           + `所以：**绝对不要**说"还在画/正在生成/马上好/等两分钟"这类话——那是假话，群友会当场发现。`
           + `要做的：如实承认失败、可以说一句抱歉/换个说法让他重新 @我 发一次；不要重复宣布失败（那条已经发过了）。\n\n`;
       }
-      if (!job) return '';
+      if (!job) {
+        // [qq-bridge 本地补丁] 「待办：生图请求」——桥接已经替模型回过开场白，但**还没人调用
+        // qq_generate_image**，所以图根本不会出现。不明确说清这一点，模型会把那句开场白当成
+        // "已经受理"，整轮不调工具，群里等到天荒地老（2026-09-29 owner 实测：17:29 的
+        // 「@我 生图，一只小鲸鱼」被读完就放着，模型转头去回答别人的考研问题）。
+        const pend = st?.imagePending;
+        const ttlMs = Number(cfg.socialV2?.image?.pendingTtlMs) > 0
+          ? Number(cfg.socialV2.image.pendingTtlMs)
+          : 15 * 60000;
+        if (pend && Date.now() - Number(pend.at || 0) < ttlMs) {
+          const who = pend.senderName ? `@${pend.senderName}` : `QQ ${pend.senderId}`;
+          const mins = Math.max(0, Math.round((Date.now() - Number(pend.at || 0)) / 60000));
+          return `【待办：生图请求】${who} 在 ${mins} 分钟前发了「${pend.text || '生图 …'}」，`
+            + `桥接只替你回了那句开场白，**你还没有调用 qq_generate_image** —— 不调用就永远不会出图，群里会一直等。\n`
+            + `现在就调用它（key 传 "${key}"、prompt 把「生图」后面的要求整理成画面描述、token 传上面的会话令牌）；`
+            + `调用后工具会立刻返回"已开始生成"，1~4 分钟后由后台自动发图并 @ 他，你不用再管、也不要重复调用。\n\n`;
+        }
+        return '';
+      }
       const until = Number(job.expiresAt) || 0;
       if (until && Date.now() > until) {
         try { st.imageJob = null; } catch {}
