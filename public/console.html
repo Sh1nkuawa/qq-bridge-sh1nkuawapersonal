@@ -444,6 +444,12 @@
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="listStickers"> <span><b>qq_list_stickers</b><span class="meta">查看/搜索 QQ 收藏表情（含备注和本地笔记）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getStickerImage"> <span><b>qq_get_sticker_image</b><span class="meta">看图理解没有备注的收藏表情</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendSticker"> <span><b>qq_send_sticker</b><span class="meta">发送收藏表情（一条消息只能一张，不能带文字）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="sendMeme"> <span><b>qq_send_meme</b><span class="meta">本地表情包库（dsh-meme 图库）：search 抽候选 / view 看图 / send 发图</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="requestMute"> <span><b>qq_request_mute</b><span class="meta">提议禁言刷屏/辱骂的群友（桥接核验证据后才执行，群主/管理员免疫）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="proposeAnnouncement"> <span><b>qq_propose_announcement</b><span class="meta">起草群公告（必须群主确认后才会发布）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="adminInfo"> <span><b>qq_group_admin_info</b><span class="meta">查看群管理身份/公告/最近禁言记录</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getImage"> <span><b>qq_generate_image</b><span class="meta">生图（必须被 @ 且以「生图」开头；每账号每天 5 次，管理员不限）</span></span></label>
+        <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getBalance"> <span><b>qq_get_balance</b><span class="meta">查询 DeepSeek 账户余额（只在被问到时查，不主动播报）</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="collectSticker"> <span><b>qq_collect_sticker</b><span class="meta">AI 偶尔收藏别人发的表情并写简短备注</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="getSelfImage"> <span><b>qq_get_self_image</b><span class="meta">查看自己的默认 Q 版形象图片</span></span></label>
         <label class="v2-tool-item"><input type="checkbox" data-v2-tool="stickerNote"> <span><b>qq_sticker_note</b><span class="meta">给表情记录本地含义/标签/用法</span></span></label>
@@ -583,6 +589,100 @@
         <label style="flex:1">收藏备注最大字数</label><input type="number" id="v2StickerCollectRemarkMax" min="1" max="50" style="width:80px">
         <span class="meta" style="flex:2">AI 收藏别人表情时写的简短备注长度上限。</span>
       </div>
+
+      <div class="divider"></div>
+      <div class="meta" style="margin-bottom:6px">本地表情包库（memes：接入 dsh-meme 图库，按情绪发梗图）</div>
+      <div class="row">
+        <label style="flex:1">启用本地表情包库</label><input type="checkbox" id="v2MemesEnabled" style="width:auto">
+        <label style="flex:1">提示中列出示例张数</label><input type="number" id="v2MemesPromptMax" min="1" max="30" style="width:90px">
+        <label style="flex:1">在 prompt/唤醒里附带图库摘要</label><input type="checkbox" id="v2MemesIncludePrompt" style="width:auto">
+      </div>
+      <div class="row">
+        <label style="flex:1">每分钟最多发图</label><input type="number" id="v2MemesPerMin" min="0" style="width:80px">
+        <label style="flex:1">每小时最多发图</label><input type="number" id="v2MemesPerHour" min="0" style="width:80px">
+        <label style="flex:1">避开最近发过的张数</label><input type="number" id="v2MemesRecentAvoid" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">图库根目录（每行一个，留空=自动探测 dsh-meme）</label>
+        <textarea id="v2MemesPackDirs" rows="2" style="flex:2" placeholder="C:\Users\你\.dsh\profiles\web\node_modules\dsh-meme\memes"></textarea>
+      </div>
+      <div class="row">
+        <label style="flex:1">只启用这些 pack（逗号分隔，留空=全部）</label>
+        <input type="text" id="v2MemesPacks" style="flex:2" placeholder="dafeiyu-001, official-001">
+      </div>
+      <div class="row">
+        <button id="v2MemesProbe" class="small">检测图库</button>
+        <span class="meta" id="v2MemesProbeMsg"></span>
+      </div>
+      <div class="row">
+        <label style="flex:1">测试发送到会话 key</label>
+        <input type="text" id="v2MemesTestKey" style="flex:1" placeholder="group:123456789 或 private:QQ号">
+        <label style="flex:0 0 auto">情绪</label>
+        <input type="text" id="v2MemesTestTag" style="width:90px" value="happy">
+        <button id="v2MemesTestSend" class="small">发一张试试</button>
+        <span class="meta" id="v2MemesTestMsg"></span>
+      </div>
+      <pre id="v2MemesProbeOutput">（点“检测图库”查看当前能载入哪些表情包）</pre>
+
+      <div class="divider"></div>
+      <div class="meta" style="margin-bottom:6px">群管理（admin：禁言 / 群公告。只开放这两个动作；踢人、全员禁言、群相册、群文件一律不开放）</div>
+      <div class="row">
+        <label style="flex:1">启用群管理</label><input type="checkbox" id="v2AdminEnabled" style="width:auto">
+        <label style="flex:1">干跑（只记录 + 通知我，不真的禁言）</label><input type="checkbox" id="v2AdminDryRun" style="width:auto">
+        <label style="flex:1">禁言时群里说一句</label><input type="checkbox" id="v2AdminAnnounceInGroup" style="width:auto">
+        <label style="flex:1">私聊通知我</label><input type="checkbox" id="v2AdminNotifyOwner" style="width:auto">
+      </div>
+      <div class="row">
+        <label style="flex:1">同文本重复阈值</label><input type="number" id="v2AdminSpamText" min="2" max="20" style="width:70px">
+        <label style="flex:1">同图重复阈值</label><input type="number" id="v2AdminSpamImage" min="2" max="20" style="width:70px">
+        <label style="flex:1">刷屏窗口（秒）</label><input type="number" id="v2AdminSpamWindow" min="10" style="width:80px">
+        <label style="flex:1">攻击条数阈值</label><input type="number" id="v2AdminAttackCount" min="2" max="20" style="width:70px">
+        <label style="flex:1">攻击窗口（分）</label><input type="number" id="v2AdminAttackWindow" min="1" style="width:70px">
+      </div>
+      <div class="row">
+        <label style="flex:1">刷屏首次（分）</label><input type="number" id="v2AdminMuteSpamBase" min="1" max="10" style="width:70px">
+        <label style="flex:1">攻击首次（分）</label><input type="number" id="v2AdminMuteAttackBase" min="1" max="10" style="width:70px">
+        <label style="flex:1">每次递增（分）</label><input type="number" id="v2AdminMuteStep" min="0" max="10" style="width:70px">
+        <label style="flex:1">禁言上限（分）</label><input type="number" id="v2AdminMuteMax" min="1" max="10" style="width:70px">
+        <label style="flex:1">每人冷却（分）</label><input type="number" id="v2AdminMuteCooldown" min="0" style="width:80px">
+      </div>
+      <div class="row">
+        <label style="flex:1">每小时上限</label><input type="number" id="v2AdminLimitHour" min="0" style="width:70px">
+        <label style="flex:1">每天上限</label><input type="number" id="v2AdminLimitDay" min="0" style="width:70px">
+        <label style="flex:1">每人每天上限</label><input type="number" id="v2AdminLimitMemberDay" min="1" style="width:70px">
+        <label style="flex:1">永不处理的 QQ（逗号分隔）</label><input type="text" id="v2AdminWhitelist" style="flex:2">
+      </div>
+      <div class="row">
+        <label style="flex:1">公告最大字数</label><input type="number" id="v2AdminNoticeMax" min="50" style="width:80px">
+        <label style="flex:1">公告允许链接</label><input type="checkbox" id="v2AdminNoticeLinks" style="width:auto">
+        <label style="flex:1">公告置顶</label><input type="checkbox" id="v2AdminNoticePinned" style="width:auto">
+        <label style="flex:1">要求成员确认收到</label><input type="checkbox" id="v2AdminNoticeConfirm" style="width:auto">
+        <label style="flex:1">审批超时（分）</label><input type="number" id="v2AdminNoticeTimeout" min="1" style="width:70px">
+      </div>
+      <div class="row">
+        <label style="flex:1">攻击词（逗号分隔）</label>
+        <input type="text" id="v2AdminAttackKeywords" style="flex:2" placeholder="傻逼, 智障, 脑残">
+      </div>
+      <div class="row">
+        <button id="v2AdminLoad" class="small">刷新群管理状态</button>
+        <span class="meta" id="v2AdminMsg"></span>
+      </div>
+      <pre id="v2AdminStatusOutput">（点“刷新群管理状态”查看：我在群里是不是管理员、当前公告、待审草稿、最近记录）</pre>
+      <div class="row">
+        <label style="flex:1">手动禁言 QQ</label><input type="text" id="v2AdminMuteUser" style="width:120px" placeholder="QQ 号">
+        <label style="flex:1">分钟</label><input type="number" id="v2AdminMuteMinutes" min="1" max="10" value="3" style="width:60px">
+        <button id="v2AdminMuteBtn" class="small">禁言</button>
+        <button id="v2AdminUnmuteBtn" class="small">解禁</button>
+        <span class="meta" id="v2AdminMuteMsg"></span>
+      </div>
+      <div class="row">
+        <label style="flex:1">待审公告</label>
+        <button id="v2AdminNoticeApprove" class="small">通过并发布</button>
+        <button id="v2AdminNoticeReject" class="small danger">拒绝草稿</button>
+        <span class="meta" id="v2AdminNoticeMsg"></span>
+      </div>
+      <pre id="v2AdminNoticeOutput">（待审草稿与当前公告会显示在这里）</pre>
+      <pre id="v2AdminLogOutput">（最近群管理记录）</pre>
 
       <div class="divider"></div>
       <div class="meta" style="margin-bottom:6px">上下文参数（recent / unread / contextWindow）</div>
@@ -1213,6 +1313,45 @@ async function loadV2Config() {
     document.getElementById('v2StickerCollectPerMin').value = stkCollect.maxPerMinute ?? 2;
     document.getElementById('v2StickerCollectPerHour').value = stkCollect.maxPerHour ?? 10;
     document.getElementById('v2StickerCollectRemarkMax').value = stkCollect.maxRemarkChars ?? 20;
+    const mem = c.memes || {};
+    document.getElementById('v2MemesEnabled').checked = mem.enabled !== false;
+    document.getElementById('v2MemesPromptMax').value = mem.promptMaxMemes ?? 6;
+    document.getElementById('v2MemesIncludePrompt').checked = mem.includeInPrompt !== false;
+    document.getElementById('v2MemesPerMin').value = mem.maxPerMinute ?? 3;
+    document.getElementById('v2MemesPerHour').value = mem.maxPerHour ?? 30;
+    document.getElementById('v2MemesRecentAvoid').value = mem.recentAvoid ?? 10;
+    document.getElementById('v2MemesPackDirs').value = Array.isArray(mem.packDirs) ? mem.packDirs.join('\n') : '';
+    document.getElementById('v2MemesPacks').value = Array.isArray(mem.packs) ? mem.packs.join(', ') : '';
+    const adm = c.admin || {};
+    const admSpam = adm.spam || {};
+    const admAttack = adm.attack || {};
+    const admMute = adm.mute || {};
+    const admLimits = adm.limits || {};
+    const admNotice = adm.announcement || {};
+    document.getElementById('v2AdminEnabled').checked = adm.enabled !== false;
+    document.getElementById('v2AdminDryRun').checked = adm.dryRun !== false;
+    document.getElementById('v2AdminAnnounceInGroup').checked = adm.announceInGroup === true;
+    document.getElementById('v2AdminNotifyOwner').checked = adm.notifyOwner !== false;
+    document.getElementById('v2AdminSpamText').value = admSpam.sameTextCount ?? 5;
+    document.getElementById('v2AdminSpamImage').value = admSpam.sameImageCount ?? 5;
+    document.getElementById('v2AdminSpamWindow').value = Math.round((admSpam.windowMs ?? 120000) / 1000);
+    document.getElementById('v2AdminAttackCount').value = admAttack.count ?? 3;
+    document.getElementById('v2AdminAttackWindow').value = Math.round((admAttack.windowMs ?? 600000) / 60000);
+    document.getElementById('v2AdminMuteSpamBase').value = Math.round((admMute.spamBaseSec ?? 180) / 60);
+    document.getElementById('v2AdminMuteAttackBase').value = Math.round((admMute.attackBaseSec ?? 300) / 60);
+    document.getElementById('v2AdminMuteStep').value = Math.round((admMute.stepSec ?? 120) / 60);
+    document.getElementById('v2AdminMuteMax').value = Math.round((admMute.maxSec ?? 600) / 60);
+    document.getElementById('v2AdminMuteCooldown').value = Math.round((admMute.perMemberCooldownMs ?? 1800000) / 60000);
+    document.getElementById('v2AdminLimitHour').value = admLimits.maxPerHour ?? 3;
+    document.getElementById('v2AdminLimitDay').value = admLimits.maxPerDay ?? 10;
+    document.getElementById('v2AdminLimitMemberDay').value = admMute.maxPerMemberPerDay ?? 2;
+    document.getElementById('v2AdminWhitelist').value = Array.isArray(adm.whitelist) ? adm.whitelist.join(', ') : '';
+    document.getElementById('v2AdminNoticeMax').value = admNotice.maxChars ?? 2000;
+    document.getElementById('v2AdminNoticeLinks').checked = admNotice.allowLinks === true;
+    document.getElementById('v2AdminNoticePinned').checked = (admNotice.pinned ?? 1) === 1;
+    document.getElementById('v2AdminNoticeConfirm').checked = (admNotice.confirmRequired ?? 0) === 1;
+    document.getElementById('v2AdminNoticeTimeout').value = Math.round((admNotice.confirmTimeoutMs ?? 1800000) / 60000);
+    document.getElementById('v2AdminAttackKeywords').value = Array.isArray(admAttack.keywords) ? admAttack.keywords.join(', ') : '';
     const ctx = c.context || {};
     document.getElementById('v2ContextRecentLimit').value = ctx.recentLimit ?? 100;
     document.getElementById('v2ContextUnreadLimit').value = ctx.unreadLimit ?? 30;
@@ -1221,6 +1360,13 @@ async function loadV2Config() {
     document.getElementById('v2FeedbackMaxLength').value = fb.maxLength ?? 500;
     document.getElementById('v2FeedbackNotifyOwner').checked = fb.notifyOwnerOnError === true;
   } catch {}
+}
+
+// 数值夹取小工具（控制台表单用；非法输入回落到默认值）
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
 }
 
 async function saveV2Config() {
@@ -1295,6 +1441,53 @@ async function saveV2Config() {
         maxPerMinute: Math.max(0, Math.round(Number(document.getElementById('v2StickerCollectPerMin').value) || 0)),
         maxPerHour: Math.max(0, Math.round(Number(document.getElementById('v2StickerCollectPerHour').value) || 0)),
         maxRemarkChars: Math.min(50, Math.max(1, Math.round(Number(document.getElementById('v2StickerCollectRemarkMax').value) || 20)))
+      }
+    },
+    memes: {
+      enabled: document.getElementById('v2MemesEnabled').checked,
+      includeInPrompt: document.getElementById('v2MemesIncludePrompt').checked,
+      promptMaxMemes: Math.min(30, Math.max(1, Math.round(Number(document.getElementById('v2MemesPromptMax').value) || 6))),
+      maxPerMinute: Math.max(0, Math.round(Number(document.getElementById('v2MemesPerMin').value) || 0)),
+      maxPerHour: Math.max(0, Math.round(Number(document.getElementById('v2MemesPerHour').value) || 0)),
+      recentAvoid: Math.max(0, Math.round(Number(document.getElementById('v2MemesRecentAvoid').value) || 0)),
+      packDirs: document.getElementById('v2MemesPackDirs').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+      packs: document.getElementById('v2MemesPacks').value.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+    },
+    admin: {
+      enabled: document.getElementById('v2AdminEnabled').checked,
+      dryRun: document.getElementById('v2AdminDryRun').checked,
+      announceInGroup: document.getElementById('v2AdminAnnounceInGroup').checked,
+      notifyOwner: document.getElementById('v2AdminNotifyOwner').checked,
+      whitelist: document.getElementById('v2AdminWhitelist').value.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean),
+      groupIds: (window.__v2AdminGroupIds || []),
+      spam: {
+        sameTextCount: clampInt(document.getElementById('v2AdminSpamText').value, 2, 20, 5),
+        sameImageCount: clampInt(document.getElementById('v2AdminSpamImage').value, 2, 20, 5),
+        windowMs: Math.max(10, clampInt(document.getElementById('v2AdminSpamWindow').value, 10, 3600, 120)) * 1000
+      },
+      attack: {
+        count: clampInt(document.getElementById('v2AdminAttackCount').value, 2, 20, 3),
+        windowMs: Math.max(1, clampInt(document.getElementById('v2AdminAttackWindow').value, 1, 1440, 10)) * 60000,
+        keywords: document.getElementById('v2AdminAttackKeywords').value.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+      },
+      mute: {
+        spamBaseSec: clampInt(document.getElementById('v2AdminMuteSpamBase').value, 1, 10, 3) * 60,
+        attackBaseSec: clampInt(document.getElementById('v2AdminMuteAttackBase').value, 1, 10, 5) * 60,
+        stepSec: clampInt(document.getElementById('v2AdminMuteStep').value, 0, 10, 2) * 60,
+        maxSec: clampInt(document.getElementById('v2AdminMuteMax').value, 1, 10, 10) * 60,
+        perMemberCooldownMs: clampInt(document.getElementById('v2AdminMuteCooldown').value, 0, 1440, 30) * 60000,
+        maxPerMemberPerDay: clampInt(document.getElementById('v2AdminLimitMemberDay').value, 1, 20, 2)
+      },
+      limits: {
+        maxPerHour: clampInt(document.getElementById('v2AdminLimitHour').value, 0, 60, 3),
+        maxPerDay: clampInt(document.getElementById('v2AdminLimitDay').value, 0, 200, 10)
+      },
+      announcement: {
+        maxChars: clampInt(document.getElementById('v2AdminNoticeMax').value, 50, 20000, 2000),
+        allowLinks: document.getElementById('v2AdminNoticeLinks').checked,
+        pinned: document.getElementById('v2AdminNoticePinned').checked ? 1 : 0,
+        confirmRequired: document.getElementById('v2AdminNoticeConfirm').checked ? 1 : 0,
+        confirmTimeoutMs: clampInt(document.getElementById('v2AdminNoticeTimeout').value, 1, 1440, 30) * 60000
       }
     },
     context: {
@@ -1677,6 +1870,117 @@ document.getElementById('v2FeedbackClear').addEventListener('click', async () =>
   msg.textContent = r.ok ? '✅ 已清空' : ('❌ ' + (r.error || '失败'));
   msg.className = r.ok ? 'meta ok' : 'meta err';
   if (r.ok) document.getElementById('v2FeedbackOutput').textContent = '（空）';
+});
+document.getElementById('v2MemesProbe').addEventListener('click', async () => {
+  const msg = document.getElementById('v2MemesProbeMsg');
+  const out = document.getElementById('v2MemesProbeOutput');
+  msg.textContent = '检测中…';
+  msg.className = 'meta';
+  const r = await api('/api/socialV2/meme-probe');
+  if (r.ok) {
+    msg.textContent = `✅ 共 ${r.total} 张`;
+    msg.className = 'meta ok';
+    out.textContent = JSON.stringify({
+      图库根: r.dirs,
+      索引: r.packs.map((p) => `${p.id}（${p.name}）：${p.count} 张${p.source === 'dir' ? '（目录扫描，无 SQLite 索引）' : ''}`),
+      情绪分布: r.moods,
+      最近发过: r.recent
+    }, null, 2);
+  } else {
+    msg.textContent = '❌ ' + (r.error || '失败');
+    msg.className = 'meta err';
+    out.textContent = JSON.stringify(r, null, 2);
+  }
+});
+document.getElementById('v2MemesTestSend').addEventListener('click', async () => {
+  const key = document.getElementById('v2MemesTestKey').value.trim();
+  const tag = document.getElementById('v2MemesTestTag').value.trim() || 'happy';
+  const msg = document.getElementById('v2MemesTestMsg');
+  if (!key) { msg.textContent = '请先填会话 key'; msg.className = 'meta err'; return; }
+  msg.textContent = '发送中…';
+  msg.className = 'meta';
+  const r = await api('/api/socialV2/meme-test-send', 'POST', { key, tag });
+  if (r.ok) {
+    msg.textContent = `✅ 已发送：${r.meme?.caption || r.meme?.path || ''}`;
+    msg.className = 'meta ok';
+  } else {
+    msg.textContent = '❌ ' + (r.error || '失败');
+    msg.className = 'meta err';
+  }
+});
+
+// ── 群管理面板 ──────────────────────────────────────────────────────────────
+async function loadV2AdminStatus() {
+  const key = document.getElementById('v2StateKey')?.value.trim() || window.__v2AdminKey || '';
+  const msg = document.getElementById('v2AdminMsg');
+  const out = document.getElementById('v2AdminStatusOutput');
+  const noticeOut = document.getElementById('v2AdminNoticeOutput');
+  const logOut = document.getElementById('v2AdminLogOutput');
+  if (!key) { msg.textContent = '请先在上面「会话 key」里填 group:群号'; msg.className = 'meta err'; return; }
+  window.__v2AdminKey = key;
+  msg.textContent = '查询中…';
+  msg.className = 'meta';
+  const r = await api('/api/socialV2/admin-status?key=' + encodeURIComponent(key));
+  if (!r.ok) { msg.textContent = '❌ ' + (r.error || '失败'); msg.className = 'meta err'; return; }
+  window.__v2AdminGroupIds = r.groups || [];
+  msg.textContent = `✅ 我在群 ${r.groupId} 的身份：${r.botRole || '未知'}（${r.canManage ? '可管理' : '不可管理'}）；模式：${r.dryRun ? '干跑' : '生效'}；今天已禁言 ${r.spendToday} 次`;
+  msg.className = 'meta ok';
+  out.textContent = JSON.stringify({
+    群: r.groupId,
+    我的身份: r.botRole,
+    可禁言可发公告: r.canManage,
+    干跑模式: r.dryRun,
+    启用: r.enabled,
+    管理群: r.groups,
+    今天已禁言: r.spendToday,
+    正在禁言: r.muted,
+    最近记录: r.recent?.map(x => x.line) || []
+  }, null, 2);
+  noticeOut.textContent = [
+    `当前公告（共 ${r.currentNotice?.count ?? 0} 条，最新 ${r.currentNotice?.publishTime ? new Date(r.currentNotice.publishTime * 1000).toLocaleString() : '无'}）：`,
+    r.currentNotice?.text || '（暂无公告）',
+    '',
+    r.pendingNotice ? `待审草稿（${new Date(r.pendingNotice.createdAt).toLocaleString()} 由 ${r.pendingNotice.source} 提交）：\n${r.pendingNotice.content}` : '（没有待审草稿）'
+  ].join('\n');
+  logOut.textContent = (r.recent?.length ? r.recent.map(x => '· ' + x.line).join('\n') : '（还没有群管理记录）');
+}
+document.getElementById('v2AdminLoad').addEventListener('click', loadV2AdminStatus);
+document.getElementById('v2AdminMuteBtn').addEventListener('click', async () => {
+  const key = window.__v2AdminKey || document.getElementById('v2StateKey')?.value.trim() || '';
+  const userId = document.getElementById('v2AdminMuteUser').value.trim();
+  const minutes = Number(document.getElementById('v2AdminMuteMinutes').value) || 3;
+  const msg = document.getElementById('v2AdminMuteMsg');
+  if (!key || !userId) { msg.textContent = '需要会话 key 和 QQ 号'; msg.className = 'meta err'; return; }
+  msg.textContent = '执行中…'; msg.className = 'meta';
+  const r = await api('/api/socialV2/mute', 'POST', { key, userId, minutes });
+  msg.textContent = r.ok ? `✅ ${r.line}` : ('❌ ' + (r.error || '失败'));
+  msg.className = r.ok ? 'meta ok' : 'meta err';
+  if (r.ok) loadV2AdminStatus();
+});
+document.getElementById('v2AdminUnmuteBtn').addEventListener('click', async () => {
+  const key = window.__v2AdminKey || document.getElementById('v2StateKey')?.value.trim() || '';
+  const userId = document.getElementById('v2AdminMuteUser').value.trim();
+  const msg = document.getElementById('v2AdminMuteMsg');
+  if (!key || !userId) { msg.textContent = '需要会话 key 和 QQ 号'; msg.className = 'meta err'; return; }
+  const r = await api('/api/socialV2/unmute', 'POST', { key, userId });
+  msg.textContent = r.ok ? `✅ ${r.line}` : ('❌ ' + (r.error || '失败'));
+  msg.className = r.ok ? 'meta ok' : 'meta err';
+  if (r.ok) loadV2AdminStatus();
+});
+document.getElementById('v2AdminNoticeApprove').addEventListener('click', async () => {
+  const msg = document.getElementById('v2AdminNoticeMsg');
+  msg.textContent = '发布中…'; msg.className = 'meta';
+  const r = await api('/api/socialV2/announcement/approve', 'POST', {});
+  msg.textContent = r.ok ? `✅ 已发布（${r.text?.length ?? 0} 字）` : ('❌ ' + (r.error || '失败'));
+  msg.className = r.ok ? 'meta ok' : 'meta err';
+  loadV2AdminStatus();
+});
+document.getElementById('v2AdminNoticeReject').addEventListener('click', async () => {
+  const msg = document.getElementById('v2AdminNoticeMsg');
+  const r = await api('/api/socialV2/announcement/reject', 'POST', { reason: '控制台拒绝' });
+  msg.textContent = r.ok ? '👌 已放弃草稿' : ('❌ ' + (r.error || '失败'));
+  msg.className = r.ok ? 'meta ok' : 'meta err';
+  loadV2AdminStatus();
 });
 document.getElementById('v2ToolLogLoad').addEventListener('click', async () => {
   const msg = document.getElementById('v2ToolLogMsg');

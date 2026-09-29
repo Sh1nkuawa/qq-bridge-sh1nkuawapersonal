@@ -8,6 +8,8 @@
 // - 所有调用走 OneBot HTTP API（httpUrl + accessToken）。
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -97,13 +99,13 @@ function messageSegments(message, replyToMessageId) {
   return segments;
 }
 
-async function onebot(action, params = {}) {
+async function onebot(action, params = {}, timeoutMs = 15000) {
   const { httpUrl, token } = getOneBotConfig();
   const res = await fetch(`${httpUrl}/${action}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(params),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   if (!res.ok) {
     const hint = res.status === 426 ? '；HTTP 426 通常表示 httpUrl 指向了 WebSocket 端口，请检查 config.json 的 snowluma.httpUrl 是否为 OneBot HTTP API 地址' : '';
@@ -115,7 +117,6 @@ async function onebot(action, params = {}) {
   }
   return body.data;
 }
-
 // 桥接控制台/内部 Agent API 访问：二代仿真模式的状态工具都通过这里读写桥接内存态。
 function agentApiBase() {
   const port = Number(getConfig().consolePort) || 3100;
@@ -154,11 +155,307 @@ async function agentApi(path, init = {}) {
   return body;
 }
 
+// ---------------------------------------------------------------------------
+// 生图（qq_generate_image）
+// 走本机的 codex-image 技能脚本（用 Codex CLI 的 ChatGPT 订阅生图，不需要 OpenAI API key）。
+//
+// 硬性限制（由桥接侧 /api/socialV2/image-request 校验，前端无法绕过）：
+//   1) 必须是被「@机器人」触发的会话，且该 @ 记录在有效时间窗内；
+//   2) 触发消息的正文必须以「生图」开头；
+//   3) 每个 QQ 号每天限额（默认 5 次），ownerQQ 不受限。
+// 校验通过后才会真正调用 codex（一次 1~4 分钟），成功才扣配额。
+// ---------------------------------------------------------------------------
+function imageScriptPath() {
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  return path.join(home, '.agents', 'skills', 'codex-image', 'scripts', 'codex-image.ps1');
+}
+
+function imageOutDir() {
+  const configured = getConfig()?.socialV2?.image?.outDir;
+  if (configured && String(configured).trim()) return String(configured).trim();
+  return path.join(process.env.TEMP || process.env.TMP || ROOT, 'qq-bridge-images');
+}
+
+/** 用 PowerShell 调技能脚本；返回生成出来的 PNG 绝对路径 */
+function runCodexImage(prompt, timeoutSec) {
+  return new Promise((resolve, reject) => {
+    const script = imageScriptPath();
+    if (!fs.existsSync(script)) {
+      reject(new Error(`找不到生图脚本：${script}`));
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const out = path.join(imageOutDir(), `img-${stamp}-${crypto.randomBytes(3).toString('hex')}.png`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+
+    const args = [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', script,
+      '-Prompt', prompt,
+      '-Out', out,
+      '-TimeoutSec', String(timeoutSec),
+    ];
+    const child = spawn('powershell.exe', args, { windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+    const limit = 20000;
+    child.stdout.on('data', (d) => { if (stdout.length < limit) stdout += d.toString('utf8'); });
+    child.stderr.on('data', (d) => { if (stderr.length < limit) stderr += d.toString('utf8'); });
+    const killer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      reject(new Error(`生图超时（${timeoutSec} 秒）`));
+    }, (timeoutSec + 30) * 1000);
+    child.on('error', (error) => { clearTimeout(killer); reject(error); });
+    child.on('close', (code) => {
+      clearTimeout(killer);
+      const produced = String(stdout).split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop();
+      if (code === 0 && produced && fs.existsSync(produced)) {
+        resolve(produced);
+        return;
+      }
+      if (code === 0 && fs.existsSync(out)) {
+        resolve(out);
+        return;
+      }
+      reject(new Error(`生图失败（exit ${code}）：${(stderr || stdout || '').slice(-400) || '无输出'}`));
+    });
+  });
+}
+
+/** 把本地 PNG 作为图片消息发到群/私聊（base64 传输，避免本地路径限制） */
+async function sendImageTo(key, filePath) {
+  const buf = fs.readFileSync(filePath);
+  if (buf.length > 8 * 1024 * 1024) throw new Error(`图片过大（${(buf.length / 1048576).toFixed(1)}MB）`);
+  const m = /^(group|private):(\d+)$/.exec(String(key ?? ''));
+  if (!m) throw new Error(`会话 key 格式无效：${key}`);
+  const isPrivate = m[1] === 'private';
+  const image = [{ type: 'image', data: { file: 'base64://' + buf.toString('base64') } }];
+  const params = isPrivate
+    ? { user_id: Number(m[2]), message: image }
+    : { group_id: Number(m[2]), message: image };
+  const data = await onebot(isPrivate ? 'send_private_msg' : 'send_group_msg', params, 60000);
+  return data;
+}
+
 async function authorizeRead(key, token) {
   await agentApi('/api/authorize/read', { method: 'POST', body: JSON.stringify({ key, token: token || undefined }) });
 }
 
+// ---------------------------------------------------------------------------
+// DeepSeek 余额查询
+// 说明：桥接里额外提供的一个工具，让 AI 在群里被问到"还有多少余额"时能查到真实数字。
+// 与 dsh-whale-widget 用的是同一个官方接口：GET https://api.deepseek.com/user/balance
+// API key 来源优先级：
+//   1) 环境变量 DEEPSEEK_API_KEY
+//   2) ~/.dsh/.credentials.yaml 的 refs.DEEPSEEK_API_KEY（DSH 自己的凭据，界面里配的那个）
+// ---------------------------------------------------------------------------
+const BALANCE_URL = 'https://api.deepseek.com/user/balance';
+
+function readDeepseekKey() {
+  const fromEnv = process.env.DEEPSEEK_API_KEY;
+  if (fromEnv && String(fromEnv).trim()) return String(fromEnv).trim();
+  const home = process.env.DSH_HOME || path.join(process.env.USERPROFILE || process.env.HOME || '', '.dsh');
+  const candidates = [
+    path.join(home, '.credentials.yaml'),
+    path.join(ROOT, '.credentials.yaml'),
+  ];
+  for (const file of candidates) {
+    try {
+      const text = fs.readFileSync(file, 'utf8');
+      // 只看 refs 段（endpoints 段里可能有别的 key），取第一个 DEEPSEEK_API_KEY
+      const refsAt = text.indexOf('refs:');
+      const recordsAt = text.indexOf('records:');
+      const scope = refsAt >= 0 ? text.slice(refsAt, recordsAt > refsAt ? recordsAt : undefined) : text;
+      const m = scope.match(/DEEPSEEK_API_KEY\s*:\s*["']?([A-Za-z0-9_\-]{8,})/);
+      if (m) return m[1];
+    } catch {
+      // 文件不存在/不可读则继续尝试下一个
+    }
+  }
+  return '';
+}
+
+function pickBalanceInfo(infos) {
+  if (!Array.isArray(infos) || infos.length === 0) return null;
+  const num = (x) => (x && x.total_balance !== undefined ? Number(x.total_balance) : NaN);
+  return (
+    infos.find((x) => x && x.currency === 'CNY' && num(x) > 0) ||
+    infos.find((x) => num(x) > 0) ||
+    infos.find((x) => x && x.currency === 'CNY') ||
+    infos[0]
+  );
+}
+
+async function fetchDeepseekBalance() {
+  const key = readDeepseekKey();
+  if (!key) return { ok: false, error: '未找到 DEEPSEEK_API_KEY（DSH 凭据或环境变量）' };
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res;
+    try {
+      res = await fetch(BALANCE_URL, {
+        headers: { authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (error) {
+      lastErr = error;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 500));
+      continue;
+    }
+    if (!res.ok) {
+      lastErr = new Error(`HTTP ${res.status}`);
+      if (res.status < 500) break;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 500));
+      continue;
+    }
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      return { ok: false, error: '余额接口返回的不是合法 JSON' };
+    }
+    const info = pickBalanceInfo(data?.balance_infos);
+    if (!info || info.total_balance === undefined) return { ok: false, error: '余额接口返回结构异常' };
+    const granted = info.granted_balance !== undefined ? Number(info.granted_balance) : undefined;
+    const topped = info.topped_up_balance !== undefined ? Number(info.topped_up_balance) : undefined;
+    return {
+      ok: true,
+      currency: String(info.currency || 'CNY'),
+      totalBalance: Number(info.total_balance),
+      grantedBalance: Number.isFinite(granted) ? granted : undefined,
+      toppedUpBalance: Number.isFinite(topped) ? topped : undefined,
+      isAvailable: data?.is_available,
+    };
+  }
+  return { ok: false, error: `请求失败：${lastErr?.message ?? lastErr}` };
+}
+
+
 const server = new McpServer({ name: 'snowluma-safe', version: '0.1.5' });
+
+server.tool(
+  'qq_generate_image',
+  '生成图片并发到当前会话（用本机 Codex 的 ChatGPT 订阅生图，不需要 API key）。'
+  + '【严格限制】只有群友 @机器人 且消息正文以「生图」开头时才能调用；每个 QQ 号每天限 5 次（管理员不限）。'
+  + '【异步】调用会立刻返回，图片 1~4 分钟后由后台自动发到群里，并且会 @ 提要求的那位群友；'
+  + '所以调用后不要重复调用、不要发消息催、也不要假装图已经发了——直接继续聊别的即可。'
+  + '【可以带图】如果群友的请求里带了图片（同一消息里的图、或他回复的那条消息里的图、或他刚发过的图），'
+  + '桥接会自动把这最多 3 张图交给生图管线，可以按图改/参考作画（例如"把这张图的人物换成…"）。'
+  + '你不需要传图片参数，直接照常调用即可；若没取到图就只能按文字画，'
+  + '所以遇到明显需要原图才能做的请求（精确换脸、抠图），先说清"只能参考着画，不保证长得一样"。'
+  + '参数 prompt 传画面描述（和「生图」后面的内容一致，可补充细节）。',
+  {
+    key: z.string().describe('当前会话 key（如 group:123456789 或 private:QQ号）'),
+    prompt: z.string().describe('画面描述：主体、风格、颜色、构图、背景。中英文都可以，英文通常效果更好'),
+    token: z.string().describe('二代会话令牌【会话令牌】，必填'),
+  },
+  async ({ key, prompt, token }) => {
+    try {
+      // 0) 工具开关
+      const toolSwitches = loadConfig()?.socialV2?.tools ?? {};
+      if (toolSwitches.getImage === false) {
+        return { content: [{ type: 'text', text: '生图工具已被管理端关闭（控制台 → 二代仿真模式 → 工具开关 → qq_generate_image）' }], isError: true };
+      }
+
+      // 1) 前置校验（不扣配额）：必须被 @ + 正文以「生图」开头 + 未超日限额
+      const pre = await agentApi('/api/socialV2/image-request', {
+        method: 'POST',
+        body: JSON.stringify({ key, token, consume: false }),
+        timeoutMs: 20000,
+      });
+      if (!pre?.ok) {
+        return { content: [{ type: 'text', text: `不能生图：${pre?.error ?? '校验未通过'}` }], isError: true };
+      }
+
+      // 2) 构造提示词：把「生图」前缀从原文里去掉，拼上模型补的描述
+      const raw = String(pre.text ?? '').replace(/^生图[\s:：,，-]*/u, '').trim();
+      const desc = String(prompt ?? '').trim();
+      const finalPrompt = (desc && raw && !desc.includes(raw)) ? `${raw}\n\n${desc}` : (desc || raw);
+      if (!finalPrompt) {
+        return { content: [{ type: 'text', text: '画面描述为空，无法生图' }], isError: true };
+      }
+
+      // 3) 扣配额 → 派发后台 worker → 立刻返回（异步，不阻塞 agent 回合）
+      const quota = await agentApi('/api/socialV2/image-request', {
+        method: 'POST',
+        body: JSON.stringify({ key, token, consume: true }),
+        timeoutMs: 20000,
+      });
+      const imageCfg = loadConfig()?.socialV2?.image ?? {};
+      const timeoutSec = Math.min(Math.max(Number(imageCfg.timeoutSec) || 600, 60), 900);
+
+      // [qq-bridge 本地补丁] 生图改为异步：codex 要跑 1~4 分钟，同步等待会让 agent 哑掉，
+      // 而且 MCP stdio 是串行的，会把本服务里其他工具全部堵住。
+      // worker 独立进程负责：生图 → 发图（并 @ 提要求的人）→ 失败时退还配额。
+      const workerPath = path.join(ROOT, 'scripts', 'gen-image-worker.mjs');
+      if (!fs.existsSync(workerPath)) {
+        return { content: [{ type: 'text', text: `生图失败：找不到 worker 脚本 ${workerPath}` }], isError: true };
+      }
+      const child = spawn(process.execPath, [
+        workerPath,
+        '--key', key,
+        '--sender', String(quota?.senderId ?? ''),
+        '--sender-name-b64', Buffer.from(String(quota?.senderName ?? ''), 'utf8').toString('base64'),
+        '--prompt-b64', Buffer.from(finalPrompt, 'utf8').toString('base64'),
+        '--token', String(token ?? ''),
+        '--timeout', String(timeoutSec),
+        // 带图生图：桥接挑好的输入图（本条消息/被引用消息/近两分钟群里的图）本地临时路径
+        '--images-b64', Buffer.from(JSON.stringify(Array.isArray(quota?.images) ? quota.images : []), 'utf8').toString('base64'),
+      ], { detached: true, stdio: 'ignore', windowsHide: true });
+      child.unref();
+
+      const remainText = quota?.isOwner
+        ? '（管理员不限次）'
+        : `（今日剩余 ${quota?.remaining ?? 0} 次）`;
+      const whoText = quota?.senderName ? `@${quota.senderName} ` : '';
+      const inputCount = Array.isArray(quota?.images) ? quota.images.length : 0;
+      const modeText = inputCount ? `（带 ${inputCount} 张参考图，会按图改/参考作画）` : '';
+      return {
+        content: [{
+          type: 'text',
+          text: `已开始生成${remainText}${modeText}，大约 1~4 分钟。画好后会自动发到会话 ${key} 并 @ 提要求的人（${whoText}${quota?.senderId ?? ''}）。`
+            + '这期间不要重复调用生图、也不要发消息催；可以直接继续聊别的。'
+            + `\n提示词：${finalPrompt.slice(0, 300)}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `生图失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  'qq_get_balance',
+  '查询 DeepSeek API 账户余额（只读）。群友问"还有多少余额/额度/余额还剩多少"时调用，结果直接告诉对方即可。',
+  {},
+  async () => {
+    try {
+      // 尊重桥接控制台的工具开关（socialV2.tools.getBalance）。
+      // 每次调用都重新读 config.json，所以在控制台改完立刻生效，无需重启任何进程。
+      const toolSwitches = loadConfig()?.socialV2?.tools ?? {};
+      if (toolSwitches.getBalance === false) {
+        return {
+          content: [{ type: 'text', text: '余额查询工具已被管理端关闭（控制台 → 二代仿真模式 → 工具开关 → qq_get_balance）' }],
+          isError: true,
+        };
+      }
+      const r = await fetchDeepseekBalance();
+      if (!r.ok) {
+        return { content: [{ type: 'text', text: `余额查询失败：${r.error}` }], isError: true };
+      }
+      const money = (v) => `${r.currency === 'CNY' ? '¥' : r.currency + ' '}${Number(v).toFixed(2)}`;
+      const lines = [
+        `总余额：${money(r.totalBalance)}`,
+        r.grantedBalance !== undefined ? `其中赠送：${money(r.grantedBalance)}` : null,
+        r.toppedUpBalance !== undefined ? `其中充值：${money(r.toppedUpBalance)}` : null,
+        r.isAvailable !== undefined ? `账户可用：${r.isAvailable ? '是' : '否'}` : null,
+      ].filter(Boolean);
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `余额查询失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
 
 server.tool(
   'qq_status',
@@ -543,30 +840,9 @@ if (cfg.socialV2?.tools?.sendPoke !== false) {
   );
 }
 
-server.tool(
-  'qq_wait_for_messages',
-  '等待群友消息：可指定“静默窗口”来判断对方是否说完了。收到新消息后如果还想要更多上下文，设置 quietMs（例如 10000~20000）继续等一小段没有新消息的时间；桥接会强制至少等后台“收到新消息后最小静默”（默认 10000ms=10 秒）再返回，防止抢话。返回 timeout=true 表示这段时间内没有等到新消息/没人说话，这不是错误；可以再用 qq_get_unread_messages / qq_get_recent_messages 查看是否有新消息，再决定继续等、发言或潜水。沉睡前观察：准备设置潜水/下一次唤醒前，必须用 timeoutMs=300000 发起一次完整观察（短等待不会满足沉睡前观察）。如果全程没人说话，返回 preSleepWaitSatisfied=true；如果等待期间等到新消息，会返回 preSleepWaitObserved=true 和 newMessages，表示你已完成一次沉睡前观察，查看后认为不需要你参与即可直接设置潜水。响应里还会给出 preSleepWaitRemainingMs，帮助你判断还差多久。',
-  {
-    key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
-    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
-    timeoutMs: z.number().optional().describe('总等待毫秒数；普通等待默认 30000，沉睡前观察请传 300000（最大 600000）'),
-    minNewMessages: z.number().optional().describe('至少等到多少条新消息才提前返回，默认 1'),
-    quietMs: z.number().optional().describe('检测到新消息后继续等待的静默窗口（毫秒），用于判断对方是否说完了；建议 8000~12000，默认取 socialV2.wait.defaultQuietMs（当前 8000）')
-  },
-  async ({ key, token, timeoutMs, minNewMessages, quietMs }) => {
-    try {
-      const data = await agentApi('/api/socialV2/wait', {
-        method: 'POST',
-        body: JSON.stringify({ key, timeoutMs, minNewMessages, quietMs }),
-        headers: { 'x-agent-token': token },
-        timeoutMs: Math.min(725000, (Number(timeoutMs) || 30000) + Math.max(Number(quietMs) || 0, 10000) + 20000)
-      });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    } catch (error) {
-      return { content: [{ type: 'text', text: `等待失败：${error?.message ?? error}` }], isError: true };
-    }
-  }
-);
+// 注意：qq_wait_for_messages 已迁出到 **独立的 MCP 服务** src/mcp-qq-wait.js。
+// 原因：MCP stdio 是串行的，长轮询（最长 10 分钟）会把生图/发消息等所有工具调用堵在队列里。
+// 这里保留同名工具会导致两个服务同时暴露它，所以必须由 mcp-qq-wait.js 独家提供。
 
 server.tool(
   'qq_report_feedback',
@@ -928,6 +1204,151 @@ if (cfg.socialV2?.sticker?.enabled !== false && cfg.socialV2?.tools?.collectStic
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `收藏表情失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.memes?.enabled !== false && cfg.socialV2?.tools?.sendMeme !== false) {
+  server.tool(
+    'qq_send_meme',
+    '本地表情包库（dsh-meme 图库，和 QQ 收藏表情是两套）。三步用法：'
+      + 'action=search 先按情绪抽候选（tag 必填优先：happy 开心/angry 生气/sad 难过/shy 害羞/confused 困惑惊讶/daily 日常；也可只给 query 让系统猜情绪），'
+      + 'action=view 用 path 先看图确认，action=send 用 path 发出（图片消息，不能带文字：想说的话请先用 qq_send_message / qq_reply 单独发一个气泡）。'
+      + '一条消息只有一张图；气氛对了再发，别刷屏，也别连着发同一张。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      action: z.enum(['search', 'view', 'send']).optional().describe('search=抽候选（默认）；view=看某张图；send=发送 path'),
+      tag: z.string().optional().describe('情绪 tag：happy/angry/sad/shy/confused/daily（也接受细分类如 meow/baka/daily）'),
+      query: z.string().optional().describe('可选。没给 tag 时用口语词推断情绪（如「害羞」「好耶」）'),
+      limit: z.number().optional().describe('抽几张候选（1-20，默认 8）'),
+      path: z.string().optional().describe('view / send 时的候选 path（来自 search 返回）'),
+      replyToMessageId: z.union([z.number(), z.string()]).optional().describe('要引用/回复的消息 id（非零整数，可为负数，可选）'),
+      atUserId: z.union([z.number(), z.string()]).optional().describe('要 @ 的群成员 QQ 号（群聊中可选，私聊不可用）')
+    },
+    async ({ key, token, action, tag, query, limit, path: memePath, replyToMessageId, atUserId }) => {
+      const act = action === 'send' ? 'send' : (action === 'view' ? 'view' : 'search');
+      try {
+        if (act === 'search') {
+          const q = new URLSearchParams({ key });
+          if (tag) q.set('tag', String(tag));
+          if (query) q.set('query', String(query));
+          if (limit != null) q.set('limit', String(limit));
+          const data = await agentApi(`/api/socialV2/meme-list?${q.toString()}`, { headers: { 'x-agent-token': token } });
+          if (data?.ok === false) {
+            return { content: [{ type: 'text', text: `抽表情包失败：${data.error}` }], isError: true };
+          }
+          const lines = (data.candidates || []).map((c, i) => `${i + 1}. path=${c.path} | [${c.mood}] ${c.caption}（${c.pack}${c.used ? `，用过${c.used}次` : ''}）`);
+          return {
+            content: [{
+              type: 'text',
+              text: `情绪 ${data.mood} 抽到 ${lines.length} 张（该情绪共 ${data.total} 张 / 图库 ${data.librarySize} 张）：\n${lines.join('\n')}\n`
+                + `看完 caption 觉得贴就用 action=send + path 发出；不确定可以先 action=view 看图；不满意再 search 换一批或换情绪。`
+            }]
+          };
+        }
+        if (!memePath) {
+          return { content: [{ type: 'text', text: `action=${act} 需要 path（先 action=search 拿候选）` }], isError: true };
+        }
+        if (act === 'view') {
+          const q = new URLSearchParams({ key, path: String(memePath) });
+          const data = await agentApi(`/api/socialV2/meme-image?${q.toString()}`, { headers: { 'x-agent-token': token }, timeoutMs: 120000 });
+          if (!data?.image?.data) {
+            return { content: [{ type: 'text', text: `看表情包失败：${data?.error || '未知'}` }], isError: true };
+          }
+          return {
+            content: [
+              { type: 'text', text: `表情包 ${data.meme?.path}${data.meme?.caption ? `（${data.meme.caption}）` : ''}：` },
+              { type: 'image', mimeType: data.image.mimeType, data: data.image.data }
+            ]
+          };
+        }
+        const data = await agentApi('/api/socialV2/send-meme', {
+          method: 'POST',
+          body: JSON.stringify({ key, path: String(memePath), replyToMessageId, atUserId: atUserId ?? null }),
+          headers: { 'x-agent-token': token },
+          timeoutMs: 120000
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `表情包工具失败（${act}）：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+// ── 群管理（禁言 / 群公告）─────────────────────────────────────────────────
+// 硬边界：模型**没有**直接禁言的工具，也没有踢人/全员禁言/群相册/群文件相关工具。
+// qq_request_mute 只是"提议"，桥接会自己核验证据（同内容重复 / 针对机器人的辱骂），核验不过直接拒绝。
+if (cfg.socialV2?.admin?.enabled !== false && cfg.socialV2?.tools?.adminInfo !== false) {
+  server.tool(
+    'qq_group_admin_info',
+    '查看你在本群的群管理身份与状态：是不是管理员、有没有禁言/发公告的权限、当前群公告、待审公告草稿、最近的群管理记录（禁言/干跑判定）。想禁言或改公告之前先查这个。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
+    },
+    async ({ key, token }) => {
+      try {
+        const q = new URLSearchParams({ key });
+        const data = await agentApi(`/api/socialV2/admin-status?${q.toString()}`, { headers: { 'x-agent-token': token }, timeoutMs: 60000 });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `查询群管理状态失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.admin?.enabled !== false && cfg.socialV2?.tools?.requestMute !== false) {
+  server.tool(
+    'qq_request_mute',
+    '【提议】禁言某个刷屏/持续辱骂你的群友（1~10 分钟，具体时长由桥接决定）。这不是你想禁就能禁：桥接会自己在最近消息里核验证据（①同一人重复发同一句话/同一张图 5 次以上；②针对你的辱骂累计 3 条以上），证据不足直接拒绝；群主、管理员、你自己永远不会被禁言；还有冷却与每小时/每天上限。适合：有人真的在刷屏，或持续骂你且你已经在文字上处理过。不适合：观点不同、开玩笑、吐槽你、骂别人、一次口角。桥接执行后会私聊通知群主，别滥用。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      userId: z.union([z.number(), z.string()]).describe('要禁言的群友 QQ 号'),
+      reason: z.string().describe('一句话说明为什么（会记进审计并通知群主）'),
+      evidenceMessageIds: z.array(z.union([z.number(), z.string()])).optional().describe('可选：你认为能证明刷屏的消息 id（桥接仍会自己核验最近消息，不只看你给的）')
+    },
+    async ({ key, token, userId, reason, evidenceMessageIds }) => {
+      try {
+        const data = await agentApi('/api/socialV2/mute-request', {
+          method: 'POST',
+          body: JSON.stringify({ key, userId: String(userId), reason: reason || '', evidenceMessageIds: evidenceMessageIds ?? [] }),
+          headers: { 'x-agent-token': token },
+          timeoutMs: 60000
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `禁言提议失败：${error?.message ?? error}` }], isError: true };
+      }
+    }
+  );
+}
+
+if (cfg.socialV2?.admin?.enabled !== false && cfg.socialV2?.tools?.proposeAnnouncement !== false) {
+  server.tool(
+    'qq_propose_announcement',
+    '【提议】起草一份群公告，交给群主确认后才会发布（群主在私聊回复「通过」/「拒绝」，或在控制台点按钮）。适合：功能更新完成、要通知群友新玩法/规则时。流程：你写正文 → 桥接校验（长度上限、默认不许放链接、不许 @全体、不许出现本机路径/凭据）→ 私聊群主看草稿与差异 → 群主通过后桥接才发布。注意：QQ 群公告没有"原地编辑"，发布的是新公告（新公告成为群里显示的那条，旧公告留在历史里）；发出去就是全群可见，所以正文要写得像人话，别天天发。',
+    {
+      key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+      token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+      content: z.string().describe('公告正文（纯文本，可换行；不要放链接、不要 @全体）'),
+      groupId: z.union([z.number(), z.string()]).optional().describe('可选：目标群号，默认当前会话所在群')
+    },
+    async ({ key, token, content, groupId }) => {
+      try {
+        const data = await agentApi('/api/socialV2/announcement/propose', {
+          method: 'POST',
+          body: JSON.stringify({ key, content, groupId: groupId != null ? String(groupId) : undefined }),
+          headers: { 'x-agent-token': token },
+          timeoutMs: 60000
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `起草公告失败：${error?.message ?? error}` }], isError: true };
       }
     }
   );

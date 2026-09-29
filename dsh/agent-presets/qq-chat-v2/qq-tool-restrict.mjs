@@ -35,6 +35,10 @@ const SAFE_PREFIXES = [
   'mcp__snowluma__',
   'mcp__snowluma-host__',
   'mcp__web-search-safe__',
+  // qq_wait_for_messages 已拆到独立的 MCP 服务（避免长轮询把生图等工具堵在串行队列里）。
+  // 那个服务默认复用 serverName=snowluma（工具名 mcp__snowluma__qq_wait_for_messages），
+  // 这里额外放行独立前缀，保证换名字也不会被安全边界误杀。
+  'mcp__qq-wait__',
 ]
 
 // 无害模型侧工具：ask_user_question 用于把问题转给管理员/用户，

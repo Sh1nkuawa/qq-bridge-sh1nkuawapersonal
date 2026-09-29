@@ -130,6 +130,14 @@ export class NodeApiClient extends AbstractApiClient {
   async ensureAuth(signal) {
     signal?.throwIfAborted();
     if (this.cookie) return this.cookie;
+    // [qq-bridge 本地补丁] 允许直接配置一个已签名的会话 Cookie（dsh.authCookie），
+    // 跳过 launch token 交换。用途：DSH 0.1.5 的 launch token 不落盘、只在启动 URL 打印一次，
+    // 无法被 guard 日志自动发现；而签名 Cookie 用的 secret 是持久的（~/.dsh/.credentials.yaml），
+    // 可用 scripts/forge-dsh-cookie.mjs 生成后填入配置，重启 DSH 也不失效。
+    if (this.auth.cookie) {
+      this.cookie = this.auth.cookie;
+      return this.cookie;
+    }
     if (!this.launchToken) throw new Error('DSH auth token missing: set dsh.authToken in config.json (or let auto-discovery read it from DSH guard logs)');
     if (this.cookiePromise) return waitWithSignal(this.cookiePromise, signal);
     const promise = (async () => {
@@ -251,7 +259,10 @@ export class NodeApiClient extends AbstractApiClient {
     const authEpoch = this._authEpoch;
     init?.signal?.throwIfAborted();
     const headers = new Headers(init?.headers);
-    if (this.launchToken) {
+    // [qq-bridge 本地补丁] 判据从「有 launch token」放宽为「有 launch token 或已配置 cookie」，
+    // 否则 cookie 模式下不会带上 Cookie 头，导致所有请求 401。
+    const hasAuth = Boolean(this.launchToken || this.auth?.cookie);
+    if (hasAuth) {
       try {
         const cookie = await this.ensureAuth(init?.signal);
         headers.set('cookie', cookie);
@@ -265,7 +276,7 @@ export class NodeApiClient extends AbstractApiClient {
     }
     init?.signal?.throwIfAborted();
     const response = await fetch(input, { ...init, headers });
-    if (!isRetry && response.status === 401 && this.launchToken) {
+    if (!isRetry && response.status === 401 && hasAuth) {
       await response.body?.cancel();
       // 同一旧 Cookie 的并发 401 只能触发一次换票，不能使已开始的新换票失效。
       if (authEpoch === this._authEpoch) this.invalidateAuth();

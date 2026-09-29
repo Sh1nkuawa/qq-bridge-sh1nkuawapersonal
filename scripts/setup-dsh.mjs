@@ -4,7 +4,7 @@
 // 功能：
 //   1. 安装两套 agent preset：qq-chat、qq-chat-v2
 //   2. 在 DSH profile 的 cordis.patch.yml 中挂载三个 MCP server：
-//      mcp-snowluma / mcp-snowluma-host / mcp-web-search-safe
+//      mcp-snowluma / mcp-qq-wait / mcp-snowluma-host / mcp-web-search-safe
 //   3. 在 profile package.json 中注册 qq-mode-console 插件
 //
 // 用法：
@@ -42,12 +42,45 @@ function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
+/**
+ * Windows 兼容复制：Node 的 fs.cpSync 会构造 `\\?\` 长路径前缀，
+ * 当 DSH_HOME 路径含非 ASCII 字符（例如中文用户名 C:\Users\<you>\.dsh）时，
+ * 该前缀下的目录创建会被系统拒绝（EIO/EACCES），导致 preset 装不上。
+ * 这里改为逐文件复制（不带长路径前缀），失败时再退回「先拷到 ASCII 临时目录再搬过去」。
+ */
+function copyTreeCompat(src, dest) {
+  fs.rmSync(dest, { recursive: true, force: true });
+  ensureDir(dest);
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyTreeCompat(from, to);
+    } else {
+      fs.copyFileSync(from, to);
+    }
+  }
+}
+
 function copyPreset(name) {
   const src = path.join(REPO_ROOT, 'dsh', 'agent-presets', name);
   const dest = path.join(DSH_HOME, '.agent-presets', name);
   if (!fs.existsSync(src)) fatal(`preset source not found: ${src}`);
   ensureDir(path.dirname(dest));
-  fs.cpSync(src, dest, { recursive: true, force: true });
+  try {
+    copyTreeCompat(src, dest);
+  } catch (err) {
+    // 兜底：先复制到纯 ASCII 的临时目录，再整体搬到目标
+    const staging = path.join(os.tmpdir(), `qq-bridge-preset-${name}-${process.pid}`);
+    try {
+      copyTreeCompat(src, staging);
+      copyTreeCompat(staging, dest);
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true });
+    }
+    log(`preset installed via staging fallback (${err.code || err.message}): ${name}`);
+    return;
+  }
   log(`preset installed: ${name}`);
 }
 
@@ -55,15 +88,18 @@ function yamlSingleQuote(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
 }
 
-// 由桥接托管的 MCP 条目 id：脚本对这三个 id 拥有所有权，可安全地按 id 增删。
-const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe'];
+// 由桥接托管的 MCP 条目 id：脚本对这些 id 拥有所有权，可安全地按 id 增删。
+const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-qq-wait'];
 
 function mcpEntries() {
   const node = process.execPath;
   const servers = {
     'mcp-snowluma': { serverName: 'snowluma', script: path.join(REPO_ROOT, 'src', 'mcp-snowluma-safe.js'), toolCallTimeoutMs: 725000 },
+    // qq_wait_for_messages 单独一个进程：MCP stdio 是串行的，长轮询（最长 10 分钟）如果和
+    // 生图/发消息挤在同一个服务里，会把它们全部堵在队列里（实测导致过一次"生图被调用却从未执行"）。
+    'mcp-qq-wait': { serverName: 'qq-wait', script: path.join(REPO_ROOT, 'src', 'mcp-qq-wait.js'), toolCallTimeoutMs: 725000 },
     'mcp-snowluma-host': { serverName: 'snowluma-host', script: path.join(REPO_ROOT, 'src', 'mcp-host-server.js') },
-    'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js') },
+    'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js'), toolCallTimeoutMs: 120000 },
   };
   let out = '# === qq-bridge MCP BEGIN ===\n';
   out += '# 由 scripts/setup-dsh.mjs 维护；这段区块会被整体替换，请勿手工编辑内部条目。\n';

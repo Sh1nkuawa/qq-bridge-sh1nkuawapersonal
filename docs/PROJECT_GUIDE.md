@@ -218,9 +218,10 @@ DSH 事件流（api.events.mux → /api/remote.mux + session/follow + $events）
 二代仿真模式（`reserved2`）还有：
 
 - 状态/消息：`qq_get_prompt`、`qq_get_unread_messages`、`qq_get_recent_messages`、`qq_get_message_detail`、`qq_get_active_members`、`qq_social_state`
-- 发送/互动：`qq_send_message`、`qq_send_burst`、`qq_send_poke`、`qq_send_sticker`
+- 发送/互动：`qq_send_message`、`qq_send_burst`、`qq_send_poke`、`qq_send_sticker`、`qq_send_meme`（本地表情包库，见 `docs/MEMES.md`）
 - 等待/收尾：`qq_wait_for_messages`、`qq_mark_read`、`qq_set_wake_config`
 - 记忆/黑话/表情：`qq_memory_*`、`qq_slang_query`、`qq_slang_submit`、`qq_list_stickers`、`qq_get_sticker_image`、`qq_sticker_note`、`qq_collect_sticker`
+- 群管理（需机器人是群管理员）：`qq_group_admin_info`、`qq_request_mute`（提议禁言，桥接核验证据）、`qq_propose_announcement`（起草公告，群主确认后发布）——见 `docs/MODERATION.md`
 - 形象：`qq_get_self_image`
 
 `mcp-host-server.js`：

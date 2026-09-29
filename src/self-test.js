@@ -42,7 +42,9 @@ async function main() {
     auth = {
       token: cfg.dsh?.authToken || discoverDshLaunchToken(),
       header: cfg.dsh?.authHeader,
-      prefix: cfg.dsh?.authPrefix
+      prefix: cfg.dsh?.authPrefix,
+      // [qq-bridge 本地补丁] 支持直接使用已签名会话 Cookie（见 scripts/forge-dsh-cookie.mjs）
+      cookie: cfg.dsh?.authCookie || ''
     };
   } catch {}
   const api = new NodeApiClient(baseUrl, undefined, auth);

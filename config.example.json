@@ -119,6 +119,9 @@
       "listStickers": true,
       "getStickerImage": true,
       "sendSticker": true,
+      "sendMeme": true,
+      "requestMute": true,
+      "proposeAnnouncement": true,
       "setStickerRemark": false,
       "stickerNote": true,
       "collectSticker": true,
@@ -199,6 +202,74 @@
         "maxRemarkChars": 20
       }
     },
+    "memes": {
+      "enabled": true,
+      "packDirs": [],
+      "packs": [],
+      "includeInPrompt": true,
+      "promptMaxMemes": 6,
+      "maxPerMinute": 3,
+      "maxPerHour": 30,
+      "recentAvoid": 10,
+      "maxFileBytes": 8388608,
+      "rescanTtlMs": 300000
+    },
+    "admin": {
+      "enabled": true,
+      "dryRun": true,
+      "groupIds": [],
+      "spam": {
+        "enabled": true,
+        "sameTextCount": 5,
+        "sameImageCount": 5,
+        "windowMs": 120000,
+        "minTextChars": 1
+      },
+      "attack": {
+        "enabled": true,
+        "count": 3,
+        "windowMs": 600000,
+        "mustAddressBot": true,
+        "keywords": [
+          "傻逼",
+          "智障",
+          "脑残",
+          "废物",
+          "去死",
+          "滚开",
+          "闭嘴"
+        ]
+      },
+      "mute": {
+        "minSec": 60,
+        "maxSec": 600,
+        "spamBaseSec": 180,
+        "attackBaseSec": 300,
+        "stepSec": 120,
+        "repeatWindowHours": 24,
+        "perMemberCooldownMs": 1800000,
+        "maxPerMemberPerDay": 2
+      },
+      "limits": {
+        "maxPerHour": 3,
+        "maxPerDay": 10
+      },
+      "whitelist": [],
+      "announceInGroup": false,
+      "announceTemplate": "@{name} 刷屏了，先安静 {minutes} 分钟",
+      "notifyOwner": true,
+      "maxRecords": 500,
+      "announcement": {
+        "enabled": true,
+        "maxChars": 600,
+        "allowLinks": false,
+        "pinned": 1,
+        "confirmTimeoutMs": 1800000,
+        "requireOwnerApproval": true,
+        "confirmRequired": 0,
+        "maxBytes": 1400
+      }
+    },
     "proactive": {
       "enabled": true,
       "checkIntervalMinMs": 1800000,
@@ -214,6 +285,16 @@
       "recentLimit": 100,
       "unreadLimit": 30,
       "contextWindow": 20
+    },
+    "image": {
+      "ackEnabled": true,
+      "ackTemplates": [
+        "收到，画着呢，1~4 分钟",
+        "{name} 稍等，正在画",
+        "{name} 画着呢，今天还剩 {remaining} 次"
+      ],
+      "prefix": "生图",
+      "dailyLimit": 5
     }
   }
 }

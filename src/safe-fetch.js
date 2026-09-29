@@ -150,13 +150,20 @@ export async function validateFetchUrl(raw) {
 const REQUEST_TIMEOUT_MS = 20000;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+// 默认 User-Agent 必须是完整的浏览器 UA 字符串。
+// 原先只发 'Mozilla/5.0'（11 个字符的裸 UA），所有搜索引擎的反爬都会直接判定为机器人：
+// Bing 返回 200 但结果区为空、Mojeek 直接 403、部分站点超时 —— 这就是「联网查询查不出东西」的根因。
+const DEFAULT_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+  + 'Chrome/131.0.0.0 Safari/537.36';
+
 function validateLimit(value, name) {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} 必须为正整数`);
 }
 
 // 使用已校验的 IP 发起请求，保留原始 Host/SNI，禁止重新解析 DNS。
 // 总时限包含 TCP/TLS、响应头和响应体；仅 socket idle timeout 无法阻止慢速滴流。
-function requestOnce(url, ip, limit, binary = false) {
+function requestOnce(url, ip, limit, binary = false, extraHeaders = null) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let req;
@@ -184,9 +191,13 @@ function requestOnce(url, ip, limit, binary = false) {
         method: 'GET',
         headers: {
           host: url.host,
-          'user-agent': 'Mozilla/5.0',
-          accept: binary ? 'image/*,*/*;q=0.8' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'accept-language': 'zh-CN,zh;q=0.9',
+          'user-agent': extraHeaders?.['user-agent'] || DEFAULT_USER_AGENT,
+          accept: extraHeaders?.accept
+            || (binary ? 'image/*,*/*;q=0.8' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+          'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          ...(extraHeaders ? Object.fromEntries(
+            Object.entries(extraHeaders).filter(([k]) => !['host', 'user-agent', 'accept', 'accept-language', 'connection'].includes(k.toLowerCase()))
+          ) : {}),
         },
         servername: url.protocol === 'https:' && !net.isIP(hostname) ? hostname : undefined,
         rejectUnauthorized: url.protocol === 'https:',
@@ -254,12 +265,13 @@ function requestOnce(url, ip, limit, binary = false) {
   });
 }
 
-export async function safeFetch(urlString, maxChars = 50000) {
+export async function safeFetch(urlString, maxChars = 50000, options = null) {
   validateLimit(maxChars, 'maxChars');
+  const extraHeaders = options?.headers ?? null;
   const MAX_REDIRECTS = 5;
   let { url, ip } = await validateFetchUrl(urlString);
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const result = await requestOnce(url, ip, maxChars);
+    const result = await requestOnce(url, ip, maxChars, false, extraHeaders);
     if ([301, 302, 303, 307, 308].includes(result.statusCode)) {
       if (!result.redirect) throw new Error(`重定向缺少 Location: ${result.statusCode}`);
       const next = new URL(result.redirect, url).toString();
