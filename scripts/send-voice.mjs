@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles,
-  parseTargetKey, resolveAudioSource
+  parseTargetKey, resolveAudioSource, resolveFfprobe
 } from '../src/send-voice-lib.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,6 +70,10 @@ const consoleToken = String(
   val('console-token', cfg.consoleToken || process.env.QQ_CONSOLE_TOKEN || readConsoleTokenFile() || '')
 ).trim();
 const voiceDir = path.resolve(val('voice-dir', cfg.voice?.dir ? path.resolve(ROOT, cfg.voice.dir) : path.join(ROOT, 'audio')));
+// ffprobe 的默认位置：--ffprobe → FFPROBE_PATH → config 的 voice.ffprobePath → **ffmpeg 同目录** → PATH。
+// 最后一档让"只配了 ffmpegPath"的机器也能拿到时长校验（发行包都把两者放在同一个 bin 里）。
+const voiceDefaults = cfg.socialV2?.voice ?? cfg.voice ?? {};
+const defaultFfprobe = resolveFfprobe({ ffprobePath: voiceDefaults.ffprobePath ?? null, ffmpegPath: voiceDefaults.ffmpegPath ?? null });
 const revealToken = has('reveal-token');
 const quiet = has('q') || has('quiet');
 
@@ -299,7 +303,7 @@ async function cmdCheck() {
   const info = await inspectAudio(r.path, {
     maxBytes: num('max-bytes', undefined) ?? undefined,
     maxSeconds: num('max-seconds', undefined) ?? undefined,
-    ffprobePath: val('ffprobe', process.env.FFPROBE_PATH || 'ffprobe')
+    ffprobePath: val('ffprobe', defaultFfprobe)
   });
   console.log(`音频：${r.path}`);
   console.log(`  来源：${r.via}`);

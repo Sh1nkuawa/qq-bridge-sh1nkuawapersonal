@@ -204,8 +204,12 @@ export async function probeAudio(file, { ffprobePath = 'ffprobe', timeoutMs = 10
 export async function inspectAudio(file, {
   maxBytes = DEFAULT_MAX_BYTES,
   maxSeconds = DEFAULT_MAX_SECONDS,
-  ffprobePath = process.env.FFPROBE_PATH || 'ffprobe'
+  // ffprobe 的定位见 resolveFfprobe：显式参数 → FFPROBE_PATH → ffmpeg 同目录 → PATH。
+  // 传 ffmpegPath 就能让「只配了 ffmpegPath」的机器也拿到时长校验。
+  ffprobePath = null,
+  ffmpegPath = null
 } = {}) {
+  const probePath = resolveFfprobe({ ffprobePath, ffmpegPath });
   const warnings = [];
   let st;
   try { st = fs.statSync(file); } catch (error) { return { ok: false, error: `文件不存在或不可读：${error?.message ?? error}` }; }
@@ -217,7 +221,7 @@ export async function inspectAudio(file, {
   if (SILK_EXTS.has(path.extname(file).toLowerCase())) {
     return { ok: true, size: st.size, duration: null, codec: 'silk', formatName: 'silk', warnings };
   }
-  const p = await probeAudio(file, { ffprobePath });
+  const p = await probeAudio(file, { ffprobePath: probePath });
   if (!p.ok) {
     warnings.push(`无法探测时长（${p.reason}）：将不做时长校验，直接交给网关`);
     return { ok: true, size: st.size, duration: null, codec: '', formatName: '', warnings };
@@ -348,6 +352,34 @@ export function resolveFfmpeg({ ffmpegPath = null, envVar = 'FFMPEG_PATH' } = {}
   }
   // PATH 里找（不真正执行，交给 spawn 时再报错）；绝不再回退到不存在的候选路径。
   return 'ffmpeg';
+}
+
+/**
+ * 定位 ffprobe：显式参数 → 环境变量 → **ffmpeg 同目录** → PATH。
+ *
+ * 为什么要有「ffmpeg 同目录」这一档：config.json 只给了 `socialV2.voice.ffmpegPath`
+ * 一个旋钮，而 ffprobe 只会读环境变量 `FFPROBE_PATH` 或 PATH。结果是——用户按文档把
+ * ffmpeg 的**绝对路径**填进配置后，音量处理能用，但时长/体积探测仍找不到 ffprobe，
+ * 于是 `inspectAudio` 静默降级成「不做时长校验」。而所有发行包（gyan.dev 静态包、
+ * winget/scoop/choco）都把 ffmpeg 与 ffprobe 放在同一个 bin 目录里，所以从 ffmpeg
+ * 的位置推 ffprobe 是可靠的，也让那一个配置旋钮真正够用。
+ *
+ * 同样只返回**确实存在**的文件路径；都不存在时回退到裸命令名交给 spawn 按 PATH 解析。
+ */
+export function resolveFfprobe({ ffprobePath = null, ffmpegPath = null, envVar = 'FFPROBE_PATH' } = {}) {
+  const explicit = [ffprobePath, process.env[envVar]].filter(Boolean);
+  for (const c of explicit) {
+    try {
+      if (fs.statSync(c).isFile()) return c;
+    } catch {}
+  }
+  if (ffmpegPath) {
+    try {
+      const guess = path.join(path.dirname(String(ffmpegPath)), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+      if (fs.statSync(guess).isFile()) return guess;
+    } catch {}
+  }
+  return String(ffprobePath || process.env[envVar] || 'ffprobe');
 }
 
 /**

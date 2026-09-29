@@ -1677,7 +1677,7 @@ async function main() {
     if (audit) assertOutboundAuditOk(key, `[语音:${path.basename(filePath)}]`);
     let info;
     try {
-      info = await inspectAudio(filePath, { maxBytes: vc.maxBytes, maxSeconds: vc.maxSeconds });
+      info = await inspectAudio(filePath, { maxBytes: vc.maxBytes, maxSeconds: vc.maxSeconds, ffmpegPath: vc.ffmpegPath, ffprobePath: vc.ffprobePath });
     } catch (error) {
       throw new Error(`音频检查失败：${error?.message ?? error}`);
     }
@@ -6054,7 +6054,7 @@ async function main() {
             sendJson({ ok: false, error: error.message }, 400);
             return;
           }
-          const probe = await inspectAudio(resolved.path, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds });
+          const probe = await inspectAudio(resolved.path, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds, ffmpegPath: voice.ffmpegPath, ffprobePath: voice.ffprobePath });
           if (!probe.ok) { sendJson({ ok: false, error: probe.error }, 400); return; }
           const preview = {
             key,
@@ -6153,7 +6153,7 @@ async function main() {
           try {
             voiceBudgetCheck(key, voice);
             if (body.dryRun === true) {
-              const probe = await inspectAudio(resolved.path, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds });
+              const probe = await inspectAudio(resolved.path, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds, ffmpegPath: voice.ffmpegPath, ffprobePath: voice.ffprobePath });
               if (!probe.ok) { sendJson({ ok: false, error: probe.error }, 400); return; }
               sendJson({ ok: true, dryRun: true, key, file: resolved.path, detail: describeAudio(probe) });
               return;
@@ -6785,7 +6785,7 @@ async function main() {
             for (const f of files.slice(0, 100)) {
               const entry = { name: path.relative(voice.dir, f).split(path.sep).join('/') };
               if (wantProbe) {
-                const info = await inspectAudio(f, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds });
+                const info = await inspectAudio(f, { maxBytes: voice.maxBytes, maxSeconds: voice.maxSeconds, ffmpegPath: voice.ffmpegPath, ffprobePath: voice.ffprobePath });
                 entry.ok = info.ok;
                 entry.bytes = info.size;
                 entry.detail = info.ok ? describeAudio(info) : null;

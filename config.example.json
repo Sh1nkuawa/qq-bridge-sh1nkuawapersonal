@@ -294,6 +294,7 @@
       "defaultVolume": 1,
       "loudness": "normal",
       "ffmpegPath": "",
+      "ffprobePath": "",
       "autoReadback": true
     },
     "proactive": {
