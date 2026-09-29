@@ -122,8 +122,11 @@ function yamlSingleQuote(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
 }
 
-// 由桥接托管的 MCP 条目 id：脚本对这三个 id 拥有所有权，可安全地按 id 增删。
-const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe'];
+// 由桥接托管的 MCP 条目 id：脚本对这些 id 拥有所有权，可安全地按 id 增删。
+// 说明：mcp-qq-wait 是**本副本**的本地补丁 —— MCP 的 stdio 是串行的，长轮询的等待工具
+// 若和生图/发消息挤在一个服务里，会把它们一起堵住（实测：生图调用排在 90 秒等待后面没轮到）。
+// 所以等待工具单独一个进程，这里也必须托管它，否则每次重跑安装脚本都会把它删掉。
+const MANAGED_MCP_IDS = ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe', 'mcp-qq-wait'];
 
 function mcpEntries() {
   const node = process.execPath;
@@ -131,6 +134,7 @@ function mcpEntries() {
     'mcp-snowluma': { serverName: 'snowluma', script: path.join(REPO_ROOT, 'src', 'mcp-snowluma-safe.js'), toolCallTimeoutMs: 725000 },
     'mcp-snowluma-host': { serverName: 'snowluma-host', script: path.join(REPO_ROOT, 'src', 'mcp-host-server.js') },
     'mcp-web-search-safe': { serverName: 'web-search-safe', script: path.join(REPO_ROOT, 'src', 'mcp-web-search-safe.js') },
+    'mcp-qq-wait': { serverName: 'qq-wait', script: path.join(REPO_ROOT, 'src', 'mcp-qq-wait.js'), toolCallTimeoutMs: 725000 },
   };
   let out = '# === qq-bridge MCP BEGIN ===\n';
   out += '# 由 scripts/setup-dsh.mjs 维护；这段区块会被整体替换，请勿手工编辑内部条目。\n';

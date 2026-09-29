@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { compactModelMessage, compactModelData, serializeModelData } from '../src/qq-model-view.js';
@@ -151,9 +151,15 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
   try {
     // Descendant modules resolve the project's dependencies; no credentials,
     // live config or user runtime state are copied into this test fixture.
+    // 顺手清掉上一次跑剩下的空壳目录：MCP 子进程的 cwd 就在 fixture 里，Windows 上
+    // 进程退出后目录可能短暂删不掉，于是每跑一次就留一个空目录。
+    for (const stale of await fs.readdir(ROOT)) {
+      if (!stale.startsWith('.tmp-model-view-test-')) continue;
+      await fs.rm(path.join(ROOT, stale), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
+    }
     fixture = await fs.mkdtemp(path.join(ROOT, '.tmp-model-view-test-'));
     await fs.mkdir(path.join(fixture, 'src'));
-    await Promise.all(['mcp-snowluma-safe.js', 'qq-model-view.js', 'sensitive.js'].map((name) =>
+    await Promise.all(['mcp-snowluma-safe.js', 'mcp-qq-wait.js', 'qq-model-view.js', 'sensitive.js'].map((name) =>
       fs.copyFile(path.join(ROOT, 'src', name), path.join(fixture, 'src', name))));
     await fs.writeFile(path.join(fixture, 'config.json'), JSON.stringify({ consolePort: api.address().port }));
     const transport = new StdioClientTransport({
@@ -162,7 +168,17 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
     });
     client = new Client({ name: 'qq-model-view-test', version: '1.0.0' });
     await client.connect(transport);
+    // 等待工具由**独立进程**提供（长轮询会把串行 stdio 里其它工具堵住），
+    // 所以它必须出现在 mcp-qq-wait.js 里、而不是主服务里。
+    const waitTransport = new StdioClientTransport({
+      command: process.execPath,
+      args: [path.join(fixture, 'src', 'mcp-qq-wait.js')], cwd: fixture, stderr: 'pipe'
+    });
+    waitClient = new Client({ name: 'qq-wait-test', version: '1.0.0' });
+    await waitClient.connect(waitTransport);
     const listed = await client.listTools();
+    assert.equal(listed.tools.some((tool) => tool.name === 'qq_wait_for_messages'), false,
+      '等待工具不该同时注册在主服务里（会白占 schema 并可能挑中被堵住的那份）');
     for (const name of ['qq_mark_read', 'qq_set_wake_config']) {
       const schema = listed.tools.find((tool) => tool.name === name).inputSchema;
       assert.equal(schema.properties.throughSeq.type, 'integer');
@@ -170,7 +186,8 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
       assert.equal(schema.properties.throughSeq.maximum, Number.MAX_SAFE_INTEGER);
       assert.equal(schema.required.includes('throughSeq'), false);
     }
-    const waitSchema = listed.tools.find((tool) => tool.name === 'qq_wait_for_messages').inputSchema;
+    const waitListed = await waitClient.listTools();
+    const waitSchema = waitListed.tools.find((tool) => tool.name === 'qq_wait_for_messages').inputSchema;
     assert.deepEqual(waitSchema.properties.purpose.enum, ['messages', 'reply']);
     assert.equal(waitSchema.required.includes('purpose'), false);
     const common = { key: 'group:123', token: 'fixture-token' };
@@ -194,12 +211,12 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
 
     // Omission preserves the old wait contract, while reply explicitly selects
     // the short pre-reply quiet window. Both travel through the real MCP schema.
-    await client.callTool({ name: 'qq_wait_for_messages', arguments: common });
+    await waitClient.callTool({ name: 'qq_wait_for_messages', arguments: common });
     assert.equal(requests.at(-1).url, '/api/socialV2/wait');
     assert.deepEqual(requests.at(-1).body, { key: common.key });
     assert.equal(requests.at(-1).token, common.token);
     for (const purpose of ['messages', 'reply']) {
-      await client.callTool({ name: 'qq_wait_for_messages', arguments: {
+      await waitClient.callTool({ name: 'qq_wait_for_messages', arguments: {
         ...common, purpose, timeoutMs: 30000, quietMs: 10000, minNewMessages: 1
       } });
       assert.deepEqual(requests.at(-1).body, {
@@ -208,7 +225,7 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
     }
     for (const purpose of ['sleep', '', 1, null]) {
       const before = requests.length;
-      const invalid = await client.callTool({ name: 'qq_wait_for_messages', arguments: { ...common, purpose } });
+      const invalid = await waitClient.callTool({ name: 'qq_wait_for_messages', arguments: { ...common, purpose } });
       assert.equal(invalid.isError, true);
       assert.equal(requests.length, before, `invalid wait purpose ${purpose} must not reach the API`);
     }
@@ -233,14 +250,24 @@ test('MCP validates/forwards read watermarks and wait purposes against an isolat
       assert.equal(requests.length, before, `invalid throughSeq ${value} must not reach the API`);
     }
   } finally {
+    if (waitClient) await waitClient.close();
     if (client) await client.close();
     api.closeAllConnections();
     await new Promise((resolve) => api.close(resolve));
+    // 两个 MCP 子进程的 cwd 就在这个临时目录里：Windows 上刚 close 时目录可能还被占着，
+    // 直接 rm 会 EBUSY（实测会留下 .tmp-model-view-test-* 残骸）。等一下并允许重试。
+    await new Promise((resolve) => setTimeout(resolve, 300));
     if (fixture) {
       const resolved = path.resolve(fixture);
       assert.equal(path.dirname(resolved), ROOT);
       assert.ok(path.basename(resolved).startsWith('.tmp-model-view-test-'));
-      await fs.rm(resolved, { recursive: true, force: true });
+      await fs.rm(resolved, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   }
+});
+
+// 说明：这个用例会 spawn 两个 MCP 子进程（主服务 + 独立的等待服务）。全部断言跑完后
+// 主动收尾，避免 Windows 上偶发的句柄残留把整个回归脚本拖住（断言结果已经打印过）。
+after(() => {
+  setImmediate(() => process.exit(process.exitCode ?? 0));
 });

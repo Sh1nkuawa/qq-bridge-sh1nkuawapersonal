@@ -280,12 +280,14 @@ console.log('接线存在性（静态检查，防止“改了模块忘了接线�
     assert.match(preset, /【本地表情包库/);
     assert.ok(preset.includes('qq_send_meme'), '预设未提到 qq_send_meme');
   });
-  const live = path.join(process.env.USERPROFILE || process.env.HOME || '', '.dsh', '.agent-presets', 'qq-chat-v2', 'agent.cordis.yml');
-  if (fs.existsSync(live)) {
-    ok('仓库 preset 与 ~/.dsh 下的实际 preset 一致', () => {
-      assert.equal(fs.readFileSync(live, 'utf8'), preset, '两份 preset 不一致，记得同步');
-    });
-  }
+  // DSH 0.1.7 起 preset 不再安装到 ~/.dsh/.agent-presets/，而是由
+  // scripts/build-agent-preset-patches.mjs 生成 plugins/qq-agent-presets/presets/*.patch.yml。
+  // 所以这里比对的是**生成物**：源里改了规则却忘了重跑生成脚本，必须被这条断言挡住。
+  const patchFile = read('plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml');
+  ok('生成的 preset patch 已带上本地表情包库规则', () => {
+    assert.ok(patchFile.includes('【本地表情包库'), '生成物里没有本地规则，记得跑 scripts/build-agent-preset-patches.mjs');
+    assert.ok(patchFile.includes('qq_send_meme'), '生成物未提到 qq_send_meme');
+  });
 }
 
 console.log(`\n全部通过：${count} 项断言组`);

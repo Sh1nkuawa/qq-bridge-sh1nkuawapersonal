@@ -73,3 +73,7 @@ audio/
 *.bak-*
 config.json.bak*
 
+# 测试用的临时 fixture 目录（test-qq-model-view.mjs 会在仓库根建 .tmp-model-view-test-*，
+# 因为 MCP 子进程要靠仓库根的 node_modules 解析依赖；Windows 上偶尔会留下空壳）
+/.tmp-*
+

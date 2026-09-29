@@ -315,6 +315,7 @@
       "wakeMessageLimit": 12,
       "wakeRecentLimit": 4,
       "wakeMaxChars": 6000
-    }
+    },
+    "waitToolExternal": true
   }
 }

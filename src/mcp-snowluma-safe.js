@@ -864,7 +864,18 @@ if (cfg.socialV2?.tools?.sendPoke !== false) {
   );
 }
 
-server.tool(
+// [qq-bridge 本地补丁] qq_wait_for_messages 默认由**独立进程** src/mcp-qq-wait.js 提供。
+//
+// 为什么必须拆：MCP 的 stdio 传输是串行的，一个请求处理完才轮到下一个。等待工具是长轮询
+// （最长 10 分钟），和它挤在同一个服务里时，agent 正在等待期间的所有其它工具调用都只能排队
+// ——实测踩过：群友 @ 机器人要求生图，qq_generate_image 排在前面那个 90 秒等待后面一直没轮到，
+// codex 自然毫无日志。拆开后长等待只堵它自己。
+//
+// 因此这里**不再重复注册**同名工具：否则模型会同时看到两份同义 schema（白烧 token），
+// 还可能挑中被堵住的那一份。要把等待工具收回主服务时，把 socialV2.waitToolExternal 设为 false。
+const EXTERNAL_WAIT_TOOL = loadConfig()?.socialV2?.waitToolExternal !== false;
+
+if (!EXTERNAL_WAIT_TOOL) server.tool(
   'qq_wait_for_messages',
   '等待分两种用途。首答前已读消息、只想确认有没有补充：用 purpose="reply"，按最后来信时间补足 quietMs 静默，已安静足够就立即返回；读取/思考时新到的消息也会返回，新消息重算静默。timeoutMs 是最长预算，不要求等满；预算到但 quiet=false 不代表对方已说完。此用途绝不代替沉睡前观察。等对方继续说、等回复或睡前观察：用默认 purpose="messages"；先等新消息，收到后才按 quietMs 等静默，没有新消息会等到 timeoutMs，单传 quietMs 不会缩短总等待。静默下限由后台配置，默认 10000ms。直接看 newMessages、unreadCount 和 readThroughSeq，返回消息无需重复查询；仍有未展示未读才补读。决定潜水/收尾时才用默认用途加 timeoutMs=300000 完成沉睡前观察，不能把 5 分钟观察放在首答之前；短等待不能代替。全程无人说话返回 preSleepWaitSatisfied=true；观察期间来了新消息返回 preSleepWaitObserved=true，读后不需参与可收尾，参与回复则下次收尾重新观察。preSleepWaitRemainingMs 仅供准备收尾时参考。',
   {

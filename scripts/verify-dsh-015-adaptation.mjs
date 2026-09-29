@@ -84,7 +84,9 @@ check('守卫：拒绝 0.1.7 已删除的 cordis 旧工具名（避免静默失�
 const patch = fs.readFileSync(path.join(DSH_HOME, 'profiles/web/cordis.patch.yml'), 'utf8');
 const patchDoc = yaml.load(patch);
 const mcpIds = patchDoc.filter((e) => e?.insert).flatMap((e) => e.insert.map((x) => x.id));
-check('profile patch 含 3 个 MCP 且无重复', mcpIds.length === 3 && new Set(mcpIds).size === 3, mcpIds.join(', '));
+// 上游 v0.1.7 只有 3 个 MCP；本副本多一个 **mcp-qq-wait**（长轮询单独一个进程，
+// 否则等待工具会把生图/发消息堵在串行的 stdio 后面）。这里有 4 个是预期值。
+check('profile patch 含 4 个 MCP 且无重复', mcpIds.length === 4 && new Set(mcpIds).size === 4, mcpIds.join(', '));
 const snowlumaEntry = patchDoc.filter((e) => e?.insert).flatMap((e) => e.insert).find((x) => x.id === 'mcp-snowluma');
 check('mcp-snowluma 带 toolCallTimeoutMs=725000', snowlumaEntry?.config?.toolCallTimeoutMs === 725000);
 check('mcp 路径指向本仓库', mcpIds.every((id) => {
