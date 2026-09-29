@@ -27,6 +27,37 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const LOG_FILE = path.join(ROOT, 'state', 'image-jobs.log');
 
+// 生图技能脚本的位置。**仓库内副本优先**（dsh/skills/codex-image/，随仓库做版本控制），
+// 找不到才回退到 ~/.agents/skills/ 下的安装副本 —— 这样：
+//   · 新克隆的仓库不用先跑安装步骤就能生图；
+//   · 技能脚本改了会跟着仓库一起被 review / 回滚，而不是散在用户目录里没人管；
+//   · 老机器上只有 ~/.agents 副本时也不会坏。
+// 两份同步用 scripts/install-skills.mjs（默认建 junction，避免漂移）。
+function imageScriptCandidates() {
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  return [
+    path.join(ROOT, 'dsh', 'skills', 'codex-image', 'scripts', 'codex-image.ps1'),
+    home ? path.join(home, '.agents', 'skills', 'codex-image', 'scripts', 'codex-image.ps1') : '',
+  ].filter(Boolean);
+}
+
+function imageScriptPath() {
+  for (const p of imageScriptCandidates()) {
+    try { if (fs.statSync(p).isFile()) return p; } catch { /* 试下一个 */ }
+  }
+  // 都不存在：返回仓库内那个路径，报错信息里能直接指出"该放哪"。
+  return imageScriptCandidates()[0];
+}
+
+// 排障用：打印本 worker 实际会用的路径（不发图、不需要任何参数）。
+if (process.argv.includes('--print-paths')) {
+  for (const p of imageScriptCandidates()) {
+    console.log(`${fs.existsSync(p) ? '✅ 存在' : '❌ 缺失'}  ${p}`);
+  }
+  console.log(`→ 实际使用: ${imageScriptPath()}`);
+  process.exit(0);
+}
+
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try { fs.appendFileSync(LOG_FILE, line); } catch { /* 日志失败不影响主流程 */ }
@@ -163,9 +194,7 @@ async function sendImage(filePath) {
   return data?.message_id != null ? String(data.message_id) : null;
 }
 
-function imageScriptPath() {
-  return path.join(process.env.USERPROFILE || process.env.HOME || '', '.agents', 'skills', 'codex-image', 'scripts', 'codex-image.ps1');
-}
+// 位置解析见文件顶部（imageScriptCandidates / imageScriptPath）。
 
 function imageOutDir() {
   const configured = loadConfig()?.socialV2?.image?.outDir;
@@ -177,6 +206,13 @@ function imageOutDir() {
 function runCodexImage(promptText, outPath, images = []) {
   return new Promise((resolve) => {
     const script = imageScriptPath();
+    if (!fs.existsSync(script)) {
+      // 位置说清楚：仓库内副本优先，其次 ~/.agents（装法见 scripts/install-skills.mjs）。
+      resolve({ code: -1, log: `找不到生图脚本。找过这些位置：\n  - ${imageScriptCandidates().join('\n  - ')}\n`
+        + '仓库内副本应在 dsh/skills/codex-image/scripts/codex-image.ps1；'
+        + '要装到 ~/.agents/skills 下可运行 node scripts/install-skills.mjs' });
+      return;
+    }
     const logPath = path.join(path.dirname(outPath), `codex-${path.basename(outPath, '.png')}.log`);
     const fd = fs.openSync(logPath, 'a');
     const argv = [
