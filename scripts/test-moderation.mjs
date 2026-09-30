@@ -11,6 +11,7 @@ import {
   DEFAULT_ADMIN_CFG,
   mergeAdminConfig,
   assertAllowedAction,
+  shouldAnnounceDryRunExpiry,
   normalizeTextForFingerprint,
   mediaFingerprint,
   messageMediaFingerprints,
@@ -445,6 +446,19 @@ console.log('源码扫描：禁止动作不能出现在桥接/工具层');
   });
   ok('bridge.js 只通过 ADMIN_ACTIONS 调禁言/公告', () => {
     assert.ok(bridge.includes('ADMIN_ACTIONS.mute') || bridge.includes('assertAllowedAction'), 'bridge 必须走白名单出口');
+  });
+
+  // 2026-09-30 事故：干跑到期通知只用**内存**旗标去重，桥接一重启就忘 → 两天给 owner 发了 14 次
+  ok('干跑到期通知按"已通知的截止时间"去重，且落盘（重启不再重发）', () => {
+    const until = 1790678178213;
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: true, dryRunUntil: until }, 0, until + 1000), true, '到期且没通知过 → 该通知');
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: true, dryRunUntil: until }, until, until + 600000), false, '同一截止时间通知过 → 不再通知');
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: true, dryRunUntil: until }, until - 1, until - 1), false, '还没到点 → 不通知');
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: true, dryRunUntil: until + 3600000 }, until, until + 7200000), true, '用户设了更晚的新截止时间 → 再通知一次');
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: false, dryRunUntil: until }, 0, until + 1000), false, '不是干跑 → 不通知');
+    assert.equal(shouldAnnounceDryRunExpiry({ dryRun: true, dryRunUntil: 0 }, 0, until), false, '干跑但没设截止时间 → 不通知');
+    assert.ok(bridge.includes('shouldAnnounceDryRunExpiry(c, dryRunAnnouncedUntil)'), 'bridge 必须用这个判定');
+    assert.ok(bridge.includes('admin-dryrun.json'), '已通知的截止时间必须落盘');
   });
 }
 

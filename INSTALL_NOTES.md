@@ -963,6 +963,581 @@ owner 问「19.17 被 @ 后为什么没有回复」。查完的结论：**不是
 - 该提交（`eb77302`）是我用 `git add -A` 收的尾，**把本节 16.3 也一起提交了**（当时没注意到有并行会话）。
   已改规矩：此后只 `git add` 明确列出的文件。
 
+### 16.4 外部看门狗落地（16.3 的待办 #1，2026-09-29 晚）
+
+**分工**（避免和并行会话撞车）：#2（启动器改走 `start.bat` 守护循环）与「桥接**内部** WS 链路存活看门狗」
+（`src/snowluma-liveness.mjs`，提交 `eb77302`）由另一个会话完成 —— 它们覆盖「进程退出」与「半开连接」。
+本节做的是**待办 #1：进程外看门狗**，它是唯一能救「事件循环整体卡死」（卡死时进程内定时器也一起卡死）的形态。
+
+**新增**
+- `scripts/watchdog-bridge.mjs`：常驻探针。默认每 30s 探一次 `http://127.0.0.1:3100/api/status`（带 `state/console-token`）。
+  **只要拿到 HTTP 响应就算「活着」**（401/500 只告警，避免 console-token 不匹配把健康桥接误杀）；超时/连接失败 →
+  连续 3 次（≈90s）判定「假死」，然后：
+  ① **留证**：探针错误、进程 CPU/内存/线程数、`bridge.log` 末尾 8 行、中断时长 → `state/watchdog.log`
+     + `state/watchdog-incident-*.json`；
+  ② **杀**掉卡死进程（默认还会扫掉其它匹配 `src\bridge.js` 的残留实例，`--no-scan` 可关）；
+  ③ **等** `start.bat` 守护窗口把它拉回来（5s 内），30s 没回来就自己 detached 拉 `start.bat`。
+  另有：启动宽限 60s、动手后冷却 180s、单实例锁 `state/watchdog.lock`、
+  暂停开关 `state/watchdog.pause`（存在时只留证不动手）、`--once`（探一次、不占锁、不动手）、`--no-kill`（观察模式）。
+- `watchdog.cmd`（仓库根，**纯 ASCII**）：用 `D:\nodejs16\node.exe` 跑上面那个脚本。
+- `scripts/test-watchdog-bridge.mjs`：29 条断言（参数解析／决策矩阵／探针语义（200 与 401 都算活）／日志落盘／
+  `startGuard` 真能拉起标记脚本／四个注入式集成场景：桥接没了→拉守护、健康→不动手、暂停→不动手、`--once`）。
+  已随 `run-offline-tests.mjs` 一起跑（**46/46 通过**）。
+
+**部署（满足「必须脱离 DSH 进程树」）**
+- `D:\dsh\tools\start-bot.bat`（**GBK + CRLF**，改动是纯 ASCII 字节级替换）在桥接块之后加了一行：
+  `if exist "%BR_DIR%\watchdog.cmd" start "qq-bridge watchdog" /D "%BR_DIR%" cmd /c watchdog.cmd`
+- 同时把并行会话手改进 live .bat 的 `start.bat` 守护补丁**一起写回 `make_launcher.py` 模板**，
+  这样以后重新生成启动器不会把这两个补丁吃掉（生成器是 UTF-8/LF，已按它的行尾插入并通过 ast 语法自检）。
+- 本次已用资源管理器（等价双击）起了一个常驻看门狗：
+  `node.exe` PID 39444 ← `cmd /c watchdog.cmd`(45544) ← `explorer.exe`(11596) —— **不在 DSH 进程树里**；
+  `state/watchdog.lock` = 39444，`state/watchdog.log` 里已有 `探针正常：http 200，26ms，bridge PID 5632`。
+- 为什么**没**做成开机计划任务：那会打乱 owner 现有的启动顺序（DSH → 登录 QQ → 双击「启动Bot」），
+  所以只挂在启动器这条路上，由 owner 自己决定要不要加计划任务。
+
+**验证**
+- 真机 `--once`（真探针、真令牌）：`探针正常：http 200，25ms，bridge PID 5632` ✅
+- **隔离演练**（`%TEMP%\wd-drill`，随机端口假桥接 + 真替身进程 + `--no-scan` + `--guard-cmd` 指向标记脚本，**不碰真桥接**）
+  的实际日志：
+  `⚠️ 探针失败 3/3 → ❌ 判定假死（中断约 2s）→ 进程快照 cpu=0s;ws=55.6MB;threads=14 → 🔪 已终止 PID 43192
+   → 🚀 已拉起守护命令 marker.cmd → ✅ 已恢复（看门狗拉起）：http 200，16ms → 🧾 事故记录：state\watchdog-incident-*.json`；
+  替身进程确实被杀、incident 里 `killed:[{pid,wasAlive:true,ok:true}]`、`recovered.by='watchdog'` ✅
+
+**踩坑（值得记）**：演练用的 `.cmd` 里写了含**中文用户名**的**字面量路径** → cmd 按 GBK 读 UTF-8 的 .cmd，
+路径变乱码、`echo ... > file` 静默失败（用 `%~dp0` 展开的路径没事）。所以 `watchdog.cmd` 保持纯 ASCII
+（跟 `start.bat` 同一条规矩），中文只出现在 Node 写的 `state/watchdog.log` 里。
+
+**运维**
+- 看日志：`state/watchdog.log`；出事的结构化证据：`state/watchdog-incident-*.json`。
+- 不想让它动手（要手工排查时）：建空文件 `state\watchdog.pause`，删掉即恢复自动处理。
+- 它是个常驻窗口：关掉窗口 = 失去这层保护（`start.bat` 只管「进程退出」，不管「卡死」）。
+
+**未提交**：`scripts/watchdog-bridge.mjs`、`scripts/test-watchdog-bridge.mjs`、`watchdog.cmd`、`docs/FOLDER_MAP.md`
+本次改动**没有 git add**（并行会话已立规矩：只 add 明确列出的文件），留给 owner 决定何时提交。
+
+### 16.5 明日方舟日活：owner 一句话触发（2026-09-29 晚）
+
+**需求（owner 定的，逐条对照）**：① 只有 owner 能用（这台机器登的是他的账号）；② 跑完就停、30 分钟兜底；
+③ 开的是**官方 PC 端**（`ClientType=Official`），**不碰 MuMu**；④ 只保留「随叫随跑」，不做定时；
+⑤ 锁屏不用管（他设了通电不锁屏）；⑥ 允许改 MAA 配置；⑦ 触发条件**只有**「@机器人 帮我做明日方舟日活」，
+别的说法一律不触发。
+
+**为什么必须提权、而桥接仍能触发它**
+- 官方 PC 端带 **ACE 反作弊**（`AntiCheatExpert\ACE-Service64.exe`）以管理员身份运行；MAA 要截屏 + 发输入给它，
+  必须同完整性级别 → MAA 也得管理员。中等完整性进程**既不能给高完整性窗口发输入，也不能结束它的进程**。
+- 桥接是普通权限，**不自己启 MAA**：只 `schtasks /Run` 一个预先注册好的**最高权限计划任务**
+  （同一账号允许，不再弹 UAC）。这是唯一既不存管理员密码、也不用第三方提权工具的正路。
+- ⚠️ **绝不**把桥接整体提权（24/7 带管理员权限 + prompt injection = 灾难）。
+
+**机器上的事实（已核对）**：MAA v6.3.0 在 `G:\MAA`；`ClientType=Official`、`StartGame=true`（MAA 自己拉起客户端）、
+`BlockSleepWithScreenOn=true`（自己防息屏）、`StallTimeout=25min`；ADB `127.0.0.1:16384`（MAA 用
+`G:\MuMuPlayer\nx_device\12.0\shell\adb.exe`，但这个 adb 只是工具，**不代表要开 MuMu**）；任务队列 8 项＝标准日活；
+完成判据是 `G:\MAA\debug\asst.log` 里的 `AllTasksCompleted {"finished_tasks":[...]}`。
+（历史：最近一次真正跑完是 9-28 15:03；9-29 21:21 那次 11 秒就退出，日志是 `skip sync_params, retry when connect`
+——没连上客户端，说明"客户端就绪"必须作为前置条件。）
+
+**新增**
+- `scripts/arknights-daily.mjs`（**提权执行器**）：预检（是否提权／MAA 在不在／ADB／16384 被谁占）→ 打开 MAA
+  「直接运行」或发 Link Start 热键 `Ctrl+Shift+Alt+L` → 启动 MAA（官方 PC 端由 MAA 自己拉起）→ 盯 `asst.log`
+  **增量**等 `AllTasksCompleted`（成功）/`TaskChainError`（失败），**跑完即停**、最长 `timeoutSec`（默认 1800s）
+  → 关 MAA、按需关 `Arknights.exe`/`PlatformProcess.exe` → 写 `state/arknights-daily.json` +
+  `state/arknights-daily.log`。参数：`--dry-run`（只预检）`--prepare-maa`（只改 MAA 配置）`--timeout` `--trigger auto|hotkey`
+  `--no-close-client` `--no-close-maa`；带运行锁（`state/arknights-daily.lock`）。
+- `src/arknights-command.js`（纯函数，执行器与桥接共用）：命令归一 + **严格相等**判定、状态描述、结果措辞。
+- `scripts/arknights-setup.ps1`（**一次性提权安装**）：注册计划任务 `qq-bridge-arknights-daily`
+  （`-RunLevel Highest` + `LogonType Interactive` + `MultipleInstances IgnoreNew` + 60 分钟上限）→ 打开 MAA「直接运行」
+  → 跑 `--dry-run` 自检；`-Uninstall` 卸载。
+  ⚠️ 该 .ps1 必须存成 **UTF-8 with BOM + CRLF**：PowerShell 5.1 会把无 BOM 的 UTF-8 当 ANSI 读，中文注释会破坏语法（已踩）。
+- 桥接侧（`src/bridge.js`）：`socialV2.arknights` 配置块 / `arknightsCfg()` / `readArknightsJob()` /
+  `handleArknightsRequest()` / `startArknightsReporter()` / `execFileP()`；`handleIncoming` 里**确定性接管**
+  （owner + 对着机器人 + 那一整句 → 入库但**不唤醒模型** → `schtasks /Run` → 回一句）；回报器每 30s 轮询状态文件，
+  把结果发回**原会话**；唤醒提示里加 `【方舟日活】` 状态行（正在跑/刚跑完）。
+- 预设第 24 条：告诉模型"这件事你做不到、只有那条命令会触发、别答应别假装"，被问起时看【方舟日活】那段。
+- 测试：`scripts/test-arknights-command.mjs`（22 条：只认那一句；少字/多字/前后加字/换说法/命令配空都不触发）
+  + `scripts/test-arknights-daily.mjs`（28 条：预检闸门、完成/出错判据、跑完即停、早退判失败、超时兜底、关进程、报告措辞）。
+
+**需要 owner 手动做一次（我提不了权）**
+```
+管理员 PowerShell：
+powershell -ExecutionPolicy Bypass -File D:\dsh\qq-bridge\scripts\arknights-setup.ps1
+```
+之后在群里 @机器人 发「帮我做明日方舟日活」即可（**只有这一句**会触发）。
+
+**已知边界**
+- 任务必须「用户已登录且未锁屏」——owner 已设通电不锁屏。
+- 若 MuMu 播放器正占着 `16384`，MAA 可能连到模拟器：执行器会把端口占用者写进日志并警告（不自动杀 MuMu）。
+- `trigger: auto` 会改 MAA `gui.new.json` 的 `RunDirectly=true`（改前备份 `.bak-arknights`）；不想动 MAA 配置就用 `--trigger hotkey`。
+**回报是**轮询**而非推送：执行器若崩溃，超过 `timeoutSec + 10 分钟` 会有一条「好像没跑起来」的兜底消息。
+
+### 16.5.1 修正：**必须先起官方 PC 端、等 30 秒再起 MAA**（owner 实测，2026-09-29 21:50）
+
+**实测经过**：owner 21:44 在群里发了那条命令，链路一次通到底 —— 桥接 `handleArknightsRequest` →
+写 `state/arknights-daily-request.json` → `schtasks /Run` → 提权执行器跑起来（`state/arknights-daily.log`：
+`提权=true MAA=true ADB=false`）→ 起 MAA。**但 MAA 拉不起官方 PC 端**，所以整轮白跑。
+owner 的指正：**「先开明日方舟 PC 端 → 等半分钟 → 再开 MAA」**。
+
+**改动（已落，48/48 离线用例通过）**
+- 执行器新增「客户端阶段」：**先起官方 PC 端**（桌面「明日方舟」快捷方式用的就是
+  `G:\Hypergryph Launcher\Launcher.exe --game=Arknights --reason=4`）→ 至少等 `clientWaitSec`（默认 30s）
+  → 再等 ADB 就绪（`adbWaitSec`，默认 90s，`adb devices` 里出现 `127.0.0.1:16384  device`）→ **然后才起 MAA**。
+  客户端已在运行（`Arknights.exe` / `PlatformProcess.exe`）就跳过启动。
+- 把 MAA 的 `StartGame` **关掉**（`maaStartGame: false`）：客户端改由执行器负责，别让 MAA 再试（它试也失败）；
+  `RunDirectly=true` 依旧打开（启动 MAA 即自动开始队列）。
+- 30 分钟兜底**从 MAA 启动那一刻开始算**（之前从"整轮开始"算，起客户端+等 ADB 的时间会白白吃掉任务预算）。
+- `--prepare-maa` 现在一次调两个设置（`RunDirectly=true` + `StartGame=false`），改前备份 `.bak-arknights`。
+- 新回归：`test-arknights-daily.mjs` 增「**先起客户端 → 等 30s → 再起 MAA**」的顺序断言（顺序数组实测
+  `adb → prepareMaa → client → sleep:30000 → adb → maa`）、「客户端已在运行则不重复拉起」、
+  「deadline 从 MAA 启动算」。
+- `config.json` / `config.example.json` / 桥接默认值同步新字段：`startClient` / `clientExe`（改成 Launcher）/
+  `clientArgs` / `clientWaitSec` / `adbWaitSec` / `maaStartGame`。
+
+**怎么复测**（owner）：
+```powershell
+# ① 想看全过程就用管理员 PowerShell 前台跑（能看到每一步日志，且不受计划任务干扰）
+cd D:\dsh\qq-bridge; node scripts\arknights-daily.mjs
+# ② 日常路径（普通权限即可，验证"不弹 UAC"）
+schtasks /Run /TN qq-bridge-arknights-daily
+# ③ 或者直接在群里 @机器人 发「帮我做明日方舟日活」
+```
+顺序应当是：鹰角启动器/游戏起来 → 约 30 秒后 MAA 起来并自动开始 → 跑完自动关 MAA 与游戏 →
+群里收到结果（②③ 会回报；① 只写状态文件与日志）。
+
+### 16.5.2 修正二：桌面图标只开**启动器**，要直接起游戏本体（owner 指正，2026-09-29 22:0x）
+
+owner 指正：「桌面这个图标拉起的是启动器，并没有真正打开应用」。核对结果：
+
+- 桌面「明日方舟」快捷方式 = `G:\Hypergryph Launcher\Launcher.exe --game=Arknights --reason=4`，
+  它只把**鹰角启动器**打开；真正进游戏还得在启动器里点「开始游戏」。
+- 所以**不能**拿它当"启动客户端"。执行器改成**候选链 + 进程验证**：
+  1. 首选直接起游戏本体 `G:\Hypergryph Launcher\games\Arknights Game\Arknights.exe`；
+  2. 兜底起启动器（至少把界面打开）；
+  每一步都以「**游戏进程（`Arknights.exe`/`PlatformProcess.exe`）真的出现**」为成功判据
+  （每个候选最多等 `clientBootSec=45s`）；两个都没成 → 把启动器留给 owner 点一下，再等
+  `manualWaitSec=300s`（半人工兜底，日志里会明确写"请手动点开始游戏"）。
+- **为什么直接起 `Arknights.exe` 可行**：该 exe 的嵌入清单是 **`requireAdministrator`**（我验证过二进制里
+  确实带这个标记）——也就是说游戏本身要求管理员权限。我们的执行器**已经**是提权进程，所以它 spawn 出来的
+  游戏进程继承同一个完整性级别，**不会再弹 UAC**，也就绕开了 MAA 那一侧的失败（MAA 拉不起来多半就是卡在
+  这一步：它自己提权后去拉一个 requireAdministrator 的子进程，或走了只开启动器的路径）。
+- 失败报告也会带上"游戏客户端一直没起来"这句提示（否则群里只看到一句莫名其妙的 MAA 报错）。
+- 回归：`test-arknights-daily.mjs` 增「候选链顺序（先客户端、后 MAA）」「候选一没成会试候选二」
+  「客户端已在运行 → 不重复拉起」「MAA 已在运行 → 直接拒绝」「失败报告带客户端提示」。
+
+配置字段相应变成：`clientCandidates`（数组，可自己加减/换命令行）、`clientBootSec`、`clientWaitSec`、
+`manualWaitSec`、`adbWaitSec`、`maaStartGame`（旧的 `clientExe`/`clientArgs` 仍兼容：会被当成唯一候选）。
+
+### 16.5.3 修正三：PC 端走 **Win32**，ADB 警告是误报；检测成功也要打日志（2026-09-29 22:1x）
+
+owner 反馈「45 秒没看到游戏进程，但事实是游戏打开了」。查 `state/arknights-daily.log` + MAA 自己的日志，
+**结论是检测其实成功了，两条都是我的锅**：
+
+1. **检测成功了，但我没打那行日志**。时间线自证：`22:04:04 已启动 Arknights.exe` → 之后
+   `sleep(30s)` + ADB 轮询 90s → `22:06:10 MAA 已启动`（22:04:04+126s，正好等于 30+90+开销）。
+   如果当时没检测到游戏，流程应该是「45s 候选一 → 45s 候选二 → 300s 人工等待 → 30s → 90s」= 约 8.5 分钟，
+   与事实不符。**教训：成功路径也要显式打一行**，否则日志会让人以为"检查失败了"。
+   现在会打：`✅ 检测到游戏进程：Arknights.exe / PlatformProcess.exe（用时 3s）`。
+2. **那条 `⚠️ 等了 90s ADB 还是没连上` 是误报**。官方 PC 端 MAA 用的是 **Win32Controller**（窗口截图 +
+   键鼠模拟），**全程不需要 ADB**：`asst.log` 里是 `asst::Win32Controller::screencap/click`，而 `16384`
+   自始至终没人监听，MAA 照样把日活跑起来了（`gui.log`：`开始唤醒` 完成 → `Start Task Chain: Fight` →
+   1-7 打了 9/19/29 次、理智 205→151→91）。
+   所以现在：**连接方式=PC 时完全跳过 ADB**（不等、不警告、`adb.devices` 都不调用），每轮省 1.5 分钟；
+   连接方式由 MAA 的 `ConnectSettings.Config`（`PC` → Win32；其它 → ADB）自动判定，也可用
+   `connectMode: pc|adb` 强制。
+3. 顺带把「进程出现 ≠ 窗口出现」补上：Win32 截图要窗口，所以进程出现后还会等
+   `MainWindowHandle != 0`（上限 `windowWaitSec=60s`），然后才等 `clientWaitSec` 起 MAA。
+
+回归新增：「PC 端模式不碰 ADB（不调用、不警告、不等待）」「检测到游戏进程要明确打一行」「候选一成功就不再试候选二」。
+**执行器 38 条 + 命令判定 22 条断言全通过，离线用例 48/48。**
+
+⚠️ 跑的时候**别动鼠标键盘**：MAA 自己也会提醒 `PC 端鼠标为独立渲染，可能遮挡掉落物及数量识别`。
+
+### 16.6 终末地日活（MAAEND）：同一套引擎 + 第二个档案（2026-09-29 深夜）
+
+owner 要求：「@bot 帮我做终末地日活」→ 打开游戏 → 打开 MAAEND → 跑完即停、**30 分钟兜底**；
+并特别指出 **MAAEND 不需要管理员身份**。
+
+**摸底到的事实**
+- MAAEND v2.30.1 在 `G:\MAAEND`：`MaaEnd.exe`（MaaFramework + MXU 界面的 GUI，无命令行开关）+
+  `maafw\MaaPiCli.exe`；配置是 `config\mxu-MaaEnd.json`（不是方舟那种 gui.new.json）。
+- 它的设置里有现成的 **`settings.autoRunOnLaunch`**（= 启动即跑）和 **`hotkeys.startTasks = F10`**（兜底热键），
+  以及 `webServerPort=12701`（WebSocket，纯 HTTP 探测会挂住，暂不依赖它）。
+- 实例：`全套日常`（7 个任务）/ `快速日常`（6）/ `基质刷取`（2），当前 `lastActiveInstanceId` = 全套日常。
+- 日志：`debug\<日期>-N.log`（GUI 日志；`autoClearLogsOnLaunch=true` → 只留当天的）+ `debug\maafw.log`（MaaFW 内核）。
+- 控制器：`interface.json` 里 `Win32-Front`（`class_regex=UnityWndClass` / `window_regex=Endfield`）→ **同样没有 ADB**。
+- 游戏本体：`G:\Hypergryph Launcher\games\Endfield Game\Endfield.exe`，清单是 **`requireAdministrator`**
+  → **游戏要管理员，MAAEND 不要**；所以执行器仍然提权（为了静默起游戏），但把 MAAEND **降权**启动。
+
+**改动（引擎重构 + 第二个档案）**
+- 引擎从"方舟专用"改成**多档案**：`scripts/game-daily.mjs`（`DEFAULT_ARKNIGHTS` / `DEFAULT_ENDFIELD` + `PROFILES`）；
+  `scripts/arknights-daily.mjs` 与 `scripts/endfield-daily.mjs` 只是薄 wrapper（**计划任务里的路径不变**，
+  旧的 `test-arknights-daily.mjs` 因为 `export *` 继续有效）。
+- 「启动即跑」改成**声明式补丁** `autoRunPatches`（`defaultPrepareMaa` 通用实现，改前备份 `*.bak-gamedaily`、幂等）：
+  方舟 = `StartUpSettings.RunDirectly=true` + `RuntimeSettings.StartGame=false`；
+  终末地 = `settings.autoRunOnLaunch=true`。
+- **MAAEND 降权启动**：执行器已提权，不能再直接把 MAAEND 拉成管理员（owner 的用法是普通权限）→
+  用 `explorer.exe "<MaaEnd.exe>"` 代启动，它就以中完整性跑；配置项 `maaDeElevated: true`。
+- **完成判据**（终末地）：`successPatterns: ['Tasker\.Task\.Succeeded']` 计数，配 `expectedTaskCount`
+  （从 `mxu-MaaEnd.json` 当前实例数出启用任务数，实测 7）+ 完成文案判据 + 30 分钟兜底；
+  另有 `failurePatterns: ['Tasker\.Task\.Failed', '任务失败']`。方舟仍是 `AllTasksCompleted`。
+- **多日志监听**：`maaLogDirs`（终末地 `G:\MAAEND\debug` 下所有 `.log`）+ 固定路径，逐文件按 offset 读增量。
+- 工具进程名可配（`toolProcessNames`：方舟 `MAA` / 终末地 `MaaEnd`）——守卫、退出判定、收尾都用它。
+- 桥接侧：新增 `socialV2.endfield`，把手写的"方舟单例"改成 `gameJobs()` 遍历（触发 `handleGameJobRequest`、
+  回报 `startGameJobReporters`、提示词状态行）——所以**再加一个游戏只需加一块配置 + 一个 wrapper**。
+  触发方式支持 `mode: task`（默认，`schtasks /Run` 那个最高权限任务）或 `mode: direct`（桥接直接拉执行器）。
+- 安装脚本泛化：`scripts/game-daily-setup.ps1 -Profile arknights|endfield`（`arknights-setup.ps1` / `endfield-setup.ps1`
+  是两个 wrapper，向后兼容），注册 `qq-bridge-endfield-daily`（最高权限 + 仅登录时运行）。
+- 测试：新增 `scripts/test-endfield-daily.mjs`（档案默认值、声明式补丁幂等/备份、多日志清单、期望任务数、
+  自定义判据、计数式完成、降权启动、失败判据、已在运行则拒绝）；预设契约新增一条钉住"只有 owner 那两句会触发"。
+  **离线 49/49 通过。**
+
+**需要 owner 手动做一次（我提不了权）**
+```
+管理员 PowerShell：
+powershell -ExecutionPolicy Bypass -File D:\dsh\qq-bridge\scripts\endfield-setup.ps1
+```
+之后在群里 @机器人 发「帮我做终末地日活」即可（**只有这一句**）。
+
+**已知待验证**：MAAEND「整轮跑完」的日志文案我还没见过真实样本（GUI 日志每天清空，今天只开了程序没跑任务），
+所以现在主要靠「数到 7 个 `Tasker.Task.Succeeded`」收尾；第一轮跑完后请把 `state\endfield-daily.log` 与
+`G:\MAAEND\debug` 里当天的日志尾巴发我，我把文案判据钉死（否则可能要等到 30 分钟兜底才收尾）。
+
+### 16.6.1 修正：**别把 `PlatformProcess.exe` 当成"游戏在跑"**（owner 实测，2026-09-29 22:47）
+
+owner 贴的日志：`官方 PC 端已在运行，跳过启动` + `游戏进程在，但窗口还没出来…`，但**游戏根本没开**。
+
+**根因**：`clientProcesses` 里我写了 `['Endfield.exe', 'PlatformProcess.exe']`（方舟那份也是），
+而 `PlatformProcess.exe` 是**反作弊（ACE）平台的常驻辅助进程** —— 游戏没开它也可能在。
+实测证据：22:33 起它就一直活着（PID 32508，`MainWindowHandle=0`），而 `Endfield.exe` 根本不存在；
+上一轮方舟跑完时它也是**唯一残留**的进程（`Arknights.exe` 已关、它还在）→ 于是被误判成"游戏已在运行"。
+
+**修法（三处）**
+1. **判定只看游戏本体**：`clientProcesses` 改成 `['Arknights.exe']` / `['Endfield.exe']`
+   （`config.json` / `config.example.json` / 桥接默认值同步）。收尾也只关游戏本体，不再去动那个常驻辅助进程。
+2. **误判自愈**：如果"检测到已在运行"但 `windowWaitSec`（60s）内**窗口始终不出现**，就按"残留/辅助进程"处理
+   —— 照样走候选链把游戏启动起来（日志会写「按"误判/残留进程"处理，改用候选链启动游戏」+「✅ 候补启动成功」）。
+3. **日志说清楚匹配到谁**：`官方 PC 端已在运行（匹配进程：Arknights.exe），跳过启动` —— 下次一眼能看出是不是误判。
+
+回归新增：「PlatformProcess 不算游戏在跑（两个档案都测）」「窗口不出来 → 判定误判并真的去启动游戏」。
+**离线 49/49 通过。**
+
+### 16.6.3 修正：「跑完了但 MAAEND 不退出」——期望任务数算错了（2026-09-29 深夜）
+
+owner 反馈「maaend 跑完后没有自动退出」。查完的结论分两半：
+
+**一半是 MAAEND 本身没有这个功能**（不是 bug）：把它 exe 里所有含"退出"的文案都翻出来了，只有
+`等待程序退出后继续` / `已运行时跳过` 这类**任务选项**（那是"启动程序"任务的行为），**没有"运行结束后关闭程序"**。
+所以关 MAAEND 只能由执行器做 —— 执行器本来就会做（`closeMaa: true` → `taskkill MaaEnd.exe`，`closeClient: true` → 关游戏）。
+
+**另一半是我没判定到"跑完"**，于是它一直在等（等到 30 分钟兜底才关，人早就以为卡住了）：
+1. **期望任务数算错**：我按 `mxu-MaaEnd.json` 里"启用的任务条目数"数出 **7**，而 MAAEND 实际只提交 **6** 个
+   （GUI 日志：`23:40:44 [MAA] 任务已提交, taskIds: [200000001…200000006]`；22:59 那次是 7 个）→
+   `successCount >= 7` 永远不成立 ✗。
+2. 而且那两次运行（23:34 / 23:39）**其实都没跑完就被关了**：`maafw.log` 整晚只出现过 **2 次**
+   `Tasker.Task.Succeeded`（6 个任务连一半都没到），最后是 `AgentClient ... server is not alive`
+   —— 这是 GUI 被关掉、agent 随之消失时的典型日志。
+
+**修法**
+1. 新增 `submittedTaskCount()`（纯函数）：从日志里读**本次实际提交的任务数**（`taskIds: [...]` 优先，
+   退回 `任务数: N`），并用它**覆盖**配置里算出来的期望值。日志会写：
+   `📋 本次实际提交 6 个任务（配置里算的是 7）→ 按 6 个算完成`。
+2. 运行中每 30 秒把**心跳进度**写进 `state/endfield-daily.json`（`running: true` + `successCount/expectedTaskCount`），
+   所以跑的过程中看状态文件就知道进度（桥接的「正在跑（已 X 分钟）」也来自这里），不必等结束才有内容。
+3. 完成事件确认：`Tasker.Task.Succeeded`（今晚 `maafw.log` 实测存在 ✓）+ `Tasker.Task.Completed` 备选。
+
+**所以现在的行为**：任务数跑够 → 立刻收尾 → 关 MAAEND + 关游戏 → 写结论；跑的过程中 `state/endfield-daily.json`
+里能看到进度。若以后又出现"跑完不关"，先看 `state/endfield-daily.log` 里有没有
+`📋 本次实际提交 N 个任务` 与 `successCount` 的变化定位是"没数够"还是"工具提前没了"。
+
+回归新增：「从 taskIds/任务数 读实际提交数」「配置算 7 而实际提交 6 → 按 6 收尾（不等兜底）」。
+**离线 49/49 通过。**
+
+### 16.6.4 修正：**日志轮转**让偏移量失效，一个事件都读不到（2026-09-29 23:53 实测）
+
+owner 又反馈「maaend 已经结束了，但没有退出」。这次是**读日志的方式**踩了坑：
+
+**现场**：执行器明明跑着（lock 存活）、GUI 日志里有 `📋 本次实际提交 6 个任务`、状态心跳 `running: true`，
+可是 `successCount` **一直是 0**；而 `G:\MAAEND\debug\maafw.log` 里其实已经有
+`Tasker.Task.Succeeded ×3`（最后一条 `23:57:33 task end: entry=DailyRewardStart`）。
+
+**根因**：**MAAEND 会把 `maafw.log` 轮转掉**（实测 23:53:45 出现 `maafw.bak.2026.09.29-23.53.45.530.log`，
+旧文件被改名、同名新文件从 0 开始）。而我的读取偏移量还停在旧文件的 **100+MB** 上：
+
+```js
+const from = offsets.get(file);            // 旧文件的 100MB
+const size = statSize(file);               // 新文件才 11MB
+if (size <= from) continue;                // ✗ 永远成立 → 一个字节都读不到
+```
+
+于是"任务其实一个个在成功"，执行器却以为 0/6，一路等到 30 分钟兜底才去关 MAAEND。
+
+**修法（三条，都在 `game-daily.mjs`）**
+1. **同一路径文件变小 = 被轮转/截断** → 偏移量**归零**重新读（`size < from` 就 reset）。这一条直接解决上面那个死循环。
+2. **中途新出现的文件**（就是 `maafw.bak.*.log` 这种轮转产物）→ 从**尾部 8MB** 开始读（本次运行的早期事件就在轮转前那个文件的尾部）。
+3. **按时间戳过滤，只认本次运行之后的行**：新增 `formatLogTime()` / `countPatternsSince()`，
+   `findCompletion()` 也接受 `since`。因为读轮转过来的旧文件时会看到**上一次运行**的完成事件，
+   不过滤就会虚报完成（第一次实现时就差点这样）。行里没有时间戳的（MaaFW 有些行没有）按"算数"处理。
+   注意 `logSince` 用的是可注入的 `now()`，否则测试里的虚拟时钟会跟真实时间对不上（踩过）。
+
+**现在的行为**：任务数跑够 → 立刻收尾 → 关 MAAEND + 关游戏；运行中每 30 秒有心跳进度；
+日志轮转、文件截断、上一次运行的残留事件都不会再干扰判据。
+
+回归新增：「日志时间格式可直接比较」「只算本次运行之后的行」「没有时间戳的行照样算」
+「轮转旧日志里的"全部完成"不算」「运行中文件被轮转变小后仍能读到新内容并收尾」。
+**离线 49/49 通过。**
+
+⚠️ 顺带记一条运维事实：MAAEND 与游戏都是**提权**进程，**普通权限杀不掉它们**
+（`Stop-Process` → `Access is denied`）。要立刻关，只能在**管理员** PowerShell 里：
+`Stop-Process -Name MaaEnd,Endfield -Force`。
+
+### 16.6.5 修正：单个任务失败**不该**让整轮中止（owner 实测「跑几次都中途退出」，2026-09-30）
+
+owner 反馈终末地日活跑几次都中途退出。查 `state/endfield-daily.log` + MAAEND 的 `maafw.log`：
+
+**事实**：三轮（00:07 / 00:21 / 10:43）都是同一个结局 ——
+`[msg=Tasker.Task.Failed] [details={"entry":"DijiangRewards"...}]`，而**我的执行器把它当致命错误**，2 秒后
+就 `已关闭 MaaEnd.exe` + `已关闭客户端：Endfield.exe` 收工了。**MAAEND 自己没停**（GUI 日志只有
+`state-changed kind: task-progress`）。10:43 那轮的进度：提交 6 个任务（`VisitFriendsMain`、`DijiangRewards`、
+`CreditShoppingMain`×2、`OutpostTradingSchedule`、`DailyRewardStart`）→ `VisitFriendsMain` 10:48:29 成功
+→ `DijiangRewards` 10:51:09 失败（失败前最后识别的是 `SceneNoticeRewardsConfirm` /
+`__ScenePrivateLoggedOutConfirm`，像是当时游戏弹了确认框/不在预期界面）→ 我 10:51:11 收工，**后面 4 个任务全没跑**。
+
+**顺带查出的第二个坑：计数虚高**。同一个任务事件在 `maafw.log` 里会被记 **多份**（MaaEnd.exe 的
+`EventDispatcher` 记一次、agent 进程的 `AgentClient` 再记 1~2 次，还有 `[msg=…]` / `[message=…]` 两种写法）。
+按字符串数会**虚高 2~4 倍** —— 10:43 那轮状态里 `successCount: 4`，而真实只有 **1** 个任务成功，
+继续这样跑下去会"任务没跑完就判全成功"。
+
+**修法**
+1. 新增纯函数 `countTaskEvents(text, since)`：认 `[msg=Tasker.Task.Succeeded|Failed]` 里的 `"task_id":N`，
+   用 **verdict+task_id 去重** → 一个任务只算一次；顺带把 `"entry"` 名字收集起来（回报里能直接说失败的是谁）。
+   用真实日志验证：原始 4 条 → 去重后 **1 成功 / 1 失败** ✓。
+2. **单个任务失败不再中止**：继续跑剩下的任务；判定改成「**成功 + 失败 ≥ 本次提交数**」才算一轮结束，
+   结论是 `partial: true` + `部分完成：5/6 个任务有结果（成功 5、失败 1，失败的是 DijiangRewards）`。
+3. 新增 `fatalPatterns: ['server is not alive']`：只有**框架级错误**（工具真的坏了）才立刻中止。
+4. 回报措辞新增一档：`日活基本跑完 ⚠️（时长）：成功 5 个、失败 1 个，失败的是 DijiangRewards。客户端已关闭。
+   （个别任务失败可以在工具里单独重跑）`。
+
+**DijiangRewards 本身为什么失败**：属于 MAAEND 侧（不是我们的代码）。建议在 MAAEND 里单独跑一次这个任务看它
+卡在哪一步，或者先在「全套日常」实例里把它禁掉、其余 5 个照跑，等作者修好再加回来。
+
+回归新增：「同一事件被记多份时按 task_id 去重」「去重后能拿到失败任务名」「早于本次运行的事件不算」
+「单个任务失败不再中途退出，最后是部分完成」「框架级错误立刻中止」「部分完成的回报措辞」。
+**离线 49/49 通过。**
+
+### 16.7 省 token 改造（方案 1~4，2026-09-30）
+
+**先把钱花在哪量化**（控制台 `/api/tokens/*` + `state/tool-calls.jsonl`，近两天）：
+
+| 指标 | 实测 |
+|---|---|
+| 总量 | 199 回合 / 932 步 / **¥15.12**；`avgCostPerTurn ¥0.076`、`avgCostPerStep ¥0.0162` |
+| 拆解（非高峰价） | cacheMiss 4.47M → ¥4.47；cacheHit 132M → **¥2.64**（命中率 96.7% 但量大）；output 0.45M → ¥1.81 |
+| 分时 | **82% 花费在高峰**（价目表 `peakMultiplier: 2`，工作日 09-12 / 14-18） |
+| 每步上下文 | 群会话 **51,864 tokens/步**（最贵一轮 44 步 × 4.74M 输入 = ¥0.378） |
+| 工具往返 | 392 次里 **`qq_wait_for_messages` 152 次（39%）** |
+| 归属 | 群 ¥4.54（64 回合/706 步）、黑话学习 ≈¥4.5、其余是"只剩累计值的历史"（账本淘汰明细，不是外部会话） |
+
+结论：**成本 ≈ 每步上下文 × 步数 × 回合数（再乘高峰系数）**。所以只做 1~4 这四条（**不改工具代码、不改模型**）：
+
+**1. 削步数**
+- 等待默认 30s → **10s**（`socialV2.wait.defaultMs`；桥接本来就会把新消息推进会话，长轮询是空转）
+- **单轮步数上限 `turnMaxSteps: 20`**：超过就 `api.stopSessionWork()` 请求 DSH 收尾，避免再出现 44 步的回合
+- 预设收紧：**"等人最多等一次"**（一轮只用一次 `qq_wait_for_messages`、20~30 秒；纯围观不等）、
+  "一次发送用数组"、"mark_read 与发送同轮"、"发完不要复查"（第 25 条）
+
+**2. 削上下文**（⚠️ 只动了"喂给模型多少"，**没动**机器人的记忆窗口 —— 见 16.7.1）
+- `context.wakeMessageLimit` 12 → **8**、`wakeRecentLimit` 4 → **3**、`wakeMaxChars` 6000 → **3000**（唤醒提示内联多少）
+- `sticker.promptMaxStickers` 8 → **4**、`memes.promptMaxMemes` 6 → **4**（每轮都注入的候选表）
+- 预设：拉消息用小 limit（10~15）、不要一次拉一百条（图片/表情按需看那半句只是预设措辞，**没动工具代码**）
+- `context.recentLimit` / `unreadLimit`：**保持 100 / 30 不变**（原计划要压到 30/15，实测发现那是机器人的
+  记忆/缓冲窗口本身，压小会让人感知到"漏消息、忘掉半小时前"，而且会破坏 `test-token-economy.mjs`
+  的 eviction + 水位契约 → 撤回）
+
+**3. 减回合**
+- `proactive`：间隔 30~90min → **2~3h**、`probability` 0.3 → **0.2**、新增 **`quietHours: [1,8]`**（01:00~08:00 不主动开口）
+- 新增 **`autoReplyCheckOnlyWhenExpected: true`**：只有"对方在问/引用我/我之后还有未回的新消息"时才排回复检查，
+  否则日志写 `跳过回复检查（没人提问/点名，也没有未回的新消息）`（这个唤醒以前大概率什么都不说，纯烧一轮）
+- `errorRetry.malformedMax` 2 → **1**（一次重试就是整轮重发）
+
+**4. 黑话学习**
+- `slang.offPeakOnly: true`：**高峰时段不跑**（用 `isPeakAt()` 判，与面板同一张价目表）
+- `slang.researchMinPending: 6`：**攒够 6 条候选才研究一次**（以前一有新词就开一轮会话）
+- `slang.researchBatchMax: 5`：单批最多研究 5 条，别一次喂几十条
+
+**验证口径**（改完看一天就够）：控制台 `/api/tokens/summary` 的 `avgCostPerStep`、`avgCostPerTurn`、
+`cacheHitRate`，以及 `socialV2.proactive` 的下一轮安排（重启后日志实测：`已安排主动机会检查 … 约 172min 后` ✓）。
+预计 1+2+3 三条能砍 **45%~60%**（稳态从 ~¥7.5/天 往 ¥2~3/天 走），黑话学习那条再单独看一天。
+
+**没做的事**（owner 说"其它不要动"）：工具集瘦身、模型分档、缓存友好策略、每日预算告警。
+
+### 16.7.1 撤回：`recentLimit`/`unreadLimit` 不是"喂多少"，那是**机器人的记忆窗口**（2026-09-30）
+
+省 token 改造里我一度把 `context.recentLimit` 100→30、`unreadLimit` 30→15，以为只是"每次给模型少看点"。
+落地后立刻发现两件事，于是**全部撤回**（恢复 100/30）：
+
+1. **它们同时是本地缓冲的裁剪上限**：`st.recentMessages` / `st.unread` 的 `splice` 用的就是这两个数。
+   对本群（实测任意 1 小时最多 30 条）意味着：`recentMessages` 只剩 ~45 分钟的记忆、未读缓冲只有 15 条
+   —— 密集刷屏时**会漏消息/忘掉半小时前聊到哪**，这正是"人能感知"的那类影响。
+2. 更关键：并行会话留了一套 **`scripts/test-token-economy.mjs`（36 条）**，专门钉这套语义 ——
+   "被挤掉的未读不能让已确认的水位倒退"、"最旧优先分页能把积压读完"、"展示过的页不能跨过自己
+   永远看不到的 eviction 空缺去推水位"。我把存储窗口改大后，这 4 条直接红了（我在动一个别人精心设计并
+   测过的契约）。撤回后 **36/36 全绿**。
+
+**结论/口径**：省 token 只允许动「唤醒提示里内联多少」（`wakeMessageLimit` / `wakeRecentLimit` /
+`wakeMaxChars`）和「表情/梗图候选数」；**不要动 `recentLimit` / `unreadLimit`**。
+契约测试里也加了这条注记，避免以后又有人顺手压它。
+
+**本群感知度评估**（用本群实测数据）：
+
+| 改动 | 本群数据 | 感知度 |
+|---|---|---|
+| 单轮步数上限 20 | 65 轮：中位 9 / 75 分位 14 / 90 分位 23 / 最大 44；>20 步的 8 轮（12%）几乎都在 9-29 调试期，今天仅 1 轮 21 步 | **唯一可能被感知**：极长回合会被提前约 1 步收尾；要零感知就把 `turnMaxSteps` 抬到 25（p90=23 能覆盖） |
+| 等待默认 10s | 预设要求直接对话显式传 20~30s；`minQuietAfterNewMs` 仍 10s | 基本无感 |
+| 唤醒内联 8/3/3000 | 提示变小 | 无感 |
+| 表情候选 8/6→4/4 | 本群表情用得较多 | 偶尔"没挑到最贴的那张"（在意就把 sticker 调回 6） |
+| proactive 2~3h + p0.2 + 01-08 静默 | 本群唤醒原因：@我 25 / 有人说话 25 / 概率 6 / 提问 4 / **主动冒泡 1** / replyCheck 1 | 几乎无感（两天才自己冒一次泡） |
+| 重试 2→1 | 只在工具参数 JSON 出错时触发 | 无感 |
+| 黑话错峰 + 攒 6 条 | — | 轻微：新词"学会"延后几小时（库里的词不受影响） |
+
+回归：契约测试新增「cost rules」一条（把 25 条规则 + 桥接侧 6 处护栏都钉住，共 15 个断言）；
+`test-turn-retry.mjs` 里 `malformedMax` 的断言同步为 1。**离线 49/49 通过**。
+
+### 16.8 修正：「干跑截止时间到」给 owner 重复发了很多次（2026-09-30）
+
+owner 反馈昨天到今天收到很多次"干跑截止时间到"。定位到 `src/bridge.js` 的 `checkDryRunExpiry()`：
+
+**根因**：去重只用一个**内存**旗标（`let dryRunExpiryAnnounced = false`）→ **桥接一重启就重置**。
+而这个函数被 **6 处**调用（每次收消息的群管理判定、唤醒提示、工具调用，以及每 10 分钟的
+`startDryRunExpiryTimer()` 定时检查），只要 `dryRun === true` 且 `dryRunUntil` 已过期，
+**每次重启后的第一次检查就会再通知一遍**。owner 的 `dryRunUntil = 2026-09-29 18:36:18` 早已过期，
+于是这两天 `bridge.log(.1)` 里 `[admin] 干跑已到期` 共 **14 次** ≈ 桥接重启次数
+（看门狗重建、改功能时重启、DSH 重启…）。**不是循环刷屏，是"每重启补一条"。**
+
+**修法**
+1. `src/moderation.js` 新增纯函数 `shouldAnnounceDryRunExpiry(cfg, announcedUntil, now)`：
+   只有「是干跑 + 设了截止时间 + 已到点 + **这个截止时间还没通知过**」才返回 true →
+   用户设了**新的**截止时间时会再通知一次（设计如此）。
+2. 已通知过的截止时间**落盘**到 `state/admin-dryrun.json`（`atomicWriteJson`），重启后不再重复。
+3. 顺手预置了这个标记（owner 已收过 14 次，不必再补一条）：连"修复后的第一遍"都不会再发。
+
+**验证**：重启桥接后 `bridge.log` 里 `干跑已到期` 计数不变（2 → 2）✓；
+`test-moderation.mjs` 新增一组断言（到期 / 已通知 / 未到期 / 新截止时间 / 非干跑 / 无截止时间，
+外加"必须落盘、必须走这个判定"），**离线 49/49 通过**。
+
+### 16.9 政策：**系统状态提示一律不发群**（owner 2026-09-30）
+
+owner：「⏹️/⏰/⚠️ 这类系统提示加上就不太像群友了」→ 群里**不再出现任何"系统通知"**。
+原本会发到群的六种，全部改走新的统一出口 `systemNotice(key, text, { ownerDm })`
+（只写 `state/bridge.log` + `state/qq-activity.log`，需要 owner 知道的可走私聊）：
+
+| 原来发到群里的 | 现在 |
+|---|---|
+| `⏹️ 已停止`（回合被中止，含我们自己按步数上限停的） | 只记日志（要私聊就把 `socialV2.notifyOwnerOnAbort` 设 true） |
+| `⏰ 等待回答超时，已取消该请求` | 只记日志 |
+| `⚠️ 我这边卡了一下，这条没处理成功，稍后再试。` | 只记日志 |
+| `⚠️ 消息未被接受：…`（两处） | 只记日志 |
+| `⏳ 系统服务重启中，消息已排队，恢复后自动处理。` | 只记日志 |
+| `⚠️ 本条回复因疑似包含敏感信息…被安全策略拦截…`（两处） | **改私聊 owner**（安全可见性不丢，群里静默） |
+
+顺带把**单轮步数上限 20 → 30**：本群活跃时段正常回合就能到 20~25 次工具往返，
+2026-09-30 14:28 / 14:56 群里看到的那两句 `⏹️ 已停止` 就是被 20 这个值切出来的。
+
+**保留的**（这些是被明确要求/交互触发的，不算"系统通知"）：日活回报、生图受理与失败提示、
+投喂回执、管理员 `/命令` 的回执、agent 提问/审批的中继（后者只在 AI 主动提问时出现）。
+
+防回归：契约测试新增 5 条"不许再发群" + "必须走 `systemNotice`"；`test-turn-retry.mjs` 里
+"出错时群里给一句人话"那条按新政策改成"不许发群"。**离线 49/49 通过。**
+
+### 16.10 修正：QQ 内置表情读不到（face 图片 URL 已 404，2026-09-30）
+
+owner 反馈"bot 没法读取 QQ 表情包"。定位过程与结论：
+
+**现象**：群里发 QQ **内置表情**（`[表情498]` 这种）时，模型只拿到文字描述、看不到图；
+日志里 `表情图片抓取失败: 抓取内容不是有效图片（PNG/JPEG/GIF/WebP）` 今天出现 8 次
+（03:35 / 08:43 / 10:37 / 11:14 / 14:11 / 15:58）。
+
+**原因**：`fetchFaceMedia()` 拿 SnowLuma 给的 `face.url` 去 `safeFetchBuffer()`，
+而**有一部分 face URL 已经 404**（返回 HTML 页面），图片校验直接抛错 → 只回落到文字。
+实测（同一个表情的两种写法）：`/qzone/em/e498.gif` → **404 text/html**；`/qzone/em/e400498.gif` → **200 image/png**。
+对照组都正常：7 张 QQ **收藏表情** URL 全 `200 image/jpeg` ✓；消息里的图 `qq_get_message_images` 一直成功 ✓。
+所以不是桥接不认识格式（`looksLikeImageBuffer` 认 PNG/JPEG/GIF/WEBP/APNG），也不是 URL 全失效。
+
+**修法**
+1. `src/safe-fetch.js` 新增纯函数 `faceImageUrlCandidates(url, faceId)`：
+   按「原 URL → 补/去 `400` 前缀的同路径变体 → 规范写法 `…/em/e400{id}.gif`」给出候选并去重；
+   候选仍然**全部**走 `safeFetchBuffer()`（SSRF/大小/格式校验一步不少，不越界到别的主机）。
+2. `fetchFaceMedia()` 改成按候选依次尝试，第一个成功的就用；失败日志补上**试过的 URL**
+   （这次排查慢就是因为日志里没有 URL），成功走备选时记
+   `表情图片改用备选 URL 成功（faceId=498）`。
+
+**验证**（用桥接自己的 `safeFetchBuffer` 跑回落链）：
+```
+faceId= 498  ✗ e498.gif (HTTP 404)  →  ✓ e400498.gif (1797B)
+faceId= 100  ✓ e100.gif (2576B)      ← 主 URL 正常，行为不变
+```
+新增 `scripts/test-face-media.mjs`（7 组断言：候选顺序 / 两个方向的前缀变体 / 无 url 时按 id 兜底 /
+非法 id 不瞎猜 / 去重 / 不越界到别的主机 / bridge 必须按候选取且仍过 safeFetchBuffer）。
+**离线 50/50 通过。**
+
+**遗留（未修，属于第三方 MCP）**：`qq_send_sticker` 报 `找不到表情 无语，请先用 qq_list_stickers 获取有效 id`
+—— 模型把**备注名**当 id 传了（该工具只认 `emoji_id / md5 / url`），解析发生在 snowluma MCP 内部，
+不在本仓库；另外 11:50 偶发过一次 `图片地址不合法，已拒绝发送：read …`（下载那张表情时网络读失败）。
+
+### 16.11 真凶：DSH 校验图片 base64 的正则**爆栈**，大图被降级成文本（2026-09-30）
+
+16.10 修掉了 QQ 内置表情的 URL 404，但 owner 说"又发了两个表情，还是不行"。继续查会话转录
+（`~/.dsh/sessions/--D-dsh-qq-bridge--/<session>/session.v4.jsonl.zstd`，按 zstd 魔数逐帧解压）→
+工具结果原文写着：
+
+```
+{"type":"text","text":"消息 -277575868 的媒体内容（1 项）：\n[图片1]"},
+{"type":"text","text":"[image unavailable: image/png; Maximum call stack size exceeded;
+                        raw image data remains available to programmatic callers]"}
+```
+
+对比同一轮里**成功**的两张：直接返回 `{"type":"image","attachment":{…}}` ✓。所以：
+**图取到了（HTTP 200）、桥接没问题、QQ 没问题，是 DSH 自己把图丢了。**
+
+**根因**（`@deepseek-ai/dsh-mcp-client/lib/index.js:81`，`dsh-acp` 里同款）：
+
+```js
+const CANONICAL_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+if (!CANONICAL_BASE64.test(block.data)) throw new Error('the image data is not canonical base64');
+```
+
+`(?:…)*` 在 V8 里是**递归**实现，递归深度 ∝ `data.length/4`：图片 base64 到 ~4.4MB 就
+`RangeError: Maximum call stack size exceeded`（RangeError 的 message 被当成"拒绝理由"写进
+`[image unavailable: …]`，所以群里表现为"就它一张死活读不出来、重发也没用"）。
+
+**实测阈值**（`C:\Temp\repro-base64-stack.mjs` 口径）：
+
+| 图片 | base64 | 老正则 |
+|---|---|---|
+| 198KB / 1.8MB（`124720AD….png` 1672×941） | 2.4MB | ✓ 通过 |
+| **3.3MB**（`A881BE00….jpg` 1026×1532） | 4.4MB | ✗ RangeError 爆栈 |
+| 3.4MB（`8A28F14B….jpg`） | 4.5MB | ✗ 同上 |
+
+触发点是**字节数**不是像素数：成功那张 1672×941 = 1.57M 像素，失败的两张 1026×1532 也是 1.57M 像素。
+
+**修法**：`scripts/patch-dsh-base64.mjs`（放进本仓库，可重复执行）把正则换成**线性**逐字符校验：
+
+```bash
+node scripts/patch-dsh-base64.mjs          # 打补丁（幂等；自动备份 index.js.bak-qqbridge）
+node scripts/patch-dsh-base64.mjs --check  # 只检查
+node scripts/patch-dsh-base64.mjs --revert # 还原
+```
+
+- 覆盖 `dsh-mcp-client`（这次触发的）与 `dsh-acp`（同款隐患）；若文件里还有别处引用
+  `CANONICAL_BASE64`，脚本会补一个同名的 `{ test }` 别名，保证不留下未定义引用。
+- 脚本自带自检：小样本与老正则**逐例一致**（含空串），4.4MB base64 不再抛错，非法字符仍被拒。
+- 两个文件 `node --check` 通过；`--check` 复查显示"已打补丁"。
+
+**为什么修完就能过**：DSH 附件库自己的限制是 `maxImageBytes 20MB` / `maxImagePixels 64M` /
+`maxImageDimension 8192`（`dsh-attachment-local` 默认值），3.3MB / 1.57M 像素远在限内 ✓。
+
+**注意**
+1. **需要重启一次 DSH 才生效**（`lib/index.js` 是启动时加载的）。重启后让机器人重新读那条消息即可。
+2. 这是对**全局安装包**打的本地补丁：`npm i -g @deepseek-ai/dsh` 之后会被覆盖，**重跑一次脚本**即可。
+3. 顺带在转录里看到一次 `Error: 等待失败：fetch failed`（`qq_wait_for_messages` 偶发），未处理。
+
 
 
 

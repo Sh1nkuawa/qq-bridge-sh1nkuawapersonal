@@ -10,7 +10,7 @@ import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile, spawn } from 'node:child_process';
 import yaml from 'js-yaml';
 import { extractPresetPrefix, presetPromptBlockers, presetPromptWarnings, renderPresetPromptYaml } from './preset-prompt.js';
 import { GEN1_ROLE_LINE_RE, parseRoleSections, roleCharStats, roleSectionReport, selectRoleText } from './role-card.js';
@@ -52,14 +52,16 @@ import {
   shouldAlertHungry
 } from './feed.js';
 import { compactModelMessage } from './qq-model-view.js';
-import { safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
+import { faceImageUrlCandidates, safeFetchBuffer, looksLikeImageBuffer } from './safe-fetch.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 // 收到别人的语音 → 文字（见 voice-transcribe.js：回填式/等待式两种接入）
 import { applyVoiceTranscript, buildVoiceTranscript, settleVoiceTranscript, transcribeVoiceMessage } from './voice-transcribe.js';
+// 明日方舟日活：触发命令判定 + 结果措辞（纯函数，回归见 scripts/test-arknights-command.mjs）
+import { describeJob as describeArknightsJob, formatArknightsReport, isArknightsCommand } from './arknights-command.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
 import { hardenDir, manualDirCommand } from './state-acl.mjs';
 import { extractForwardIds, forwardIdFromData, sanitizeForwardId, formatForwardResponse } from './forward.js';
-import { resolvePriceTable } from './model-prices.js';
+import { isPeakAt, resolvePriceTable } from './model-prices.js';
 import { createTokenLedger } from './token-ledger.js';
 import {
   loadSlang,
@@ -128,6 +130,7 @@ import {
   buildMuteNotice,
   pickAnnounceLine,
   isDryRun,
+  shouldAnnounceDryRunExpiry,
   dryRunRemainingMs,
   FORBIDDEN_ACTIONS
 } from './moderation.js';
@@ -803,7 +806,7 @@ function loadConfig() {
       // （MALFORMED_RESPONSE，模型偶发把中文正文写成不带引号的裸文本）自动重发一次。
       // DSH 自己的重试策略不覆盖这个错误码，不补的话整回合直接判死、群里只会看到一句报错。
       errorRetry: {
-        malformedMax: 2,      // 同一时间窗内最多自动重试几次
+        malformedMax: 1,      // [省 token] 2→1：一次重试就是整轮重发
         windowMs: 180000,     // 计数窗口
       },
       // [qq-bridge 本地补丁] SnowLuma 链路存活的判定参数（见 src/snowluma-liveness.mjs）。
@@ -887,7 +890,7 @@ function loadConfig() {
         recommendedHint: '普通闲聊建议一次 1~3 条，条间 1~3 秒；讲故事/回忆可以 5~10 秒间隔；不要连续刷屏。'
       },
       wait: {
-        defaultMs: 30000,
+        defaultMs: 10000,          // [省 token] 30s→10s：桥接本来就会把新消息推进会话，长轮询是纯空转（每次等待都是一步全上下文重发）
         minMs: 5000,
         maxMs: 600000,
         defaultQuietMs: 8000,
@@ -898,7 +901,7 @@ function loadConfig() {
         syncTtlMs: 60000,          // QQ 收藏表情刷新缓存 TTL（毫秒）
         maxListCount: 100,         // qq_list_stickers 单次最大返回数
         includeInPrompt: true,     // 是否在 qq_get_prompt / 唤醒提示里附带表情摘要与策略
-        promptMaxStickers: 8,      // 提示里最多列出的常用表情数
+        promptMaxStickers: 4,      // [省 token] 8→4：每轮都注入，候选越多越贵
         collect: {
           enabled: true,           // AI 收藏他人表情总开关
           maxPerMinute: 2,         // 每分钟最多收藏次数
@@ -908,23 +911,34 @@ function loadConfig() {
       },
       proactive: {
         enabled: true,
-        checkIntervalMinMs: 30 * 60 * 1000,
-        checkIntervalMaxMs: 90 * 60 * 1000,
+        checkIntervalMinMs: 120 * 60 * 1000,   // [省 token] 30min→2h：每次主动开口都是一整轮的钱
+        checkIntervalMaxMs: 180 * 60 * 1000,   // 90min→3h
         idleThresholdMs: 15 * 60 * 1000,
-        probability: 0.3
+        probability: 0.2,                      // 0.3→0.2：小概率开口
+        quietHours: [1, 8]                     // [省 token] 01:00~08:00 不主动开口（顺带解决半夜冒泡）
       },
+      // [省 token] 单轮工具往返上限：超了就请求 DSH 收尾，避免一轮无限重发上下文。
+      // 实测本群活跃时段正常回合就能到 20~25 步（2026-09-30 14:28/14:56 就是被 20 这个值切了两次），
+      // 所以放到 30：既能拦住 44 步那种失控回合，又碰不到正常聊天。
+      turnMaxSteps: 30,
+      autoReplyCheckOnlyWhenExpected: true,    // [省 token] 只在"对方在问/点名/还有新消息没回"时才排回复检查
       feedback: {
         maxLength: 500,
         notifyOwnerOnError: false
       },
       context: {
+        // [省 token] 这几个数直接决定"每步上下文有多大"：实测每步 36~52k tokens，主要是历史与工具结果
+        // ⚠️ 这两个数是**机器人的记忆/缓冲窗口本身**（不是"只影响喂给模型多少"）：
+        //    它们同时是 st.recentMessages / st.unread 的裁剪上限，而且有专门的 eviction + 水位回归
+        //    （scripts/test-token-economy.mjs：挤掉的未读不能让已确认的水位倒退、最旧优先分页能把积压读完）。
+        //    2026-09-30 的省 token 改造想压它们，实测会让人能感知到"漏消息/忘掉半小时前"，所以**保持原值**。
         recentLimit: 100,
         unreadLimit: 30,
         contextWindow: 20,
         inlineWakeMessages: true,
-        wakeMessageLimit: 12,
-        wakeRecentLimit: 4,
-        wakeMaxChars: 6000
+        wakeMessageLimit: 8,       // 12→8：唤醒提示里内联的未读条数
+        wakeRecentLimit: 3,        // 4→3：唤醒提示里内联的"最近对话"条数
+        wakeMaxChars: 3000         // 6000→3000：内联上下文的总字符上限
       },
       ...(file.socialV2 ?? {})
     }
@@ -1027,6 +1041,84 @@ function loadConfig() {
     includeInPrompt: true,
     promptDailyMax: 3,
     ...(cfg.socialV2?.voice ?? {})
+  };
+
+  // socialV2.arknights：明日方舟日活（提权计划任务 + 只有 owner 的那一句命令触发）。
+  //
+  // 为什么桥接不自己启 MAA：MAA 与官方 PC 端（带 ACE 反作弊）都以管理员身份运行，而桥接是普通权限
+  // —— 中等完整性进程既不能给高完整性窗口发输入，也不能结束它的进程。所以桥接只做一件事：
+  // `schtasks /Run` 一个**预先注册好的「最高权限」计划任务**（同一账号允许，不再弹 UAC）。
+  // 执行细节全在 scripts/arknights-daily.mjs（它才是提权跑的那个）。
+  cfg.socialV2.arknights = {
+    enabled: false,
+    // 只有**完全等于**这句话（去掉 @、空白、句末标点后）才会触发；别的说法一律不触发
+    command: '帮我做明日方舟日活',
+    taskName: 'qq-bridge-arknights-daily',
+    timeoutSec: 1800,              // 与执行器一致：跑完即停，30 分钟兜底
+    stateFile: 'state/arknights-daily.json',
+    logFile: 'state/arknights-daily.log',
+    requestFile: 'state/arknights-daily-request.json',
+    runnerPath: 'scripts/arknights-daily.mjs',
+    mode: 'task',                  // task=触发提权计划任务（游戏需要管理员）；direct=桥接直接拉
+    displayName: '明日方舟日活',
+    // 以下是给执行器（scripts/arknights-daily.mjs）读的路径；放同一块配置里方便只维护一份
+    maaPath: 'G:\\MAA\\MAA.exe',
+    maaConfigPath: 'G:\\MAA\\config\\gui.new.json',
+    maaLogPath: 'G:\\MAA\\debug\\asst.log',
+    adbPath: 'G:\\MuMuPlayer\\nx_device\\12.0\\shell\\adb.exe',
+    adbAddress: '127.0.0.1:16384',
+    // owner 实测：**MAA 拉不起官方 PC 端**；而桌面图标只拉起鹰角启动器（还要再点一下才进游戏）。
+    // 所以执行器按候选链试启动，并以「游戏进程（Arknights.exe/PlatformProcess.exe）出现」为准。
+    startClient: true,
+    clientCandidates: [
+      { exe: 'G:\\Hypergryph Launcher\\games\\Arknights Game\\Arknights.exe', args: [] },
+      { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: ['--game=Arknights', '--reason=4'] }
+    ],
+    // 判定"游戏在不在"只看游戏本体：PlatformProcess.exe 是反作弊平台的常驻辅助进程，游戏没开它也可能在
+    // （2026-09-29 22:47 被它骗过一次）→ 不能算进来
+    clientProcesses: ['Arknights.exe'],
+    clientBootSec: 45,             // 每个候选起来后等游戏进程出现的上限
+    windowWaitSec: 60,             // 进程出现后等窗口出现的上限（Win32 截图需要窗口）
+    clientWaitSec: 30,             // 游戏出现后再等这么久才起 MAA
+    manualWaitSec: 300,            // 候选都没成功时，留给 owner 手动点一下的等待
+    adbWaitSec: 90,
+    connectMode: 'auto',           // auto=读 MAA 的 ConnectSettings.Config（PC→Win32，不等 ADB）
+    maaStartGame: false,           // 客户端由执行器起，别让 MAA 再试
+    trigger: 'auto',               // auto=启动 MAA 前调好「直接运行」；hotkey=发 Ctrl+Shift+Alt+L
+    closeClient: true,
+    closeMaa: true,
+    ...(cfg.socialV2?.arknights ?? {})
+  };
+
+  // socialV2.endfield：终末地日活（MAAEND / MXU）。与 arknights 的差别：
+  //   · 工具 MaaEnd.exe 不需要管理员，但**官方 PC 端 Endfield.exe 需要** → 仍然走提权计划任务，
+  //     由执行器提权起游戏、再把 MAAEND 降权到普通权限启动（详见 scripts/game-daily.mjs 的 DEFAULT_ENDFIELD）
+  //   · 没有 ADB；完成判据是「Tasker.Task.Succeeded 计数到本实例任务数」或日志出现"全部完成"文案
+  cfg.socialV2.endfield = {
+    enabled: false,
+    command: '帮我做终末地日活',
+    taskName: 'qq-bridge-endfield-daily',
+    runnerPath: 'scripts/endfield-daily.mjs',
+    mode: 'task',                  // task=触发提权计划任务；direct=桥接直接拉执行器（不需要提权的那种玩法）
+    timeoutSec: 1800,
+    stateFile: 'state/endfield-daily.json',
+    logFile: 'state/endfield-daily.log',
+    requestFile: 'state/endfield-daily-request.json',
+    maaPath: 'G:\\MAAEND\\MaaEnd.exe',
+    maaConfigPath: 'G:\\MAAEND\\config\\mxu-MaaEnd.json',
+    maaLogPath: 'G:\\MAAEND\\debug\\maafw.log',
+    maaLogDirs: ['G:\\MAAEND\\debug'],
+    maaDeElevated: false,          // 与执行器档案一致：MAAEND 也提权跑（Win32-Front 本身就要求权限）
+    connectMode: 'pc',
+    startClient: true,
+    clientCandidates: [
+      { exe: 'G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe', args: [] },
+      { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: ['--game=Endfield', '--reason=4'] }
+    ],
+    clientProcesses: ['Endfield.exe'],
+    closeClient: true,
+    closeMaa: true,
+    ...(cfg.socialV2?.endfield ?? {})
   };
 
   // socialV2.sticker.collect 也需要深度合并，避免旧配置缺失 collect 子项时丢默认值。
@@ -1300,6 +1392,19 @@ function withTimeout(promise, ms, label) {
     timer = setTimeout(() => reject(new Error(`操作超时(${ms}ms)：${label}`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** 跑一条外部命令（不阻塞事件循环；永不 reject）。用于 schtasks 这类一次性小调用。 */
+function execFileP(cmd, args, { timeoutMs = 20000 } = {}) {
+  return new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+        resolve({ ok: !error, stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), error: error?.message ?? '' });
+      });
+    } catch (error) {
+      resolve({ ok: false, stdout: '', stderr: '', error: error?.message ?? String(error) });
+    }
+  });
 }
 
 async function segmentsToText(segments, options = {}) {
@@ -1614,6 +1719,127 @@ async function main() {
       log(`[voice] ${key} 语音未能转写（messageId=${messageId}）：${result?.error ?? '空结果'}`);
     }
     return ok;
+  }
+
+  /**
+   * 「游戏日活」任务清单（明日方舟 / 终末地）。每个任务一份独立配置：
+   * 触发命令、计划任务名或执行器路径、超时、状态文件；执行细节都在 scripts/game-daily.mjs。
+   */
+  const GAME_JOB_DEFAULTS = {
+    arknights: { id: 'arknights', displayName: '明日方舟日活', command: '帮我做明日方舟日活', taskName: 'qq-bridge-arknights-daily', runnerPath: 'scripts/arknights-daily.mjs', stateFile: 'state/arknights-daily.json', logFile: 'state/arknights-daily.log', requestFile: 'state/arknights-daily-request.json' },
+    endfield: { id: 'endfield', displayName: '终末地日活', command: '帮我做终末地日活', taskName: 'qq-bridge-endfield-daily', runnerPath: 'scripts/endfield-daily.mjs', stateFile: 'state/endfield-daily.json', logFile: 'state/endfield-daily.log', requestFile: 'state/endfield-daily-request.json' }
+  };
+
+  function gameJobs() {
+    const abs = (p, d) => path.resolve(ROOT, String(p ?? d));
+    return Object.entries(GAME_JOB_DEFAULTS).map(([id, d]) => {
+      const j = { ...d, ...(cfg.socialV2?.[id] ?? {}) };
+      return {
+        id,
+        displayName: String(j.displayName ?? d.displayName),
+        enabled: j.enabled === true,
+        command: String(j.command ?? d.command).trim() || d.command,
+        taskName: String(j.taskName ?? d.taskName).trim(),
+        runnerPath: String(j.runnerPath ?? d.runnerPath),
+        mode: j.mode === 'direct' ? 'direct' : 'task',
+        timeoutSec: Number(j.timeoutSec) > 0 ? Number(j.timeoutSec) : 1800,
+        stateFile: abs(j.stateFile, d.stateFile),
+        logFile: abs(j.logFile, d.logFile),
+        requestFile: abs(j.requestFile, d.requestFile)
+      };
+    });
+  }
+
+  /** 读某个任务执行器写下的最近一次运行状态（没有就 null）。 */
+  function readGameJob(job) {
+    try { return readJsonSafe(job.stateFile, null); } catch { return null; }
+  }
+
+  /**
+   * owner 说「帮我做明日方舟日活 / 帮我做终末地日活」时走这里：触发执行器，并把这次请求记下来（跑完回报）。
+   *
+   * 调用点已经保证「只有 owner + 对着机器人说的那**一整句**」才会进来（见 handleIncoming），
+   * 所以这里不再做权限判断，只负责：正在跑就别重复触发 → 记请求 → 触发 → 回一句。
+   *
+   * 触发方式两种（配置 mode）：
+   *   task   触发预先注册好的**最高权限计划任务**（游戏要管理员，见 INSTALL_NOTES 16.5）
+   *   direct 桥接直接拉起执行器（不需要提权的玩法，比如 owner 自己开游戏那种）
+   */
+  async function handleGameJobRequest(job, key, event) {
+    const desc = describeArknightsJob(readGameJob(job), Date.now(), { timeoutSec: job.timeoutSec });
+    if (desc && desc.state === 'running') {
+      await sendToQQ(key, `${job.displayName}已经在跑了（${desc.text}），跑完我告诉你。`);
+      return;
+    }
+    try {
+      fs.mkdirSync(path.dirname(job.requestFile), { recursive: true });
+      fs.writeFileSync(job.requestFile, `${JSON.stringify({ key, at: Date.now(), by: String(event?.user_id ?? '') }, null, 2)}\n`, 'utf8');
+    } catch (error) {
+      log(`⚠️ 写 ${job.id} 请求文件失败：${error?.message ?? error}`);
+    }
+    let detail = '';
+    let ok = false;
+    if (job.mode === 'direct') {
+      try {
+        const child = spawn(process.execPath, [path.resolve(ROOT, job.runnerPath)], {
+          cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true
+        });
+        child.unref();
+        ok = true;
+        log(`[${job.id}] 已直接拉起执行器（PID ${child.pid ?? '?'}）`);
+      } catch (error) {
+        detail = error?.message ?? String(error);
+      }
+    } else {
+      const r = await execFileP('schtasks.exe', ['/Run', '/TN', job.taskName], { timeoutMs: 25000 });
+      ok = r.ok;
+      detail = `${r.stderr || r.stdout || r.error || ''}`.trim().replace(/\s+/g, ' ').slice(0, 200);
+    }
+    if (ok) {
+      appendActivity(`${key} [${job.id}] owner 触发${job.displayName}`);
+      log(`[${job.id}] 已触发（${job.mode === 'direct' ? 'direct' : job.taskName}）（${key}）`);
+      await sendToQQ(key, `好，开始跑${job.displayName}：跑完就停（最多等 ${Math.round(job.timeoutSec / 60)} 分钟兜底），出结果我回来告诉你。`);
+      return;
+    }
+    appendActivity(`${key} [${job.id}] 触发失败：${detail}`);
+    log(`⚠️ [${job.id}] 触发失败：${detail}`);
+    await sendToQQ(key, `触发${job.displayName}失败：${detail || '未知错误'}\n（「找不到任务」的话，先用管理员 PowerShell 跑一次 scripts\\game-daily-setup.ps1 -Profile ${job.id} 注册任务）`);
+  }
+
+  /**
+   * 日活回报：执行器把结果写进 state/<游戏>-daily.json，这里轮询到「新的 finishedAt」就回报给
+   * 当初提要求的会话；一直没结果（比如任务没注册成功）也会在超时后给个交代。
+   */
+  function startGameJobReporters() {
+    for (const job of gameJobs()) {
+      if (!job.enabled) continue;
+      // 启动时留一行，方便确认「这个功能到底装上没有」（也方便排查为什么没回报）
+      log(`[${job.id}] ${job.displayName}已启用：触发命令「${job.command}」（仅 owner + 对着机器人说），${job.mode === 'direct' ? '桥接直接拉起执行器' : `计划任务 ${job.taskName}`}，跑完回报`);
+      const stateName = path.basename(job.stateFile);
+      const tick = async () => {
+        try {
+          const req = readJsonSafe(job.requestFile, null);
+          if (!req || !req.key || !req.at) return;
+          const result = readGameJob(job);
+          const finishedAt = Number(result?.finishedAt) || 0;
+          if (finishedAt >= Number(req.at)) {
+            await sendToQQ(req.key, formatArknightsReport(result));
+            fs.rmSync(job.requestFile, { force: true });
+            appendActivity(`${req.key} [${job.id}] 已回报结果（ok=${result?.ok === true}）`);
+            return;
+          }
+          const waitedMs = Date.now() - Number(req.at);
+          if (waitedMs > (job.timeoutSec + 600) * 1000) {
+            await sendToQQ(req.key, `${job.displayName}好像没跑起来（等了 ${Math.round(waitedMs / 60000)} 分钟没见到结果）：看 state\\${stateName} 同目录的日志，或确认${job.mode === 'direct' ? '执行器路径' : `计划任务 ${job.taskName} 已注册`}。`);
+            fs.rmSync(job.requestFile, { force: true });
+          }
+        } catch (error) {
+          log(`⚠️ [${job.id}] 回报异常：${error?.message ?? error}`);
+        }
+      };
+      const timer = setInterval(() => { void tick(); }, 30000);
+      timer.unref?.();
+    }
   }
 
   function voiceLibrary() {
@@ -2328,13 +2554,21 @@ async function main() {
   }
 
   /** 干跑到期检查：到点只记一次日志 + 通知 owner，之后按生效走。 */
-  let dryRunExpiryAnnounced = false;
+  // [qq-bridge 本地补丁] 「已通知过哪个截止时间」必须**落盘**：以前只用内存变量，桥接一重启就忘，
+  // 于是每次重启都重新给 owner 发一遍"干跑截止时间到了"（实测两天 14 次）。
+  const DRY_RUN_ANNOUNCE_FILE = path.join(STATE_DIR, 'admin-dryrun.json');
+  let dryRunAnnouncedUntil = (() => {
+    try { return Number(readJsonSafe(DRY_RUN_ANNOUNCE_FILE, null)?.announcedUntil) || 0; } catch { return 0; }
+  })();
+  function rememberDryRunAnnounced(until) {
+    dryRunAnnouncedUntil = Number(until) || 0;
+    try { atomicWriteJson(DRY_RUN_ANNOUNCE_FILE, { version: 1, announcedUntil: dryRunAnnouncedUntil, at: new Date().toISOString() }); }
+    catch (error) { log(`⚠️ 记录干跑到期通知失败（不影响功能）：${error?.message ?? error}`); }
+  }
   function checkDryRunExpiry() {
     const c = adminCfg();
-    if (!c.dryRun || c.dryRunUntil <= 0) return;
-    if (Date.now() < c.dryRunUntil) return;
-    if (dryRunExpiryAnnounced) return;
-    dryRunExpiryAnnounced = true;
+    if (!shouldAnnounceDryRunExpiry(c, dryRunAnnouncedUntil)) return;
+    rememberDryRunAnnounced(c.dryRunUntil);
     log(`[admin] 干跑已到期（${new Date(c.dryRunUntil).toLocaleString('zh-CN')}），群管理转为**生效**（dryRunUntil 已过）`);
     appendActivity('[admin] 干跑到期，禁言功能转为生效');
     void notifyOwner('群管理已生效', `干跑截止时间到了（${new Date(c.dryRunUntil).toLocaleString('zh-CN')}）。从现在起，刷屏/持续骂我会**真的禁言** 1~10 分钟，执行后私聊告诉你。想继续观察就把控制台的「干跑」重新勾上并清空截止时间。`).catch(() => {});
@@ -2858,7 +3092,15 @@ async function main() {
     if (cfg.slang?.enabled === false) return;
     if (!dshReady) return;
     // 过滤掉已经在研究队列里的候选，避免同一批被重复排队研究。
-    const targets = candidates.filter((e) => e && !slangResearchingIds.has(e.id));
+    // [省 token] 攒够一批再研究（默认 6 条）：每次研究都要新开一轮会话、把候选喂进去
+    const allTargets = candidates.filter((e) => e && !slangResearchingIds.has(e.id));
+    const minPending = Math.max(1, Number(cfg.slang?.researchMinPending ?? 6));
+    if (allTargets.length < minPending) {
+      log(`黑话研究：候选只有 ${allTargets.length} 条（< ${minPending}），攒着下次一起研究`);
+      return;
+    }
+    // [省 token] 单批最多研究这么多条，避免一次喂进去几十条候选
+    const targets = allTargets.slice(0, Math.max(1, Number(cfg.slang?.researchBatchMax ?? 5)));
     if (!targets.length) return;
     for (const e of targets) slangResearchingIds.add(e.id);
     let sessionId;
@@ -2910,6 +3152,8 @@ async function main() {
   function maybeQueueSlangExtraction(key) {
     if (cfg.slang?.enabled === false) return;
     if (!dshReady) return;
+    // [省 token] 非高峰才跑黑话提取/研究（价目表高峰 ×2：工作日 09-12 / 14-18）
+    if (cfg.slang?.offPeakOnly !== false && isPeakAt(Date.now(), priceTable)) return;
     const cooldown = Number(cfg.slang?.extractCooldownMs ?? 300000);
     const last = slangExtractionCooldowns.get(key) ?? 0;
     if (Date.now() - last < cooldown) return;
@@ -3079,6 +3323,10 @@ async function main() {
   });
 
   /** sessionId -> 最近一次已知的实际模型。切换模型会让单价差好几倍，所以按会话记。 */
+  /** [省 token] sessionId -> 本轮已发生的工具往返次数（用于单轮步数上限） */
+  const v2TurnSteps = new Map();
+  const v2TurnCapped = new Set();   // 本轮是否已经因为超上限请求过收尾（避免重复调用）
+  const v2CappedKeys = new Set();   // key：这一轮是被"步数上限"中止的（中止提示就别往群里发了）
   const sessionModels = new Map();
   const nominalModel = () => cfg.dsh?.model || 'deepseek-flash';
 
@@ -8640,6 +8888,21 @@ async function main() {
   // 更新 lastAiReplyAt / 活跃调度，实际群里什么都没收到，而且只有一行滚动日志能看出问题。
   const lastSendFailed = new Map(); // key -> true（下一次成功即清除）
 
+  /**
+   * 系统状态提示的统一出口：**一律不发群里**。
+   *
+   * owner 2026-09-30 的决定：「⏰ 等待回答超时」「⚠️ 我这边卡了一下」「⏳ 系统服务重启中」
+   * 「⚠️ 消息未被接受」这类"系统通知"发到群里会让机器人不像群友（群友之间不会收到这种提示）。
+   * 所以它们只写 bridge.log + 活动记录；确实需要 owner 知道的（例如回复被安全策略拦截）
+   * 用 ownerDm 走私聊，不占群里的观感。
+   */
+  function systemNotice(key, text, { ownerDm = false } = {}) {
+    const flat = String(text ?? '').replace(/\s+/g, ' ').slice(0, 200);
+    log(`[reserved2] ${key} 系统提示（不发群）：${flat}`);
+    appendActivity(`${key} [reserved2] 系统提示：${flat}`);
+    if (ownerDm) void sendOwnerDM(text).catch(() => {});
+  }
+
   function sendToQQ(key, msg) {
     const assertSendAllowed = captureSendGuard(key);
     const safeMsg = redactKnownTokensOnly(msg);
@@ -9096,17 +9359,21 @@ async function main() {
       const face = await bot.fetchFaceEntity(faceId);
       if (face && typeof face === 'object') {
         const desc = face.q_des || (Array.isArray(face.emoji_name_alias) && face.emoji_name_alias[0]) || '';
-        if (face.url) {
+        // [2026-09-30 修] SnowLuma 给的 face.url 有一部分已 404（返回 HTML），而同一个表情的
+        // 「400 前缀」写法还在。这里按候选依次尝试：原 URL → 补/去 400 的变体 → 规范写法。
+        const candidates = faceImageUrlCandidates(face.url, faceId);
+        for (const url of candidates) {
           try {
-            const fetched = await safeFetchBuffer(String(face.url), MAX_MEDIA_BYTES);
+            const fetched = await safeFetchBuffer(url, MAX_MEDIA_BYTES);
             const dims = getImageDimensions(fetched.buffer);
             if (dims && dims.width * dims.height > MAX_MEDIA_PIXELS) {
-              log(`表情图片像素超限，已跳过（${dims.width}x${dims.height}）`);
-            } else {
-              return { buffer: fetched.buffer, mimeType: mimeFromBuffer(fetched.buffer) || mimeFromUrl(face.url), text: desc ? `[表情:${desc}]` : '' };
+              log(`表情图片像素超限，已跳过（${dims.width}x${dims.height}）：${url}`);
+              continue;
             }
+            if (url !== String(face.url)) log(`表情图片改用备选 URL 成功（faceId=${faceId}）：${url}`);
+            return { buffer: fetched.buffer, mimeType: mimeFromBuffer(fetched.buffer) || mimeFromUrl(url), text: desc ? `[表情:${desc}]` : '' };
           } catch (error) {
-            log(`表情图片抓取失败: ${error?.message ?? error}`);
+            log(`表情图片抓取失败（${url}）: ${error?.message ?? error}`);
           }
         }
         return { text: desc ? `[表情:${desc}]` : `[表情#${media.faceId}]` };
@@ -9468,9 +9735,8 @@ async function main() {
     if (shouldAuditKey(key) && (SENSITIVE_RE.test(text) || hasKnownToken)) {
       log(`⚠️ 回复被安全策略拦截 (${key})，疑似包含敏感信息${hasKnownToken ? '（含会话令牌）' : ''}`);
       appendActivity(`${key} agent 回复被拦截（疑似敏感信息${hasKnownToken ? '/会话令牌' : ''}）`);
-      if (cfg.security?.interceptNotify !== false) {
-        await sendToQQ(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。');
-      }
+      // [owner 2026-09-30] 群里不再播报"被安全策略拦截"（机器味太重）；改成私聊 owner（安全可见性不丢）
+      systemNotice(key, `⚠️ 群 ${key} 有一条回复因疑似包含敏感信息（路径/凭据/会话令牌）被拦截，已记录。`, { ownerDm: cfg.security?.interceptNotify !== false });
       return false;
     }
     await sendToQQ(key, text);
@@ -10448,7 +10714,7 @@ async function main() {
       if (opts.farewell) social.exitingSessions.delete(sessionId);
       const errText = `${accepted.result.error.code}: ${accepted.result.error.message}`;
       const safeErrText = shouldAuditKey(key) && SENSITIVE_RE.test(errText) ? '（含敏感信息，已隐藏）' : errText;
-      if (!opts.silent) await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
+      if (!opts.silent) systemNotice(key, `⚠️ 消息未被接受：${safeErrText}`);
       return { ok: false, error: safeErrText };
     }
     if (wakeSnapshot && isCurrentSession(key, sessionId)
@@ -11755,6 +12021,18 @@ async function main() {
         + `不适合正经问答、解释事情、严肃或敏感话题、别人正等你回话时、能用表情包解决的地方。`
         + `一段对话最多 1 条，不要连发、也不要替代正常回话（发完不必再说「我刚发了语音」）。${quota}\n\n`;
     })();
+    // [qq-bridge 本地补丁] 方舟日活状态：正在跑 / 刚跑完时提一句（AI 被问起就知道，不用瞎猜）
+    const arknightsLine = (() => {
+      try {
+        const parts = [];
+        for (const job of gameJobs()) {
+          if (!job.enabled) continue;
+          const desc = describeArknightsJob(readGameJob(job), Date.now(), { timeoutSec: job.timeoutSec });
+          if (desc && desc.text) parts.push(`【${job.id === 'endfield' ? '终末地日活' : '方舟日活'}】${desc.text}`);
+        }
+        return parts.length ? `${parts.join('\n')}\n\n` : '';
+      } catch { return ''; }
+    })();
     const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。\n\n';
     const replyTiming = replyTimingV2(st);
     const replyLine = `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_messages(purpose="reply", quietMs=${replyTiming.quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(replyTiming.remainingQuietMs / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。\n\n`;
@@ -11869,7 +12147,7 @@ async function main() {
       st.retryHint = '';
       return `【上一次失败，请重发】${hint}\n\n`;
     })();
-    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
@@ -12012,6 +12290,21 @@ async function main() {
     const askedQuestion = recentSelf.some((m) => /[?？吗呢怎么有没有能不能]/.test(String(m.text || m.plain || '')));
     if (askedQuestion) delay = Math.round(delay * 1.5);
     if (recentSelf.length >= 3) delay = Math.round(delay * 1.3);
+    // [省 token] 默认只在"真的还欠人一句话"时才排回复检查：
+    //   · 我刚问过问题（等对方答），或
+    //   · 最后一条别人的消息是在我之后到的（还没回），或带了问号 / 引用了我
+    // 否则这个唤醒大概率什么都不说，纯烧一轮上下文（实测每轮 ¥0.001~0.01，一天十几次）
+    if (cfg.socialV2?.autoReplyCheckOnlyWhenExpected !== false && !askedQuestion) {
+      const lastSelfAt = recent.filter((m) => m && m.isSelf).reduce((a, m) => Math.max(a, Number(m.time || 0)), 0);
+      const lastOther = [...recent].reverse().find((m) => m && !m.isSelf);
+      const otherText = String(lastOther?.text || lastOther?.plain || '');
+      const otherNewer = Number(lastOther?.time || 0) > lastSelfAt;
+      const asksMe = /[?？]/.test(otherText) || lastOther?.quoteTargetIsSelf === true || otherNewer;
+      if (!asksMe) {
+        log(`[reserved2] ${key} 跳过回复检查（没人提问/点名，也没有未回的新消息）`);
+        return;
+      }
+    }
     st.replyCheckTimer = setTimeout(() => {
       st.replyCheckTimer = null;
       void sendWakePromptV2(key, 'replyCheck').catch((error) => log(`[reserved2] replyCheck 唤醒异常 ${key}:`, error?.message ?? error));
@@ -12190,6 +12483,19 @@ async function main() {
       if (pendingThoughts > 0) prob = Math.min(1, prob * 1.4);
       if (st.lastAiReplyAt && Date.now() - Number(st.lastAiReplyAt) < 30 * 60 * 1000) prob *= 0.5;
       const hour = new Date().getHours();
+      // [省 token] 硬静默时段（默认 01:00~08:00）：这段时间直接不主动开口，只重新排下一次
+      const quiet = Array.isArray(p.quietHours) && p.quietHours.length === 2;
+      if (quiet) {
+        const from = Number(p.quietHours[0]);
+        const to = Number(p.quietHours[1]);
+        const inQuiet = Number.isFinite(from) && Number.isFinite(to)
+          && (from <= to ? (hour >= from && hour < to) : (hour >= from || hour < to));
+        if (inQuiet) {
+          log(`[reserved2] ${key} 处于主动开口静默时段（${from}:00-${to}:00），本次不开口`);
+          scheduleProactiveCheckV2(key);
+          return;
+        }
+      }
       if (hour >= 23 || hour < 8) prob *= 0.3;
       const recent = Array.isArray(st.recentMessages) ? st.recentMessages : [];
       const aiCount = recent.filter((m) => m && m.isSelf && Date.now() - Number(m.time || 0) < 60 * 60 * 1000).length;
@@ -12584,6 +12890,33 @@ async function main() {
       // 其余 / 开头内容照常发给 DSH（DSH 的斜杠命令原样执行，如 /model）
     }
 
+    // [qq-bridge 本地补丁] 明日方舟日活：**只有 owner 对着机器人说的那一整句**会触发
+    // （「@我 帮我做明日方舟日活」），别的说法一律不触发；判定纯函数在 src/arknights-command.js。
+    // 确定性接管、不唤醒模型：桥接只 schtasks /Run 那个提权任务，跑完由回报器发结果（见 16.5）。
+    try {
+      const atSelfHere = Array.isArray(event?.message)
+        && event.message.some((seg) => seg?.type === 'at' && String(seg?.data?.qq) === String(event?.self_id ?? ''));
+      const hitJob = isOwner && (atSelfHere || quoteTargetIsSelf || kind === 'private')
+        ? gameJobs().find((j) => j.enabled && isArknightsCommand(plainContent, j.command))
+        : null;
+      if (hitJob) {
+        if (currentMode === 'reserved2') {
+          // 先入库（不唤醒模型），这样 AI 之后被问起时知道 owner 发过这条
+          appendSocialV2Message(
+            key,
+            kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊',
+            textContent, plainContent, quoteTargetIsSelf, isOwner,
+            event.message_id ?? event.msg_id ?? null, mediaList, event.user_id ?? null,
+            extractForwardIds(event.message ?? []), atSelfHere
+          );
+        }
+        await handleGameJobRequest(hitJob, key, event);
+        return;
+      }
+    } catch (error) {
+      log(`⚠️ 游戏日活入口异常（按普通消息继续）：${error?.message ?? error}`);
+    }
+
     // 二代仿真模式（reserved2）：唤醒调度
     if (currentMode === 'reserved2') {
       const sender = kind === 'group' ? (event.sender?.card || event.sender?.nickname || String(event.user_id)) : '私聊';
@@ -12810,7 +13143,7 @@ async function main() {
       const now = Date.now();
       if ((queuedHintAt.get(key) ?? 0) + QUEUE_HINT_COOLDOWN_MS < now) {
         queuedHintAt.set(key, now);
-        await sendToQQ(key, '⏳ 系统服务重启中，消息已排队，恢复后自动处理。');
+        systemNotice(key, '⏳ 系统服务重启中，消息已排队，恢复后自动处理。');
       }
       log(`DSH 不可用，消息入队 (${key})`);
       return;
@@ -12840,7 +13173,7 @@ async function main() {
     if (!accepted.result.ok) {
       const errText = `${accepted.result.error.code}: ${accepted.result.error.message}`;
       const safeErrText = shouldAuditKey(key) && SENSITIVE_RE.test(errText) ? '（含敏感信息，已隐藏）' : errText;
-      await sendToQQ(key, `⚠️ 消息未被接受：${safeErrText}`);
+      systemNotice(key, `⚠️ 消息未被接受：${safeErrText}`);
       return;
     }
     if (accepted.result.value.command) {
@@ -13006,7 +13339,7 @@ async function main() {
         pending.delete(key);
         log(`挂起请求超时 (${key})`);
         cancelPendingEntry(entry).catch(() => {});
-        sendToQQ(key, '⏰ 等待回答超时，已取消该请求');
+        systemNotice(key, '⏰ 等待回答超时，已取消该请求');
       }
     }, cfg.questionTimeoutMs);
     entry.timer = timer;
@@ -13067,12 +13400,31 @@ async function main() {
               sendToolSucceededSessions.delete(frame.sessionId);
               pendingSendToolCalls.delete(frame.sessionId);
               v2TurnStartAt.set(frame.sessionId, Date.now());
+              v2TurnSteps.set(frame.sessionId, 0);   // [省 token] 新一轮重新计数
+              v2TurnCapped.delete(frame.sessionId);
+              v2CappedKeys.delete(key);
             }
             if (frame.event.type === 'tool/call') {
               const toolName = String(frame.event.data?.name ?? '');
               const callId = frame.event.data?.callId;
               const args = sanitizeToolArgs(frame.event.data?.arguments ?? frame.event.data?.input ?? frame.event.data);
               appendToolLog({ type: 'call', time: new Date().toISOString(), key, sessionId: frame.sessionId, tool: toolName, args });
+              // [省 token] 单轮工具往返上限：每个往返都要把整个上下文重发一次，实测最贵的一轮是 44 步。
+              // 超过上限就请求 DSH 停下这一轮（用已经说过的话收尾），别让一轮无限烧下去。
+              {
+                const maxSteps = Math.max(0, Number(cfg.socialV2?.turnMaxSteps) || 0);
+                if (maxSteps > 0) {
+                  const used = (v2TurnSteps.get(frame.sessionId) ?? 0) + 1;
+                  v2TurnSteps.set(frame.sessionId, used);
+                  if (used > maxSteps && !v2TurnCapped.has(frame.sessionId)) {
+                    v2TurnCapped.add(frame.sessionId);
+                    v2CappedKeys.add(key);
+                    log(`[省 token] ${key} 本轮工具往返已达 ${maxSteps} 次，请求 DSH 收尾（避免继续重发上下文）`);
+                    appendActivity(`${key} [省 token] 单轮工具往返超过 ${maxSteps} 次，已请求收尾`);
+                    api.stopSessionWork(frame.sessionId).catch((error) => log(`⚠️ 停止超长回合失败：${error?.message ?? error}`));
+                  }
+                }
+              }
               if (callId != null) {
                 if (isSendToolName(toolName)) {
                   let pending = pendingSendToolCalls.get(frame.sessionId);
@@ -13271,9 +13623,8 @@ async function main() {
                 if (shouldAuditKey(key) && (SENSITIVE_RE.test(plain) || hasKnownToken)) {
                   log(`⚠️ 回复被安全策略拦截 (${key})，疑似包含敏感信息${hasKnownToken ? '（含会话令牌）' : ''}`);
                   appendActivity(`${key} agent 回复被拦截（疑似敏感信息${hasKnownToken ? '/会话令牌' : ''}）`);
-                  if (cfg.security?.interceptNotify !== false) {
-                    await sendToQQ(key, '⚠️ 本条回复因疑似包含敏感信息（路径/凭据/会话令牌）被安全策略拦截，已记录并通知管理员。');
-                  }
+                  // [owner 2026-09-30] 同上：只私聊 owner，不往群里发
+                  systemNotice(key, `⚠️ 群 ${key} 有一条回复因疑似包含敏感信息（路径/凭据/会话令牌）被拦截，已记录。`, { ownerDm: cfg.security?.interceptNotify !== false });
                   if (isFarewell) {
                     const st = socialState(key);
                     if (st.phase === 'exiting') {
@@ -13383,7 +13734,7 @@ async function main() {
                 }
                 if (!retried) {
                   // 重试已用尽或不是可重试的错：群里给一句人话，别再抛技术栈。
-                  await sendToQQ(key, '⚠️ 我这边卡了一下，这条没处理成功，稍后再试。');
+                  systemNotice(key, '⚠️ 我这边卡了一下，这条没处理成功，稍后再试。');
                 }
                 if (isFarewell) {
                   const st = socialState(key);
@@ -13395,7 +13746,18 @@ async function main() {
                   }
                 }
               } else if (ended.reason.kind === 'aborted') {
-                await sendToQQ(key, '⏹️ 已停止');
+                // [2026-09-30 owner 要求] 回合被中止**一律不往群里发提示**。
+                // 以前这里会发一句「⏹️ 已停止」：既包括控制台/看门狗真的停了这一轮，也包括我们自己
+                // 按单轮步数上限请求收尾 —— 群里看到的就是莫名一句"已停止"（14:28/14:56 各一次）。
+                // 这是内部状态，群友不需要知道；只写本地日志 + 活动记录（要私聊 owner 的话见 socialV2.notifyOwnerOnAbort）。
+                const capped = v2CappedKeys.delete(key);
+                log(`[reserved2] ${key} 回合被中止（${capped ? '单轮步数上限' : '外部停止'}）：不往群里发提示`);
+                appendActivity(`${key} [reserved2] 回合被中止（${capped ? '步数上限' : '外部停止'}）`);
+                if (cfg.socialV2?.notifyOwnerOnAbort === true) {
+                  try {
+                    await sendOwnerDM(`⚠️ 群 ${key} 的回合被中止（${capped ? '单轮工具往返达到上限' : '外部停止或 DSH 侧中断'}）`);
+                  } catch (error) { log(`owner 中止通知发送失败：${error?.message ?? error}`); }
+                }
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {
@@ -13695,6 +14057,8 @@ async function main() {
   log('桥接已启动。按 Ctrl+C 退出。');
   // [qq-bridge 本地补丁] 群管理：干跑到期检查（必须放在 bot 初始化之后，否则私聊通知会踩 TDZ）
   try { startAdminTimers(); } catch (error) { log(`⚠️ 群管理定时器启动失败：${error?.message ?? error}`); }
+  // [qq-bridge 本地补丁] 游戏日活（方舟 / 终末地）的「跑完回报」轮询（执行器写状态文件，这里读）
+  try { startGameJobReporters(); } catch (error) { log(`⚠️ 日活回报器启动失败：${error?.message ?? error}`); }
   // 预热表情库：启动时同步一次 QQ 收藏表情，失败不阻塞（AI 首次调用工具时还会再试）。
   if (cfg.socialV2?.sticker?.enabled !== false) {
     syncStickerLibrary(true).catch((error) => log('启动预热表情库失败:', error?.message ?? error));

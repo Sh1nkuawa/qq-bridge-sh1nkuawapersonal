@@ -58,8 +58,8 @@ test('pre-reply quiet checks, waiting for replies and pre-sleep observation have
   assert.match(prefix, /读取和思考花掉的时间也算，已安静足够就立即返回/);
   assert.match(prefix, /不要再重开一次普通长等待/);
   assert.match(prefix, /预算到但 quiet=false 不等于对方说完/);
-  assert.match(prefix, /【等下文】[^\n]*purpose="messages", timeoutMs=60000~120000/);
-  assert.match(prefix, /【回复后】[^\n]*qq_wait_for_messages\(purpose="messages"\)/);
+  assert.match(prefix, /【等下文】[^\n]*purpose="messages", timeoutMs=30000~60000/);
+  assert.match(prefix, /【回复后】[^\n]*qq_wait_for_messages\(purpose="messages"\)[^\n]*一轮最多等这一次/);
   assert.match(prefix, /短静默不算沉睡前观察/);
   assert.match(prefix, /5 分钟观察不是回复的前置条件/);
   assert.match(prefix, /只有准备收尾时[^。]*preSleepWaitRemainingMs/);
@@ -111,6 +111,81 @@ test('the wake prompt offers the voice library every turn and can count today\'s
   // 今日配额：发送记录要打标记，计数函数要存在
   assert.match(bridge, /entry\.sentVoice = true;/);
   assert.match(bridge, /function countVoiceSentTodayV2\(st\)/);
+});
+
+test('cost rules: 少空转/少重复喂上下文（2026-09-30 省 token 改造 1~4）', () => {
+  // 为什么钉住：实测每步要重发 36~52k tokens 的上下文，成本 ≈ 上下文 × 步数 × 回合数。
+  // 这条契约保证"省着点用"的规则不会被顺手删掉，同时保证桥接侧的护栏（静默时段/步数上限/
+  // 回复检查收紧/黑话错峰）都在。
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  // 1) 削步数：等一轮只等一次 + 单轮步数上限
+  assert.match(prefix, /一轮最多等这一次/);
+  assert.match(prefix, /一次发送用数组/);
+  assert.match(prefix, /发完再 `qq_get_unread_messages`/);
+  assert.match(bridge, /turnMaxSteps/);
+  assert.match(bridge, /v2TurnSteps/);
+  // 上限值要留够余量（本群活跃时段正常回合就能到 20~25 步：2026-09-30 14:28/14:56 就是被 20 切了两次）
+  assert.match(bridge, /turnMaxSteps: 30,/);
+  // 而且「回合被中止」的内部提示**一律不发群**（owner 2026-09-30 明确要求）
+  assert.ok(!/sendToQQ\(key, '⏹️ 已停止'\)/.test(bridge), '中止提示不该再发到群里');
+  assert.match(bridge, /回合被中止（\$\{capped \? '单轮步数上限' : '外部停止'\}）：不往群里发提示/);
+  // 2) 削上下文：上下文限额收紧（工具返回条数 + 唤醒内联条数）
+  assert.match(prefix, /拉消息要小份/);
+  // 记忆/缓冲窗口**没动**（见下面的说明）；只收窄了"返回给模型"与"内联进提示"的部分
+  assert.match(bridge, /recentLimit: 100/);
+  assert.match(bridge, /unreadLimit: 30/);
+  assert.match(bridge, /wakeMessageLimit: 8/);
+  assert.match(bridge, /wakeRecentLimit: 3/);
+  assert.match(bridge, /promptMaxStickers: 4/);
+  // 3) 减回合：主动检查静默时段 + 回复检查只在欠人一句话时 + 重试上限 1
+  assert.match(bridge, /quietHours/);
+  assert.match(bridge, /autoReplyCheckOnlyWhenExpected/);
+  assert.match(bridge, /跳过回复检查/);
+  assert.match(bridge, /malformedMax: 1/);
+  // 4) 黑话学习错峰 + 攒批
+  assert.match(bridge, /offPeakOnly/);
+  assert.match(bridge, /researchMinPending/);
+  assert.match(bridge, /researchBatchMax/);
+  // 等待默认时长也缩短了（每次等待都是一步）
+  assert.match(bridge, /defaultMs: 10000/);
+  // 注意（2026-09-30 决定）：**没有**去压 recentLimit / unreadLimit —— 这两个数是机器人自己的
+  // 记忆/缓冲窗口（不是"只影响喂给模型多少"），压小会让人感知到"漏消息/忘掉半小时前"，
+  // 而且 test-token-economy.mjs 的 eviction + 水位回归钉的就是这套语义。省 token 只动了
+  // "唤醒提示里内联多少"（wakeMessageLimit/wakeRecentLimit/wakeMaxChars）与表情/梗图候选数。
+  // 5) 系统状态提示一律不发群（owner：「加上就不太像群友了」）—— 统一走 systemNotice()
+  for (const forbidden of [
+    "sendToQQ(key, '⏰ 等待回答超时，已取消该请求')",
+    "sendToQQ(key, '⏳ 系统服务重启中，消息已排队，恢复后自动处理。')",
+    "sendToQQ(key, '⚠️ 我这边卡了一下，这条没处理成功，稍后再试。')",
+    'sendToQQ(key, `⚠️ 消息未被接受：',
+    "sendToQQ(key, '⚠️ 本条回复因疑似包含敏感信息"
+  ]) {
+    assert.ok(!bridge.includes(forbidden), `系统提示不该再发群：${forbidden}`);
+  }
+  assert.match(bridge, /function systemNotice\(key, text/);
+  assert.match(bridge, /系统提示（不发群）/);
+});
+
+test('game daily jobs (arknights / endfield) are triggered only by the owner exact sentence', () => {
+  // 为什么单独钉住：这两个功能会操作真实游戏账号 ——
+  //   ① 触发面必须极窄：owner + 对着机器人说 + 与命令**严格相等**（判定在 src/arknights-command.js）
+  //   ② 预设里要明确"你做不到、别答应别假装"，并列出两条命令
+  //   ③ 两个档案各有独立的计划任务/状态文件；流程实现在 game-daily.mjs，别再复制一份
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  assert.match(bridge, /帮我做明日方舟日活/);
+  assert.match(bridge, /帮我做终末地日活/);
+  assert.match(bridge, /function gameJobs\(\)/);
+  assert.match(bridge, /async function handleGameJobRequest\(job, key, event\)/);
+  assert.match(bridge, /function startGameJobReporters\(\)/);
+  assert.match(bridge, /isArknightsCommand\(plainContent, j\.command\)/);
+  assert.match(bridge, /const hitJob = isOwner && \(atSelfHere \|\| quoteTargetIsSelf \|\| kind === 'private'\)/);
+  assert.match(bridge, /'\/Run', '\/TN', job\.taskName/);
+  for (const f of ['../scripts/game-daily.mjs', '../scripts/endfield-daily.mjs', '../scripts/arknights-daily.mjs']) {
+    assert.ok(fs.existsSync(new URL(f, import.meta.url)), `missing ${f}`);
+  }
+  const engine = fs.readFileSync(new URL('../scripts/game-daily.mjs', import.meta.url), 'utf8');
+  assert.match(engine, /export const DEFAULT_ENDFIELD = \{/);
+  assert.match(engine, /export const PROFILES = \{/);
 });
 
 console.log(`reserved2 persona prefix: ${prefix.length} characters (not a model-token estimate)`);

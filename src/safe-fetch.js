@@ -300,6 +300,34 @@ export function looksLikeImageBuffer(buf) {
 }
 
 /** 抓取图片字节并返回 Buffer（带 SSRF 防护，且校验确实为图片）。 */
+/**
+ * QQ 内置表情（face）的图片候选 URL（纯函数，按优先级排序）。
+ *
+ * 为什么要这个：SnowLuma 给的 `face.url` 有一部分**已经 404**（返回 HTML 而不是图片），
+ * 于是 safeFetchBuffer 的图片校验直接抛"抓取内容不是有效图片"，模型就只拿到文字描述、
+ * 看不到这张表情。实测（2026-09-30）：
+ *   https://qzonestyle.gtimg.cn/qzone/em/e498.gif      → 404 text/html   ✗
+ *   https://qzonestyle.gtimg.cn/qzone/em/e400498.gif   → 200 image/png  ✓（同一个表情的另一种写法）
+ * 所以按「原 URL → 补/去 400 前缀的变体 → 规范的 400 写法」依次尝试。
+ * 注意：这些候选仍然全部走 safeFetchBuffer（含 SSRF/大小/格式校验），不会绕过防护。
+ */
+export function faceImageUrlCandidates(url, faceId) {
+  const out = [];
+  const push = (u) => { const s = String(u ?? '').trim(); if (s && !out.includes(s)) out.push(s); };
+  const raw = String(url ?? '').trim();
+  const id = Number(faceId);
+  push(raw);
+  // 同一路径上的 400 前缀变体：/em/e498.gif → /em/e400498.gif（反之亦然）
+  const m = raw.match(/^(.*\/em\/e)(\d+)(\.[A-Za-z0-9]+)$/);
+  if (m) {
+    if (m[2].startsWith('400')) push(`${m[1]}${m[2].slice(3)}${m[3]}`);
+    else push(`${m[1]}400${m[2]}${m[3]}`);
+  }
+  // 兜底规范写法（腾讯表情 CDN，固定可信主机）
+  if (Number.isInteger(id) && id > 0) push(`https://qzonestyle.gtimg.cn/qzone/em/e400${id}.gif`);
+  return out;
+}
+
 export async function safeFetchBuffer(urlString, maxBytes = 4 * 1024 * 1024) {
   validateLimit(maxBytes, 'maxBytes');
   const MAX_REDIRECTS = 5;

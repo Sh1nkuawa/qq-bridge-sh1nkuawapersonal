@@ -189,6 +189,22 @@ export function isDryRun(cfg, now = Date.now()) {
 }
 
 /** 干跑还剩多久（毫秒）；不干跑返回 0，无限期干跑返回 -1。 */
+/**
+ * 干跑到期要不要**再通知一次** owner（纯函数）。
+ *
+ * 为什么要问这个：到期通知以前只用一个**内存变量**去重，桥接一重启就忘 —— 于是每次重启
+ * （看门狗重建、控制台重启、DSH 重启…）都会重新给 owner 发一遍"干跑截止时间到了"。
+ * 实测 2026-09-29~30 两天发了 14 次。改成"记住通知过哪个截止时间"（落盘），只在
+ * 用户设定了**新的**截止时间时才再通知一次。
+ */
+export function shouldAnnounceDryRunExpiry(cfg, announcedUntil = 0, now = Date.now()) {
+  if (!cfg || cfg.dryRun !== true) return false;
+  const until = Number(cfg.dryRunUntil) || 0;
+  if (until <= 0) return false;          // 没设截止时间 → 没有"到点"这回事
+  if (Number(now) < until) return false; // 还没到点
+  return Number(announcedUntil) < until; // 这个截止时间还没通知过
+}
+
 export function dryRunRemainingMs(cfg, now = Date.now()) {
   const c = mergeAdminConfig(cfg);
   if (!isDryRun(c, now)) return 0;

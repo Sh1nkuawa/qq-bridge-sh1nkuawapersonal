@@ -79,8 +79,13 @@ ok('技术细节私聊 owner，不再把原始报错丢进群里', () => {
   assert.match(bridge, /await sendOwnerDM\(`⚠️ 群 \$\{key\} 的 agent 回合出错/);
   assert.ok(!bridge.includes('`⚠️ agent 处理出错：${safeMsg}`'), '旧的"把技术文案发群里"的写法应已移除');
 });
-ok('群里只在不重试时给一句人话', () => assert.match(bridge, /if \(!retried\) \{[\s\S]{0,200}await sendToQQ\(key, '⚠️ 我这边卡了一下/));
-ok('默认配置里有 errorRetry', () => assert.match(bridge, /errorRetry: \{[\s\S]{0,300}?malformedMax: 2[\s\S]{0,300}?windowMs: 180000/));
+// [2026-09-30 政策变更] owner：「这类系统提示加上就不太像群友了」→ 出错提示**不再发群**，
+// 只走 systemNotice()（写 bridge.log + 活动记录）。这条断言从此改成钉"不许再发群"。
+ok('回合出错只写本地记录，不往群里发系统提示', () => {
+  assert.match(bridge, /if \(!retried\) \{[\s\S]{0,200}systemNotice\(key, '⚠️ 我这边卡了一下/);
+  assert.ok(!bridge.includes("sendToQQ(key, '⚠️ 我这边卡了一下"), '不该再发群');
+});
+ok('默认配置里有 errorRetry（2026-09-30 省 token：重试上限从 2 收到 1，一次重试就是整轮重发）', () => assert.match(bridge, /errorRetry: \{[\s\S]{0,300}?malformedMax: 1[\s\S]{0,300}?windowMs: 180000/));
 
 const mcp = fs.readFileSync(path.join(ROOT, 'src/mcp-snowluma-safe.js'), 'utf8');
 ok('MCP 的 messages 描述明确要求加引号', () => {

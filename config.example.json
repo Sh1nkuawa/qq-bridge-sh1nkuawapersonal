@@ -64,7 +64,10 @@
     "injectMax": 8,
     "learnerPreset": "qq-chat",
     "workspaceTitle": "QQ 黑话学习",
-    "autoResearch": true
+    "autoResearch": true,
+    "offPeakOnly": true,
+    "researchMinPending": 6,
+    "researchBatchMax": 5
   },
   "social": {
     "enabled": true,
@@ -109,7 +112,7 @@
     "agentPreset": "qq-chat-v2",
     "provideRecommendations": true,
     "errorRetry": {
-      "malformedMax": 2,
+      "malformedMax": 1,
       "windowMs": 180000
     },
     "tools": {
@@ -200,7 +203,7 @@
       "recommendedHint": "单条消息不要用空格断句，中文短句用逗号/顿号或直接连写；分条时每条都要读起来完整，不要把同一句话拆到两条里；普通闲聊建议一次 1~3 条，条间 1~3 秒；讲故事/回忆可以 5~10 秒间隔；不要连续刷屏。"
     },
     "wait": {
-      "defaultMs": 30000,
+      "defaultMs": 10000,
       "minMs": 5000,
       "maxMs": 600000,
       "defaultQuietMs": 8000,
@@ -211,7 +214,7 @@
       "syncTtlMs": 60000,
       "maxListCount": 100,
       "includeInPrompt": true,
-      "promptMaxStickers": 8,
+      "promptMaxStickers": 4,
       "collect": {
         "enabled": true,
         "maxPerMinute": 2,
@@ -224,7 +227,7 @@
       "packDirs": [],
       "packs": [],
       "includeInPrompt": true,
-      "promptMaxMemes": 6,
+      "promptMaxMemes": 4,
       "maxPerMinute": 3,
       "maxPerHour": 30,
       "recentAvoid": 10,
@@ -318,12 +321,57 @@
       "includeInPrompt": true,
       "promptDailyMax": 3
     },
+    "arknights": {
+      "enabled": false,
+      "command": "帮我做明日方舟日活",
+      "taskName": "qq-bridge-arknights-daily",
+      "timeoutSec": 1800,
+      "stateFile": "state/arknights-daily.json",
+      "logFile": "state/arknights-daily.log",
+      "requestFile": "state/arknights-daily-request.json",
+      "maaPath": "G:\\MAA\\MAA.exe",
+      "maaConfigPath": "G:\\MAA\\config\\gui.new.json",
+      "maaLogPath": "G:\\MAA\\debug\\asst.log",
+      "adbPath": "G:\\MuMuPlayer\\nx_device\\12.0\\shell\\adb.exe",
+      "adbAddress": "127.0.0.1:16384",
+      "startClient": true,
+      "clientCandidates": [
+        {
+          "exe": "G:\\Hypergryph Launcher\\games\\Arknights Game\\Arknights.exe",
+          "args": []
+        },
+        {
+          "exe": "G:\\Hypergryph Launcher\\Launcher.exe",
+          "args": [
+            "--game=Arknights",
+            "--reason=4"
+          ]
+        }
+      ],
+      "clientProcesses": [
+        "Arknights.exe"
+      ],
+      "clientBootSec": 45,
+      "windowWaitSec": 60,
+      "clientWaitSec": 30,
+      "manualWaitSec": 300,
+      "adbWaitSec": 90,
+      "connectMode": "auto",
+      "maaStartGame": false,
+      "trigger": "auto",
+      "closeClient": true,
+      "closeMaa": true
+    },
     "proactive": {
       "enabled": true,
-      "checkIntervalMinMs": 1800000,
-      "checkIntervalMaxMs": 5400000,
+      "checkIntervalMinMs": 7200000,
+      "checkIntervalMaxMs": 10800000,
       "idleThresholdMs": 900000,
-      "probability": 0.3
+      "probability": 0.2,
+      "quietHours": [
+        1,
+        8
+      ]
     },
     "feedback": {
       "maxLength": 500,
@@ -334,10 +382,57 @@
       "unreadLimit": 30,
       "contextWindow": 20,
       "inlineWakeMessages": true,
-      "wakeMessageLimit": 12,
-      "wakeRecentLimit": 4,
-      "wakeMaxChars": 6000
+      "wakeMessageLimit": 8,
+      "wakeRecentLimit": 3,
+      "wakeMaxChars": 3000
     },
-    "waitToolExternal": true
+    "waitToolExternal": true,
+    "endfield": {
+      "enabled": false,
+      "command": "帮我做终末地日活",
+      "taskName": "qq-bridge-endfield-daily",
+      "runnerPath": "scripts/endfield-daily.mjs",
+      "mode": "task",
+      "timeoutSec": 1800,
+      "stateFile": "state/endfield-daily.json",
+      "logFile": "state/endfield-daily.log",
+      "requestFile": "state/endfield-daily-request.json",
+      "maaPath": "G:\\MAAEND\\MaaEnd.exe",
+      "maaConfigPath": "G:\\MAAEND\\config\\mxu-MaaEnd.json",
+      "maaLogPath": "G:\\MAAEND\\debug\\maafw.log",
+      "maaLogDirs": [
+        "G:\\MAAEND\\debug"
+      ],
+      "maaDeElevated": false,
+      "connectMode": "pc",
+      "startClient": true,
+      "clientWaitSec": 30,
+      "clientBootSec": 45,
+      "adbWaitSec": 90,
+      "windowWaitSec": 60,
+      "manualWaitSec": 300,
+      "clientCandidates": [
+        {
+          "exe": "G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe",
+          "args": []
+        },
+        {
+          "exe": "G:\\Hypergryph Launcher\\Launcher.exe",
+          "args": [
+            "--game=Endfield",
+            "--reason=4"
+          ]
+        }
+      ],
+      "clientProcesses": [
+        "Endfield.exe"
+      ],
+      "trigger": "auto",
+      "closeClient": true,
+      "closeMaa": true
+    },
+    "turnMaxSteps": 30,
+    "autoReplyCheckOnlyWhenExpected": true,
+    "notifyOwnerOnAbort": false
   }
 }
