@@ -38,7 +38,7 @@ DSH/                         ← 工作区根（不是仓库根）
 
 ## 二、`scripts/` 命名约定
 
-脚本共 72 个文件（70 个 `.mjs` + 2 个 JSON 基线，另有 `fixtures/` 目录）。按前缀区分用途：
+脚本共 170 个文件（167 个 `.mjs` + 3 个 JSON 基线，另有 `fixtures/` 目录）。按前缀区分用途：
 
 | 前缀 / 形态 | 含义 | 归宿 |
 | --- | --- | --- |
@@ -51,7 +51,9 @@ DSH/                         ← 工作区根（不是仓库根）
 | `probe-*.mjs` | **一次性探针**：用来问 DSH/SnowLuma「实际支持什么」（RPC 形状、工具清单、事件流、工作区、模型） | 多半已用完；见第四节 |
 | `audit-bridge-harness.mjs` | 虚拟网关 + 沙箱化的桥接行为审计脚手架（被 `test-audit-bridge.mjs` 使用） | 保留 |
 | `harden-state-acl.mjs` | 收紧 `state/` 目录权限（Windows 上 `mode 0o600` 是空操作，必须动 ACL）。直接试 → 失败提权重试 → 仍失败则打印可复制命令；**任何路径都以 0 退出，绝不阻断启动**。被 `start.bat` 调用 | 保留（`start.bat` 依赖） |
+| `watchdog-bridge.mjs`（+ `test-watchdog-bridge.mjs`、仓库根的 `watchdog.cmd`） | **外部看门狗**：每 30s 探一次桥接控制台 `/api/status`，连续 3 次无响应就判定「假死」→ 留证（`state/watchdog.log` + `state/watchdog-incident-*.json`，含进程 CPU/内存与 `bridge.log` 尾巴）→ 杀掉卡死进程 → 等 `start.bat` 自己拉回来，30s 没回来就自己拉。**必须住在桥接进程外**（进程内的定时器会跟着一起卡死），由 `watchdog.cmd` / 桌面启动器 `start-bot.bat` 拉起，日志 `state/watchdog.log`，暂停用空文件 `state/watchdog.pause` | 保留（运维常驻；2026-09-29 假死事故的直接对策，见 INSTALL_NOTES 16.3 / 16.4） |
 | `dsh-modules.mjs` | 小工具：按路径加载 DSH 安装内的模块 | 保留 |
+| `game-daily.mjs`（+ `arknights-daily.mjs` / `endfield-daily.mjs` 薄 wrapper、`game-daily-setup.ps1`、`test-arknights-daily.mjs` / `test-endfield-daily.mjs`） | **游戏日活（提权）**：一个引擎、两个档案（`DEFAULT_ARKNIGHTS` / `DEFAULT_ENDFIELD`，见 `PROFILES`）。流程＝预检 → **先起官方 PC 端**（`Arknights.exe` / `Endfield.exe`，两者清单都是 `requireAdministrator`；桌面图标只开启动器）→ 等窗口就绪 → 起工具（MAA 直接继承提权；**MAAEND 经 `explorer.exe` 降权到普通权限**，因为它自己不需要管理员）→ 盯日志等「跑完」（方舟 `AllTasksCompleted`；终末地 `Tasker.Task.Succeeded` 数到当前实例任务数）→ 跑完即停、30 分钟兜底 → 关工具与游戏 → 写 `state/<游戏>-daily.json`。`game-daily-setup.ps1 -Profile …` 是**一次性提权安装**（注册最高权限计划任务 + 声明式补丁把工具设成"启动即跑"，必须 UTF-8 with BOM）。触发判定/回报措辞的纯函数在 `src/arknights-command.js`；桥接**自身不提权**，只在 owner 发那两句命令时确定性接管并 `schtasks /Run` | 保留（见 INSTALL_NOTES 16.5 / 16.5.1 / 16.5.2 / 16.5.3 / 16.6） |
 | `check-onebot-status.mjs` | 手工排查：查 OneBot 连通性 | 保留（运维常用） |
 | `patch-*.mjs` | **补丁**（含 `postinstall` 的 `patch-snowluma-sdk.mjs`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `patch-snowluma-sdk.mjs` **必须保留**（postinstall 依赖）；其余见第四节 |
 | `cleanup-*.mjs` | **清理一次性残留**（probe 会话/工作区、测试会话） | 见第四节 |
