@@ -1538,6 +1538,42 @@ node scripts/patch-dsh-base64.mjs --revert # 还原
 2. 这是对**全局安装包**打的本地补丁：`npm i -g @deepseek-ai/dsh` 之后会被覆盖，**重跑一次脚本**即可。
 3. 顺带在转录里看到一次 `Error: 等待失败：fetch failed`（`qq_wait_for_messages` 偶发），未处理。
 
+### 16.12 修正：逐轮明细"最新只到第 265 轮"——按 turn 排 ≠ 按时间排（2026-10-02）
+
+owner 反馈控制台「逐轮花费 internal:黑话学习」里**最新只到 #265（2026/9/29 18:13）**，
+可汇总里这个 key 的 `lastAt` 明明是今天 16:40，钱也一直在花。头部那句"共 200 轮可追溯"是线索。
+
+**根因**（`src/token-ledger.js` 的 `turnsOf()`）：
+
+```js
+rows.sort((a, b) => b.turn - a.turn || b.endedAt - a.endedAt);   // ← 按 turn 序号降序
+...
+turns: rows.slice(0, turnLimit)                                  // ← 再取前 200
+```
+
+`turn` 是**每个 session 各自从 1 数**的，而一个 key 下可能挂多个 session：黑话学习有 2 个
+（旧的 `session-ac8fbb94…` 数到 **#265**、现在的 `session-e6817d22…` 才到 **#111**）。
+按 `turn` 降序 → 旧 session 的大序号被顶到最前 → `slice(0, 200)` 只留了旧的 ✗
+→ 面板上"最新"就是 #265，今天的轮次被切掉了 ✓。群会话有 122 个 session，同样受影响。
+
+**修法**：改成按**时间**倒序（`endedAt ?? startedAt` 降序，同刻再按 turn 兜底）——
+也就是函数注释里一直写着的"新的在前"。
+
+**验证**（重启桥接后）：
+
+```
+internal:黑话学习  16:40:58 turn=111 ¥0.0052 / 16:34:55 turn=110 ¥0.0050 / 15:08:24 turn=109 ¥0.0053
+group:541026885    16:48:12 turn=1   ¥0.0152 / 16:45:31 turn=2   ¥0.0136 / 16:33:29 turn=1   ¥0.1157
+```
+
+**回归**：`test-token-usage.mjs` 新增一组断言（一个 key 两个 session：旧 session 的大 turn 号
++ 新 session 的小 turn 号 → 必须**新的排在前面**），**离线 50/50 通过**。
+
+**顺带解释另一个疑问**：该 key 的"未逐轮归属 ¥6.06"不是没记账，而是账本把早期逐轮明细
+**淘汰成累计桶**的设计（`unattributedCost = cost − attributedCost`，源码注释原文：
+"差额是只剩累计值的历史"）。所以面板看起来"累计在涨、明细停住"。#16.12 修完之后，
+"最近"那部分明细就正常了，只有被淘汰的那 ¥6.06 仍然只能看总额。
+
 
 
 

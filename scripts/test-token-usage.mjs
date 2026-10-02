@@ -268,6 +268,21 @@ const emptyWindow = ledger.series({ hours: 1, at: sBase - 60 * 60 * 1000 });
 assert(emptyWindow.countedSamples === 0, '采样发生在窗口之后时不计入');
 assert(emptyWindow.buckets.every((b) => b.cost === 0), '窗口内无用量时全为 0 桶');
 
+// ── 多 session 的 key：逐轮明细必须按**时间**倒序（2026-10-02 修）──────────
+// 复现面板问题：黑话学习一个 key 下有 2 个 session，旧的数到 #265、现在的才到 #111。
+// 原来按 `turn` 降序排（turn 是每个 session 各自从 1 数的），旧 session 的大序号被顶到
+// 最前面，conversation() 再 slice(0, turnLimit) 就只留了旧的 —— 面板表现"最新只到第 265 轮"。
+ledger = freshLedger({ resolveKey: (sid) => (sid === 'old' || sid === 'new' ? 'internal:slang' : undefined) });
+const slangMsg = (sid, seq, turn, time, u) => ({ sessionId: sid, event: { seq, time, type: 'assistant/message', data: { turn, step: 1, usage: u } } });
+ledger.ingestEvent(slangMsg('old', 5, 265, mon('10:00'), usage(1000, 10, 0)));   // 时间早，但 turn 序号大
+ledger.ingestEvent(slangMsg('new', 5, 111, mon('20:00'), usage(2000, 20, 0)));   // 时间晚，turn 序号小
+let slangConv = ledger.conversation('internal:slang', { turnLimit: 1 });
+assert(slangConv.turns.length === 1, 'turnLimit 生效');
+assert(slangConv.turns[0].turn === 111,
+  `逐轮明细按时间倒序：最新应是 turn 111（实得 ${slangConv.turns[0].turn}；按 turn 排会错成 265）`);
+slangConv = ledger.conversation('internal:slang', { turnLimit: 10 });
+assert(slangConv.turns[0].turn === 111 && slangConv.turns[1].turn === 265, '两轮都按时间倒序（111 在前、265 在后）');
+
 // ── reset ───────────────────────────────────────────────────────────────
 ledger.reset();
 assert(ledger.summary().conversations.length === 0, 'reset 清空内存态');

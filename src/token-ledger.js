@@ -610,7 +610,13 @@ export function createTokenLedger({
       const entry = index.get(sid);
       if (entry) rows.push(...entry.turns.values());
     }
-    rows.sort((a, b) => b.turn - a.turn || b.endedAt - a.endedAt);
+    // [qq-bridge 本地补丁 2026-10-02] **必须按时间排，不能按 turn 序号排。**
+    // `turn` 是每个 session 各自从 1 数的，而一个 key 下可能有多个 session
+    //（黑话学习就有 2 个：旧的数到 #265、现在的才到 #111）。按 turn 降序会把
+    //「旧 session 的大序号轮次」顶到最前面，`conversation()` 再 slice(0, turnLimit)
+    // 就只留了旧的 —— 面板表现就是"逐轮明细最新只到第 265 轮"（今天的轮次被切掉）。
+    // 注释一直写着"新的在前"，这里把它落实成按时间倒序。
+    rows.sort((a, b) => (b.endedAt ?? b.startedAt ?? 0) - (a.endedAt ?? a.startedAt ?? 0) || b.turn - a.turn);
     return rows;
   }
 
