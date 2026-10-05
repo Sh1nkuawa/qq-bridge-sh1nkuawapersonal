@@ -128,7 +128,15 @@ function build() {
     .filter((f) => !f.startsWith('node_modules/'))
     .sort();
 
-  const rows = files.map((f) => ({ file: f, ...extractPurpose(f), lines: countLines(path.join(ROOT, f)) }));
+  // ⚠️ 生成物自己（本文件）必须排除在「行数合计」之外：它写完就变长，自己数自己必然差几行，
+//    --check 会永远报漂移（2026-10-05 实测：新增文件后合计差 2 行）。表里仍列出它，但行数显示 —。
+const SELF = 'docs/FILE_INDEX.md';
+const rows = files.map((f) => ({
+  file: f,
+  ...extractPurpose(f),
+  lines: f === SELF ? null : countLines(path.join(ROOT, f)),
+  self: f === SELF
+}));
   const groups = new Map();
   for (const row of rows) {
     const dir = path.dirname(row.file) === '.' ? '（仓库根）' : path.dirname(row.file);
@@ -141,7 +149,7 @@ function build() {
     manual: rows.filter((x) => x.source === '人工补写').length,
     missing: rows.filter((x) => x.source.includes('待补') || x.source.includes('读不出')).length,
     lines: rows.reduce((n, x) => n + (x.lines || 0), 0),
-    textFiles: rows.filter((x) => x.lines !== null).length,
+    textFiles: rows.filter((x) => x.lines !== null && !x.self).length,
   };
 
   const out = [];
@@ -156,7 +164,7 @@ function build() {
   out.push('> 「行数」是**总行数（含空行）**，即 `wc -l` 的口径。⚠️ 别和 PowerShell 的');
   out.push('> `Get-Content … | Measure-Object -Line` 混用：那个只数**非空行**，会小几百行');
   out.push('> （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。');
-  out.push('> **要在文档里写行数，就引用这里，别手抄**；二进制文件不列行数（显示 `—`）。');
+  out.push('> **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。');
   out.push('');
   out.push(`统计：共 **${stats.total}** 个被跟踪文件（其中 ${stats.textFiles} 个文本文件、合计 **${stats.lines.toLocaleString('en-US')}** 行）`
     + ` —— 文件自带说明 **${stats.auto}**、人工补写 **${stats.manual}**、待补 **${stats.missing}**。`);

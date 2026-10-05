@@ -9,9 +9,9 @@
 > 「行数」是**总行数（含空行）**，即 `wc -l` 的口径。⚠️ 别和 PowerShell 的
 > `Get-Content … | Measure-Object -Line` 混用：那个只数**非空行**，会小几百行
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
-> **要在文档里写行数，就引用这里，别手抄**；二进制文件不列行数（显示 `—`）。
+> **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **279** 个被跟踪文件（其中 278 个文本文件、合计 **64,574** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
+统计：共 **279** 个被跟踪文件（其中 277 个文本文件、合计 **64,201** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -47,7 +47,7 @@
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
-| [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | 381 | 文件索引（FILE_INDEX） | 文件自带（标题） |
+| [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
 | [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 185 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
@@ -177,7 +177,7 @@
 | [`forge-dsh-cookie.mjs`](../scripts/forge-dsh-cookie.mjs) | 86 | 用 DSH 持久 secret 自签浏览器会话 cookie，并写入桥接配置（免 launch token） | 文件自带 |
 | [`game-daily-setup.ps1`](../scripts/game-daily-setup.ps1) | 102 | 游戏日活：**一次性**提权安装（必须用管理员身份运行本脚本） | 文件自带 |
 | [`game-daily.mjs`](../scripts/game-daily.mjs) | 969 | !/usr/bin/env node | 文件自带 |
-| [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | 197 | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
+| [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | 205 | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
 | [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 415 | !/usr/bin/env node | 文件自带 |
 | [`get-agent-token.mjs`](../scripts/get-agent-token.mjs) | 28 | 取当前会话的 agent token（仅用于本地验证限制逻辑） | 文件自带 |
 | [`harden-state-acl.mjs`](../scripts/harden-state-acl.mjs) | 121 | state/ 目录权限收紧的「可提权」入口。 | 文件自带 |
