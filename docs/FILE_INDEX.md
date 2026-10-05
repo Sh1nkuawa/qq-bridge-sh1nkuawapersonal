@@ -6,7 +6,7 @@
 > 「作用」一列优先取**文件自己的开头注释**（`文件自带`）；没有注释的由生成器内置表补写（`人工补写`）；
 > 两者都没有就如实写「（无注释，待补）」——**不猜内容**。目录级/前缀级的说明见 [FOLDER_MAP.md](FOLDER_MAP.md)。
 
-统计：共 **272** 个被跟踪文件 —— 文件自带说明 **249**、人工补写 **23**、待补 **0**。
+统计：共 **277** 个被跟踪文件 —— 文件自带说明 **254**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -42,6 +42,7 @@
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 投喂（赞助）功能设计 | 文件自带（标题） |
+| [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | 文件索引（FILE_INDEX） | 文件自带（标题） |
 | [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 群管理：禁言 + 群公告 | 文件自带（标题） |
@@ -171,6 +172,7 @@
 | [`forge-dsh-cookie.mjs`](../scripts/forge-dsh-cookie.mjs) | 用 DSH 持久 secret 自签浏览器会话 cookie，并写入桥接配置（免 launch token） | 文件自带 |
 | [`game-daily-setup.ps1`](../scripts/game-daily-setup.ps1) | 游戏日活：**一次性**提权安装（必须用管理员身份运行本脚本） | 文件自带 |
 | [`game-daily.mjs`](../scripts/game-daily.mjs) | !/usr/bin/env node | 文件自带 |
+| [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
 | [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | !/usr/bin/env node | 文件自带 |
 | [`get-agent-token.mjs`](../scripts/get-agent-token.mjs) | 取当前会话的 agent token（仅用于本地验证限制逻辑） | 文件自带 |
 | [`harden-state-acl.mjs`](../scripts/harden-state-acl.mjs) | state/ 目录权限收紧的「可提权」入口。 | 文件自带 |
@@ -197,9 +199,11 @@
 | [`probe-codex-strings2.mjs`](../scripts/probe-codex-strings2.mjs) | 打印 codex.exe 里 refresh_strategy / cache_ttl 附近的完整字符串块，推断配置键名 | 文件自带 |
 | [`probe-console-ui.mjs`](../scripts/probe-console-ui.mjs) | 控制台 UI 体检：确认「我们本地的面板」确实在**桥接实际发出的页面**里，并报告它们所在的 | 文件自带 |
 | [`probe-current-notice.mjs`](../scripts/probe-current-notice.mjs) | 看一眼群里当前公告正文（走桥接控制台 API，只读）。 | 文件自带 |
+| [`probe-doc-coverage.mjs`](../scripts/probe-doc-coverage.mjs) | 探针：现有文档对"每个文件的作用"覆盖到什么程度？ | 文件自带 |
 | [`probe-dsh-token.mjs`](../scripts/probe-dsh-token.mjs) | 验证 DSH launch token：GET /?token=XXX 看是否返回 set-cookie | 文件自带 |
 | [`probe-engines.mjs`](../scripts/probe-engines.mjs) | 直接探测各搜索引擎的可用性（不经 MCP） | 文件自带 |
 | [`probe-events.mjs`](../scripts/probe-events.mjs) | 端到端验证：remote.mux 事件流 + turn 收集 + 工具调用事件形状。 | 文件自带 |
+| [`probe-foldermap-facts.mjs`](../scripts/probe-foldermap-facts.mjs) | 探针：核对 docs/FOLDER_MAP.md 里那些"数字/清单"是否还成立。 | 文件自带 |
 | [`probe-group-admin.mjs`](../scripts/probe-group-admin.mjs) | 只读探活：机器人在群里的身份（能否禁言/发公告）+ 群管理结构 + SnowLuma 相关动作可用性。 | 文件自带 |
 | [`probe-headers.mjs`](../scripts/probe-headers.mjs) | 测不同 UA / 请求头下各引擎能否返回结果 | 文件自带 |
 | [`probe-image-tool-auth.mjs`](../scripts/probe-image-tool-auth.mjs) | 验证「生图工具的调用形状」是否被桥接接受（只跑不扣配额的前置校验 consume:false）。 | 文件自带 |
@@ -261,6 +265,7 @@
 | [`test-endfield-daily.mjs`](../scripts/test-endfield-daily.mjs) | 终末地档案（MAAEND/MXU）的离线回归：档案默认值、声明式补丁、多日志监听、计数式完成判据。 | 文件自带 |
 | [`test-face-media.mjs`](../scripts/test-face-media.mjs) | QQ 内置表情（face）取图回落：faceImageUrlCandidates 的单元测试 + bridge 接线检查 | 文件自带 |
 | [`test-feed.mjs`](../scripts/test-feed.mjs) | 投喂模块单测：node scripts/test-feed.mjs（不联网，网络部分用假 fetch） | 文件自带 |
+| [`test-foldermap-facts.mjs`](../scripts/test-foldermap-facts.mjs) | 防漂移：docs/FOLDER_MAP.md 的**结构类事实**必须与仓库/工作区现状一致。 | 文件自带 |
 | [`test-forward.mjs`](../scripts/test-forward.mjs) | 合并转发消息能力自检脚本： | 文件自带 |
 | [`test-hardening.mjs`](../scripts/test-hardening.mjs) | 2026-09-20 体检修复的回归测试。 | 文件自带 |
 | [`test-image-ack.mjs`](../scripts/test-image-ack.mjs) | 生图开始提示（ack）验收：渲染预览 + 配置生效检查（不会往群里发消息）。 | 文件自带 |

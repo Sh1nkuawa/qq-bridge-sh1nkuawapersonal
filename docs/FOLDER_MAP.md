@@ -1,31 +1,48 @@
 # 仓库目录地图（FOLDER_MAP）
 
 > 一句话说明每个顶层目录干什么、`scripts/` 里的命名约定是什么、哪些脚本像是过期的一次性产物。
-> 本文**只描述现状**，不构成改动指令。文档索引见 [README.md](README.md)。
+> 本文**只描述现状**，不构成改动指令。文档索引见 [README.md](README.md)；**逐个文件**的说明见
+> [FILE_INDEX.md](FILE_INDEX.md)。
 >
-> 最后核对：2026-10-05（补上 [FILE_INDEX.md](FILE_INDEX.md) 与两个新脚本）。新增目录/脚本时请顺手补一行，
-> 然后跑 `npm run docs:file-index` 让逐文件索引跟上（`docs:file-index:check` 查漂移）。
+> **本文刻意不写会漂移的硬数字**（行数、文件个数、扩展名构成）：那些一律以自动生成的
+> [FILE_INDEX.md](FILE_INDEX.md) 顶部统计行为准。曾经这里手抄过「`bridge.js` 约 10,400 行」
+> 「scripts 共 170 个」，等发现时已经错了 30%+（2026-10-05 实测分别是 14,109 行 / 190 个）。
+>
+> 结构类事实（各目录的子目录、工作区根列出的项是否真实存在）由
+> `scripts/test-foldermap-facts.mjs` 断言；**加了目录/脚本请连文档一起改**，然后跑
+> `npm run docs:file-index`。
+>
+> 最后核对：2026-10-05（按事实修正 7 处过时描述 + 加防漂移测试）。
 
 ---
 
 ## 一、顶层布局
 
+工作区根（本机 `D:\dsh`）里与本仓库**运行/启动/回滚相关**的项：
+
 ```
-DSH/                         ← 工作区根（不是仓库根）
-├── qq-bridge/               ← 本仓库（QQ ↔ DSH 桥接）
-├── voice-tool/              ← 独立「发语音」工具（从 qq-bridge 拆出；不依赖桥接运行）
-├── 发语音-图形界面.cmd      ← 工作区根的双击启动器 → 进 voice-tool/ 起图形界面
-└── 重启DSH-加载语音工具.cmd  ← 工作区根的运维启动器（重启 DSH 让 MCP 工具重新挂载）
+D:\dsh/                       ← 工作区根（不是仓库根）
+├── qq-bridge/                ← 本仓库：QQ ↔ DSH 桥接
+├── snowluma/                 ← OneBot 网关本体（第三方；按账号配置 config/onebot_<QQ>.json）
+├── tools/                    ← 外部启动器：桌面「启动Bot」的 start-bot.bat、卡图机器人等
+└── qq-bridge-backup-*/       ← 升级/改动前的备份（config.json / state/ / 仓库 bundle）
 ```
+
+> ⚠️ 上面**只列与本仓库相关的项，不是工作区全貌**：工作区根另有 40+ 项与本项目无关的目录与文件
+> （游戏、模拟器、聊天记录、一堆实验脚本与文档），本节不罗列。
+> 判据是"与本仓库的运行/启动/回滚有关"，所以工作区里出现新目录不会自动进这张表。
+>
+> 上游把独立「发语音」工具拆出了本仓库（`../voice-tool/`），**本机未安装**；本仓库的语音功能
+> 不依赖它（`src/voice-core.js` 是同一份实现）。结构参考见第五节。
 
 `qq-bridge/` 内部：
 
 | 目录 | 作用 | 能不能删/动 |
 | --- | --- | --- |
-| `src/` | **桥接内核**：主程序、DSH 客户端、三个 MCP server、黑话/表情/语音共享库 | 不能动。`bridge.js` 是主程序（约 10,400 行，QSH 计划拆分）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**；`voice-transcribe.js` 是**收**语音转写的共享实现（发送走 `voice-core.js`，两者方向相反、互不依赖）。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
+| `src/` | **桥接内核**：主程序、DSH 客户端、MCP server、黑话/表情/语音/好感度等共享库（每个文件干什么见 [FILE_INDEX.md](FILE_INDEX.md)） | 不能动。`bridge.js` 是主程序（**体量很大、还在长**，QSH 计划里要拆分；具体行数以 [FILE_INDEX.md](FILE_INDEX.md) 统计为准，别在本文件手抄）；`voice-core.js` 与 `snowluma-conn.js` 是**独立工具也在用的单一实现**；`voice-transcribe.js` 是**收**语音转写的共享实现（发送走 `voice-core.js`，两者方向相反、互不依赖）。**目录里只应有 `.js`**：曾经的 `bridge.js.bak-*` 会污染全局搜索并看起来像 module，2026-09-20 已移出（见下） |
 | `scripts/` | 调试 / 测试 / 一次性运维脚本（见第二节命名约定） | 测试脚本不能删；`cleanup-*` / `fix-*` / `patch-*` / `diag-*` 多为历史遗留 |
-| `dsh/` | 要装进 DSH 的东西：`agent-presets/qq-chat`、`agent-presets/qq-chat-v2`（preset 与工具白名单 `qq-tool-restrict.mjs`） | 改 preset 会影响所有人设行为 |
-| `plugins/` | DSH 插件：`qq-mode-console`（注册 `qq-mode` 设置命名空间；**只有 host 半**，浏览器 UI 卡片未实现） | 改了要重装/重启 DSH |
+| `dsh/` | 要装进 DSH 的东西：`agent-presets/qq-chat`、`agent-presets/qq-chat-v2`（preset 与工具白名单 `qq-tool-restrict.mjs`），以及 `skills/`（Codex 技能，如 `codex-image` 生图） | 改 preset 会影响所有人设行为 |
+| `plugins/` | DSH 插件：`qq-mode-console`（注册 `qq-mode` 设置命名空间；**只有 host 半**，浏览器 UI 卡片未实现）、`qq-agent-presets`（把两个 preset 作为 `@deepseek-ai/dsh-agent-preset` 行插进 DSH，并携带共用的 `qq-tool-restrict` 守卫） | 改了要重装/重启 DSH |
 | `public/` | 浏览器静态资源：`console.html`（桥接自带控制台，127.0.0.1:3100） | 目录里只应有这一个文件；历史备份 `console.html.bak` 已移出仓库 |
 | `roles/` | 人格卡（`小鲸鱼.md` / `傲娇助手.md` / `README.md`）：控制台「人格与角色」页可编辑，保存即生效 | 用户内容，别乱动 |
 | `assets/` | 仓库用图片等资源（`deepseek娘.png`；`project-intro.mp4` 已改为 Release 附件、不入库） | 别加体积大的二进制 |
@@ -39,13 +56,15 @@ DSH/                         ← 工作区根（不是仓库根）
 
 ## 二、`scripts/` 命名约定
 
-脚本共 170 个文件（167 个 `.mjs` + 3 个 JSON 基线，另有 `fixtures/` 目录）。按前缀区分用途：
+脚本的数量与扩展名构成**会变，不在本文手抄**——以 `npm run docs:file-index` 生成的
+[FILE_INDEX.md](FILE_INDEX.md) 顶部统计行为准（2026-10-05 当时：190 个 = 181 `.mjs` + 5 `.ps1`
++ 3 `.json` + 1 `.html`，另有 `fixtures/` 目录）。按前缀区分用途：
 
 | 前缀 / 形态 | 含义 | 归宿 |
 | --- | --- | --- |
 | `test-*.mjs` | **自动化测试**。其中被 `scripts/test-audit.mjs` 列进 `tests[]` 的那些会跑在 `npm run test:audit` 里（离线、不发真 QQ 消息、不用生产凭据） | 保留，改动需同步 test-audit 清单 |
 | `test-audit-*.mjs` | test-audit 的子模块（`test-audit-bridge` / `-protocol` / `-security` / `-setup` 及其 `-helpers`/`-guards`），被上一个直接运行 | 保留 |
-| `test-console-ui.mjs` + `console-ui-*.json` / `console-ui-fixture.mjs` / `fixtures/` | 控制台**离线浏览器回归**与基线（`npm run test:console-ui` / `npm run preview:console`），说明见 [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 保留（基线只在后端契约真变时才重录） |
+| `test-console-ui.mjs` + `console-ui-*.json` / `console-ui-fixture.mjs` / `fixtures/`（含 `.html` 基线，如 `fixtures/console.before.html`） | 控制台**离线浏览器回归**与基线（`npm run test:console-ui` / `npm run preview:console`），说明见 [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md) | 保留（基线只在后端契约真变时才重录） |
 | `send-*.mjs` | 面向 SnowLuma/QQ 的**真发送**小工具（`send-voice.mjs` 走桥接；`send-test-group.mjs` 发测试群） | 保留，但注意会真的发消息 |
 | `setup-*.mjs` | **安装/初始化**：把 preset、MCP 挂载写进目标设备的 DSH（`setup-dsh.mjs`，幂等） | 保留 |
 | `verify-*.mjs` | **一致性校验**：`verify-dsh-015-adaptation.mjs`（DSH 适配）、`verify-persona-config.mjs`（人格配置） | 保留 |
@@ -62,6 +81,9 @@ DSH/                         ← 工作区根（不是仓库根）
 | `probe-current-notice.mjs` | 只读查看**群里当前公告正文**与是否还有待审草稿（走桥接控制台 `/api/socialV2/admin-status`，需 `state/console-token`）。用途：确认上一版公告是否已被替换、机器人是不是管理员、草稿有没有卡住 | 保留（公告流程） |
 | `gen-file-index.mjs` | **生成 [FILE_INDEX.md](FILE_INDEX.md)**：逐文件一句话（优先取文件自身的开头注释，其次内置 OVERLAY 表，两者都没有就如实写「待补」，不猜）。`--check` 比对漂移（退出 1，可挂回归）、`--stdout` 只打印。npm：`docs:file-index` / `docs:file-index:check`。**FILE_INDEX.md 是生成物，别手改** | 保留（文档基建） |
 | `probe-doc-coverage.mjs` | 诊断：统计各目录「有多少文件在文档里被点名」，用来量化文档腐化程度（当初就是靠它发现 272 个文件里只有 62 个在 FOLDER_MAP 里点名、132 个在任何文档里都找不到）。只读 | 保留（文档体检） |
+| `test-foldermap-facts.mjs` | **防本文漂移的回归**：断言 `dsh/` `plugins/` `docs/` 的子目录与 docs/ 根级 md 都被本文点到、§1 目录树里每一项在磁盘上真实存在、`voice-tool` 不存在时本文必须写"本机未安装"、**正文不许再手抄行数/文件总数**（出现即失败），并顺带跑一次 `gen-file-index --check`。自动被 `run-offline-tests.mjs` 收录 | 保留（改目录/文档后必跑） |
+| `probe-foldermap-facts.mjs` | 上面那个测试的**人读版**：把同样的核对项打印成一张对照表（文档写什么 / 实际多少），用于手工体检或写报告。只读 | 保留（文档体检） |
+| `*.ps1` | **提权/运维脚本**（非 Node）：`game-daily-setup.ps1`、`arknights-setup.ps1`、`endfield-setup.ps1`（日活工具的一次性提权安装，必须 UTF-8 with BOM）、`backup-before-upgrade.ps1`（升级前备份）、`close-dsh.ps1`（旧版关 DSH；现多用 `close-dsh.mjs`，因为 WMI 起的 powershell `-File` 在本机会静默不执行） | 保留（按需） |
 | `patch-*.mjs` | **补丁**（含 `postinstall` 的 `patch-snowluma-sdk.mjs`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `patch-snowluma-sdk.mjs` **必须保留**（postinstall 依赖）；其余见第四节 |
 | `cleanup-*.mjs` | **清理一次性残留**（probe 会话/工作区、测试会话） | 见第四节 |
 | `fix-*.mjs` | **一次性修复**（针对某次运行产生的脏数据） | 见第四节 |
@@ -73,19 +95,29 @@ DSH/                         ← 工作区根（不是仓库根）
 
 ## 三、`docs/` 结构
 
+**现状（2026-10-05 核对，子目录只剩 `guides/`）**：
+
 ```
 docs/
-├── README.md     # 文档索引（每篇一句话 + 是否仍然有效）  ← 先看这个
-├── FOLDER_MAP.md # 本文件
-├── guides/       # 面向使用者/运维：PROJECT_GUIDE / DSH_SETUP / VOICE / TOKEN_USAGE_CONSOLE / CONSOLE-UI-TESTING
-├── design/       # 设计与规划：GEN2_SIMULATION_PLAN / SOCIAL_MODE_PLAN / DSH_QQ_TOOLS_PLAN / 真人语感策略
-├── research/     # 调研：SnowLuma功能调研 / 免打扰 / 表情包 / 本地模型选型
-├── audits/       # 审查与优化报告（最新的全项目体检是 AUDIT_REPORT_2026-09-20）
-└── legacy/       # 历史归档（已被取代 / 问题已全部修复的旧报告）
+├── README.md            # 文档索引（每篇一句话 + 是否仍然有效）  ← 先看这个
+├── FOLDER_MAP.md        # 本文件
+├── FILE_INDEX.md        # 逐文件索引（**生成物**，别手改）
+├── PROJECT_GUIDE.md     # 权威项目说明书（旧位置是 guides/PROJECT_GUIDE.md，整理后落到根级）
+├── AFFINITY.md          # 好感度（关系）系统
+├── FEED.md              # 投喂（赞助）
+├── MEMES.md             # 本地表情包库
+├── MODERATION.md        # 群管理（禁言 / 公告 / 审核）
+├── 群公告-新版草稿.md    # 群公告草稿（发布走的正文另见仓库根的 群公告.md）
+└── guides/              # 面向使用者/运维：DSH_SETUP / VOICE / TOKEN_USAGE_CONSOLE /
+                         #   CONSOLE-UI-TESTING / PRIVACY / SECURITY_BASELINE
 ```
 
-规则：**根目录只留 `README.md` / `README.en.md` / `RULES.md` 三个文档**，其余一律进 `docs/` 对应子目录，
-并在 [README.md](README.md) 索引里登记一行（含「仍然有效 / 被谁取代」）。
+> ⚠️ 本节此前写的 `design/` `research/` `audits/` `legacy/` **四个子目录已不存在**（文档整理时被合并/删除），
+> 曾经"根目录只留三个文档、其余一律进子目录"的规则也与现状不符：现在根级有 9 个 md。
+> **待 owner 决定**：是把 `AFFINITY`/`FEED`/`MEMES`/`MODERATION` 收进子目录（如 `docs/features/`）并恢复那条规则，
+> 还是就此改成"根级放总览与功能说明、`guides/` 放操作指南"。本文只如实描述现状，不替你做这个决定。
+>
+> 无论怎么放，**新文档都要在 [README.md](README.md) 索引里登记一行**（含「仍然有效 / 被谁取代」）。
 
 ---
 
@@ -122,7 +154,13 @@ docs/
 
 ---
 
-## 五、独立工具 `voice-tool/`（不在本仓库内）
+## 五、独立工具 `voice-tool/`（**本机未安装**；上游已把它拆出本仓库）
+
+> 本机（2026-10-05 核对）工作区根**没有** `voice-tool/`，也没有曾经的
+> `发语音-图形界面.cmd` / `重启DSH-加载语音工具.cmd` 两个启动器。下面这张表是**上游结构参考**，
+> 用来对照"如果装了它，东西长什么样 / 与本仓库怎么共享代码"，**不是本机现状**。
+> 日常发语音不需要它：仓库内有 `npm run send-voice`（CLI）、控制台「语音库与语音发送」面板，
+> 以及 AI 侧的 `qq_send_voice`／`qq_list_voices` 工具。
 
 | 路径 | 作用 |
 | --- | --- |
