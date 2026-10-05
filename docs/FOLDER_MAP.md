@@ -55,6 +55,10 @@ DSH/                         ← 工作区根（不是仓库根）
 | `dsh-modules.mjs` | 小工具：按路径加载 DSH 安装内的模块 | 保留 |
 | `game-daily.mjs`（+ `arknights-daily.mjs` / `endfield-daily.mjs` 薄 wrapper、`game-daily-setup.ps1`、`test-arknights-daily.mjs` / `test-endfield-daily.mjs`） | **游戏日活（提权）**：一个引擎、两个档案（`DEFAULT_ARKNIGHTS` / `DEFAULT_ENDFIELD`，见 `PROFILES`）。流程＝预检 → **先起官方 PC 端**（`Arknights.exe` / `Endfield.exe`，两者清单都是 `requireAdministrator`；桌面图标只开启动器）→ 等窗口就绪 → 起工具（MAA 直接继承提权；**MAAEND 经 `explorer.exe` 降权到普通权限**，因为它自己不需要管理员）→ 盯日志等「跑完」（方舟 `AllTasksCompleted`；终末地 `Tasker.Task.Succeeded` 数到当前实例任务数）→ 跑完即停、30 分钟兜底 → 关工具与游戏 → 写 `state/<游戏>-daily.json`。`game-daily-setup.ps1 -Profile …` 是**一次性提权安装**（注册最高权限计划任务 + 声明式补丁把工具设成"启动即跑"，必须 UTF-8 with BOM）。触发判定/回报措辞的纯函数在 `src/arknights-command.js`；桥接**自身不提权**，只在 owner 发那两句命令时确定性接管并 `schtasks /Run` | 保留（见 INSTALL_NOTES 16.5 / 16.5.1 / 16.5.2 / 16.5.3 / 16.6） |
 | `check-onebot-status.mjs` | 手工排查：查 OneBot 连通性 | 保留（运维常用） |
+| `list-affinity.mjs` | **只读列出某会话的全员好感度**（排名/档位/当日变动/最近互动 + 印象备注 + 档位人数统计）。档位判定直接复用 `src/affinity.js` 的 `tierOf()`，与提示词、控制台口径一致。用途：owner 巡检、回答"现在大家多少分"、排查某人是不是被扣分。**好感度是内部状态，输出别贴群里**。用法 `node scripts/list-affinity.mjs [group:群号]` | 保留（owner 运维） |
+| `probe-affinity-clock.mjs` | 诊断：打印每个成员的时间字段（`dailyDate` / `dailyDelta` / `lastInteractAt` / `lastScoreAt`）与"现在"，对超出当前时间 60s 的标 ⚠。用途：分辨"真没人互动"与"时间戳错位"（时钟被改 / state 被写脏 / 测试注入假时间）导致的分不涨、不衰减。只读。与 `list-affinity.mjs` 分工：那个看排名，这个看时间基准 | 保留（诊断） |
+| `check-announcement-draft.mjs` | 提交群公告前的**本地预检**：过一遍 `validateAnnouncement`（字数 ≤600 / UTF-8 ≤1400 字节 / 禁链接 / 禁 @全体 / 禁本机路径特征），并打印**与现行公告的逐行差异**。用途：避免草稿被 QQ 服务端或桥接直接拒（实测 603 字被拒）。用法 `node scripts/check-announcement-draft.mjs <草稿文件>` | 保留（公告流程） |
+| `probe-current-notice.mjs` | 只读查看**群里当前公告正文**与是否还有待审草稿（走桥接控制台 `/api/socialV2/admin-status`，需 `state/console-token`）。用途：确认上一版公告是否已被替换、机器人是不是管理员、草稿有没有卡住 | 保留（公告流程） |
 | `patch-*.mjs` | **补丁**（含 `postinstall` 的 `patch-snowluma-sdk.mjs`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `patch-snowluma-sdk.mjs` **必须保留**（postinstall 依赖）；其余见第四节 |
 | `cleanup-*.mjs` | **清理一次性残留**（probe 会话/工作区、测试会话） | 见第四节 |
 | `fix-*.mjs` | **一次性修复**（针对某次运行产生的脏数据） | 见第四节 |
