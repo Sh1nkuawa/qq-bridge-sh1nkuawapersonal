@@ -1,7 +1,8 @@
 # 文档索引（docs/README.md）
 
 > 根目录只留 `README.md` / `README.en.md` / `RULES.md` 三个文档，其余全部在本目录下。
-> 仓库目录结构与 `scripts/` 命名约定见 **[FOLDER_MAP.md](FOLDER_MAP.md)**。
+> 仓库目录结构与 `scripts/` 命名约定见 **[FOLDER_MAP.md](FOLDER_MAP.md)**；**逐个文件**的一句话说明见
+> **[FILE_INDEX.md](FILE_INDEX.md)**（由 `npm run docs:file-index` 生成，别手改；`npm run docs:file-index:check` 查漂移）。
 >
 > **状态标记**：✅ 仍然有效（按它做就对） · ⚠️ 部分过时（见备注） · 🗄️ 已被取代（保留作背景）
 
@@ -69,6 +70,6 @@
 | 改控制台界面并做离线回归 | [guides/CONSOLE-UI-TESTING.md](guides/CONSOLE-UI-TESTING.md)、[audits/CONSOLE_UI_REDESIGN_REPORT.md](audits/CONSOLE_UI_REDESIGN_REPORT.md) |
 | 改代码前先知道有哪些坑 | [audits/AUDIT_FIXES_2026-09-20.md](audits/AUDIT_FIXES_2026-09-20.md)（最新）、[audits/AUDIT_REPORT_2026-09-20.md](audits/AUDIT_REPORT_2026-09-20.md) |
 | 动安全相关代码 / 做发布前检查 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) |
-| 知道某个目录/脚本是干什么的 | [FOLDER_MAP.md](FOLDER_MAP.md) |
+| 知道某个目录/脚本是干什么的 | [FOLDER_MAP.md](FOLDER_MAP.md)（目录级 + `scripts/` 前缀约定）；**每一个文件**的用途见 [FILE_INDEX.md](FILE_INDEX.md) |
 | 权限边界与安全承诺 | [../RULES.md](../RULES.md) |
 | 这个项目要往哪走（QSH） | 上位目录的 `../../QSH-plan/`（总索引 `README.md`；另有工具面/技能/云部署/新仓库与官网四份专项） |
