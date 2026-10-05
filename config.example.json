@@ -241,7 +241,13 @@
       "mentionFreshMs": 180000,
       "timeoutSec": 600,
       "outDir": "",
-      "pendingTtlMs": 900000
+      "pendingTtlMs": 900000,
+      "backend": "auto",
+      "arkModel": "doubao-seedream-5.0-pro",
+      "arkSize": "2K",
+      "arkKeyFile": "state/ark-key.txt",
+      "arkBaseFile": "state/ark-base.txt",
+      "arkTimeoutMs": 300000
     },
     "admin": {
       "enabled": true,

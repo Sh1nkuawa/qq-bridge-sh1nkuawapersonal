@@ -1574,6 +1574,51 @@ group:541026885    16:48:12 turn=1   ¥0.0152 / 16:45:31 turn=2   ¥0.0136 / 16:
 "差额是只剩累计值的历史"）。所以面板看起来"累计在涨、明细停住"。#16.12 修完之后，
 "最近"那部分明细就正常了，只有被淘汰的那 ¥6.06 仍然只能看总额。
 
+### 16.13 生图后端：默认走火山方舟 Agent Plan，失败回落 codex（2026-10-05）
+
+**为什么换**：原来只有一条生图链路（`codex-image.ps1` → 本机 Codex CLI → `chatgpt.com` 的
+ChatGPT 订阅后端）。它**极度依赖 VPN**：代理节点一抖就 `image generation failed: network error`，
+群里那轮生图就废了（实测 `rmcp::transport::worker ... https://chatgpt.com/backend-api/ps/mcp`
+反复超时，而同一时刻代理本身是活的、`curl` 经代理访问 chatgpt.com 也能通 ✓）。
+
+**为什么第一次配 key 会 401**（踩过的坑，值得记）：Agent Plan 的**专属 API Key 只能配专属端点**。
+控制台「配置模型及 Base URL → 视觉模型 → API 接入」给的是
+`https://ark.cn-beijing.volces.com/api/plan/v3/images/generations`（**`/api/plan/v3`**），
+我一开始按普通方舟的 `…/api/v3/…` 去打 → 一律
+`AuthenticationError: The API key or AK/SK ... is missing or invalid` ✗。
+控制台旁边还明确警告：**请勿使用 `…/api/v3`，接入会产生额外费用**。
+（排查时可利用报错差异：去掉 `ark-` 前缀 → `The API key format is incorrect`；
+只留裸 UUID → `The API key doesn't exist`；**原串格式合法但不被接受 = 端点用错了**。）
+
+**模型与计费**（[Agent Plan 个人版 · 接入视觉模型](https://www.volcengine.com/docs/ark/agent-plan-personal-visual-models)）：
+`doubao-seedream-5.0-pro`（文生图 / 单·多图生图 / 交互编辑 / 图层拆分；**不支持文生组图** ✗；
+1K/1.5K/2K）与 `doubao-seedream-5.0-lite`（**即将下线** ✗；支持文生组图/流式/联网搜索；2K/3K/4K）。
+套餐内按 **AFP 抵扣**（官方实践文档举例：lite 一张 ≈ 99 AFP）。实测 `pro` 出 1776×2368 一张
+≈ 64s、`usage.output_tokens 16428`（**这条链是按 token 计的**），带 1 张参考图也通
+（`input_images: 1` ✓）。
+
+**改法**
+1. 新增 `src/ark-image.mjs`：端点规整（整条 URL / 带 `/api` 的 base / 只给主机 三种输入都认，
+   只给主机时补**完整的 `/api/plan/v3/images/generations`**，避免手滑打到会产生额外费用的 `/api/v3`）、
+   请求体构造（`model`/`prompt`/`size`/`response_format: b64_json`/`watermark: false`，
+   单张参考图传字符串、多张传数组）、**按字节认图片格式**（Ark 返回 JPEG，不能被 `.png` 扩展名骗）、
+   后端选择 `pickImageBackend()`、以及 `generateWithArk()`。
+2. `scripts/gen-image-worker.mjs` 改成**双后端**：默认 Agent Plan，失败自动回落 codex
+   （`backend=codex` 可强制；缺 key/Base URL 时直接走 codex）。
+   key 与 Base URL 优先取 `socialV2.image.arkApiKey/arkBaseUrl`，否则读
+   `state/ark-key.txt` / `state/ark-base.txt`（都在 `.gitignore` 覆盖的 `state/` 下，**不进仓库** ✓）。
+   写盘前按真实 mime 修正扩展名（`img-….png` → `.jpg`）。
+3. 配置（`config.json` / `config.example.json`）：`socialV2.image.backend: 'auto'`、
+   `arkModel: 'doubao-seedream-5.0-pro'`、`arkSize: '2K'`、`arkKeyFile`、`arkBaseFile`、`arkTimeoutMs`。
+
+**回归**：新增 `scripts/test-image-backend.mjs`（13 组断言：端点规整 3 种输入 / 请求体含参考图两种形态 /
+按字节认格式 / 后端选择（auto、强制 codex、没配好退回 codex）/ 成功（b64 与 url 两条路）/
+失败带出服务端原文 / 参数不全不发请求 / worker 接线与扩展名修正），**离线 52/52 通过**。
+
+**出图实测**（同一套四格漫画提示词，重新生成的那张在 `D:\dsh\out\`）：中文台词基本写对、
+版式与数字（404 行 / 今天 15 轮 / 72 小时 82 轮 / lastAt 10-05 17:41 / 214 vs 291 轮）都在 ✓；
+个别字会糊（`旧探针崴催输出`、清单里有一行重复）——要百分百准确就用"空气泡 + 后期贴字"。
+
 
 
 

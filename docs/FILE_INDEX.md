@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件不列行数（显示 `—`）。
 
-统计：共 **277** 个被跟踪文件（其中 276 个文本文件、合计 **64,160** 行） —— 文件自带说明 **254**、人工补写 **23**、待补 **0**。
+统计：共 **277** 个被跟踪文件（其中 276 个文本文件、合计 **64,254** 行） —— 文件自带说明 **254**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -21,7 +21,7 @@
 | [`.gitignore`](../.gitignore) | 79 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 438 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`config.example.json`](../config.example.json) | 444 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
 | [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,582 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
@@ -178,7 +178,7 @@
 | [`game-daily-setup.ps1`](../scripts/game-daily-setup.ps1) | 102 | 游戏日活：**一次性**提权安装（必须用管理员身份运行本脚本） | 文件自带 |
 | [`game-daily.mjs`](../scripts/game-daily.mjs) | 969 | !/usr/bin/env node | 文件自带 |
 | [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | 197 | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
-| [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 327 | !/usr/bin/env node | 文件自带 |
+| [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 415 | !/usr/bin/env node | 文件自带 |
 | [`get-agent-token.mjs`](../scripts/get-agent-token.mjs) | 28 | 取当前会话的 agent token（仅用于本地验证限制逻辑） | 文件自带 |
 | [`harden-state-acl.mjs`](../scripts/harden-state-acl.mjs) | 121 | state/ 目录权限收紧的「可提权」入口。 | 文件自带 |
 | [`inspect-meme-pack.mjs`](../scripts/inspect-meme-pack.mjs) | 25 | 只读：打印 dsh-meme 图库索引结构与样例（排查用） | 文件自带 |

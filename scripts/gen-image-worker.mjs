@@ -21,6 +21,16 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import {
+  DEFAULT_ARK_MODEL,
+  DEFAULT_ARK_SIZE,
+  detectImageMime,
+  extensionForMime,
+  fileToDataUri,
+  generateWithArk,
+  normalizeArkEndpoint,
+  pickImageBackend
+} from '../src/ark-image.mjs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -202,6 +212,62 @@ function imageOutDir() {
   return path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'qq-bridge-images');
 }
 
+/**
+ * Agent Plan（火山方舟视觉模型）配置。
+ *
+ * [2026-10-05] 默认生图后端。key 与 Base URL 优先取 config.socialV2.image.ark*，
+ * 否则读 state/ark-key.txt 与 state/ark-base.txt（两者都在 .gitignore 覆盖的 state/ 下，
+ * 不会进仓库）。两者缺一就视为"没配"，直接走 codex。
+ */
+function arkConfig() {
+  const img = loadConfig()?.socialV2?.image ?? {};
+  const readFile = (rel) => {
+    try { return fs.readFileSync(path.join(ROOT, String(rel)), 'utf8').trim(); } catch { return ''; }
+  };
+  const apiKey = String(img.arkApiKey ?? '').trim() || readFile(img.arkKeyFile ?? 'state/ark-key.txt');
+  const base = String(img.arkBaseUrl ?? '').trim() || readFile(img.arkBaseFile ?? 'state/ark-base.txt');
+  return {
+    apiKey,
+    base,
+    endpoint: normalizeArkEndpoint(base),
+    model: String(img.arkModel ?? '').trim() || DEFAULT_ARK_MODEL,
+    size: String(img.arkSize ?? '').trim() || DEFAULT_ARK_SIZE,
+    timeoutMs: Number(img.arkTimeoutMs) > 0 ? Number(img.arkTimeoutMs) : 300000,
+    hasArk: Boolean(apiKey && base)
+  };
+}
+
+/** 把参考图（本地路径）转成 data URI 数组；Ark 的 image 参数接受 URL 或 base64 data URI。 */
+function arkImages(images = []) {
+  return images.map((f) => {
+    try { return fileToDataUri(f); } catch (error) { log(`⚠️ 参考图读取失败 ${f}：${error?.message ?? error}`); return ''; }
+  }).filter(Boolean);
+}
+
+/**
+ * 调 Agent Plan 出图。成功时把图写到 outPath（**扩展名按真实字节修正**：Ark 常返回 JPEG，
+ * 硬写 .png 会让下游按扩展名读图的地方踩坑）。返回 { ok, path, log }。
+ */
+async function runArkImage(promptText, outPath, images = []) {
+  const cfg = arkConfig();
+  if (!cfg.hasArk) return { ok: false, path: null, log: '未配置 Agent Plan（缺 key 或 Base URL）' };
+  const res = await generateWithArk({
+    endpoint: cfg.endpoint, apiKey: cfg.apiKey, model: cfg.model, prompt: promptText,
+    images: arkImages(images), size: cfg.size, timeoutMs: cfg.timeoutMs
+  });
+  if (!res.ok) {
+    const line = `Agent Plan 生图失败 HTTP ${res.status}：${res.message}`;
+    log(`⚠️ ${line}`);
+    return { ok: false, path: null, log: line };
+  }
+  const ext = extensionForMime(res.mimeType);
+  const finalPath = outPath.replace(/\.[A-Za-z0-9]+$/, ext);
+  fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+  fs.writeFileSync(finalPath, res.buffer);
+  log(`✅ Agent Plan 出图 ${finalPath}（${(res.ms / 1000).toFixed(1)}s，${res.mimeType}，${Math.round(res.buffer.length / 1024)}KB，usage=${JSON.stringify(res.usage ?? null)}）`);
+  return { ok: true, path: finalPath, log: `agent-plan ${res.mimeType} ${(res.ms / 1000).toFixed(1)}s` };
+}
+
 /** 跑 codex-image.ps1；输出重定向到文件，返回 { code, log } */
 function runCodexImage(promptText, outPath, images = []) {
   return new Promise((resolve) => {
@@ -269,12 +335,34 @@ async function main() {
   };
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const out = path.join(imageOutDir(), `img-${stamp}-${crypto.randomBytes(3).toString('hex')}.png`);
+  let out = path.join(imageOutDir(), `img-${stamp}-${crypto.randomBytes(3).toString('hex')}.png`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
   const started = Date.now();
-  const { code } = await runCodexImage(prompt, out, images);
+  // [2026-10-05] 生图后端：默认 Agent Plan（国内直连、不受 VPN 影响），失败回落 codex。
+  // backend=codex 可强制只用 codex；没配 Agent Plan（缺 key/Base URL）时自动走 codex。
+  const imageCfg = loadConfig()?.socialV2?.image ?? {};
+  const backend = pickImageBackend(imageCfg, { hasArk: arkConfig().hasArk });
+  let code = -1;
+  let outFile = out;
+  let backendLog = '';
+  if (backend === 'ark') {
+    log('▶ 生图后端：Agent Plan（失败会回落 codex）');
+    const ark = await runArkImage(prompt, out, images);
+    backendLog = ark.log;
+    if (ark.ok) { code = 0; outFile = ark.path; }
+    else log(`⚠️ 回落 codex（原因：${ark.log}）`);
+  } else {
+    log('▶ 生图后端：codex（未配 Agent Plan 或 backend=codex）');
+  }
+  if (code !== 0) {
+    const r = await runCodexImage(prompt, out, images);
+    code = r.code;
+    outFile = out;
+    if (code === 0) backendLog = 'codex';
+  }
   const secs = Math.round((Date.now() - started) / 1000);
+  out = outFile;
 
   if (code === 0 && fs.existsSync(out)) {
     try {
@@ -300,7 +388,7 @@ async function main() {
       return text.split(/\r?\n/).filter(Boolean).slice(-3).join(' | ').slice(0, 200);
     } catch { return ''; }
   })();
-  log(`❌ 生图失败 code=${code}（${secs}s）${tail ? ' 输出: ' + tail : ''}`);
+  log(`❌ 生图失败 code=${code}（${secs}s，后端=${backend}）${backendLog ? ' 后端日志: ' + String(backendLog).slice(0, 160) : ''}${tail ? ' 输出: ' + tail : ''}`);
   await refund(`code=${code}`);
   // 分类真实原因：以前一律写"codex 没能在超时前出图"，而实测有一次是
   // "referenced photo wasn't attached"（没拿到参考图），文案误导了群友和模型。
