@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件不列行数（显示 `—`）。
 
-统计：共 **277** 个被跟踪文件（其中 276 个文本文件、合计 **64,254** 行） —— 文件自带说明 **254**、人工补写 **23**、待补 **0**。
+统计：共 **279** 个被跟踪文件（其中 278 个文本文件、合计 **64,574** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 444 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,582 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,627 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -274,6 +274,7 @@
 | [`test-forward.mjs`](../scripts/test-forward.mjs) | 136 | 合并转发消息能力自检脚本： | 文件自带 |
 | [`test-hardening.mjs`](../scripts/test-hardening.mjs) | 131 | 2026-09-20 体检修复的回归测试。 | 文件自带 |
 | [`test-image-ack.mjs`](../scripts/test-image-ack.mjs) | 105 | 生图开始提示（ack）验收：渲染预览 + 配置生效检查（不会往群里发消息）。 | 文件自带 |
+| [`test-image-backend.mjs`](../scripts/test-image-backend.mjs) | 135 | Agent Plan 生图后端：纯函数 + 请求构造 + 错误路径的离线回归（不联网） | 文件自带 |
 | [`test-image-skill.mjs`](../scripts/test-image-skill.mjs) | 96 | 生图技能「入库」验收： | 文件自带 |
 | [`test-image-state.mjs`](../scripts/test-image-state.mjs) | 53 | 生图状态口径验收（只读 + 单元）：失败后模型不能再被"没有状态"误导着说"正在画"。 | 文件自带 |
 | [`test-mcp-agent-token.mjs`](../scripts/test-mcp-agent-token.mjs) | 74 | 回归：MCP 里每个「智能体调用」都必须带 x-agent-token 头。 | 文件自带 |
@@ -340,6 +341,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
+| [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bridge.js`](../src/bridge.js) | 14,108 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 878 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
