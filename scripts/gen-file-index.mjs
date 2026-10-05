@@ -109,13 +109,26 @@ function extractPurpose(file) {
   return { text: '', source: '（无注释，待补）' };
 }
 
+/** 行数：**总行数（含空行）**，即 `wc -l` 的口径。
+ *  ⚠️ 别和 PowerShell 的 `Get-Content | Measure-Object -Line` 混用 —— 它只数**非空行**。
+ *  2026-10-05 实测：`src/bridge.js` 总行 14,108 / 非空行 13,693（空行 415），两个数都"真"，
+ *  差的就是空行。所以本索引必须把口径写在标题里，否则数字会被误读成"算错了"。 */
+function countLines(abs) {
+  try {
+    const text = fs.readFileSync(abs, 'utf8');
+    if (text.includes('\u0000')) return null;          // 二进制
+    const total = (text.match(/\n/g) || []).length + (text.endsWith('\n') ? 0 : 1);
+    return total;
+  } catch { return null; }
+}
+
 function build() {
   const r = spawnSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' });
   const files = (r.stdout || '').split('\0').filter(Boolean)
     .filter((f) => !f.startsWith('node_modules/'))
     .sort();
 
-  const rows = files.map((f) => ({ file: f, ...extractPurpose(f) }));
+  const rows = files.map((f) => ({ file: f, ...extractPurpose(f), lines: countLines(path.join(ROOT, f)) }));
   const groups = new Map();
   for (const row of rows) {
     const dir = path.dirname(row.file) === '.' ? '（仓库根）' : path.dirname(row.file);
@@ -127,6 +140,8 @@ function build() {
     auto: rows.filter((x) => x.source.startsWith('文件自带')).length,
     manual: rows.filter((x) => x.source === '人工补写').length,
     missing: rows.filter((x) => x.source.includes('待补') || x.source.includes('读不出')).length,
+    lines: rows.reduce((n, x) => n + (x.lines || 0), 0),
+    textFiles: rows.filter((x) => x.lines !== null).length,
   };
 
   const out = [];
@@ -137,18 +152,25 @@ function build() {
   out.push('>');
   out.push('> 「作用」一列优先取**文件自己的开头注释**（`文件自带`）；没有注释的由生成器内置表补写（`人工补写`）；');
   out.push('> 两者都没有就如实写「（无注释，待补）」——**不猜内容**。目录级/前缀级的说明见 [FOLDER_MAP.md](FOLDER_MAP.md)。');
+  out.push('>');
+  out.push('> 「行数」是**总行数（含空行）**，即 `wc -l` 的口径。⚠️ 别和 PowerShell 的');
+  out.push('> `Get-Content … | Measure-Object -Line` 混用：那个只数**非空行**，会小几百行');
+  out.push('> （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。');
+  out.push('> **要在文档里写行数，就引用这里，别手抄**；二进制文件不列行数（显示 `—`）。');
   out.push('');
-  out.push(`统计：共 **${stats.total}** 个被跟踪文件 —— 文件自带说明 **${stats.auto}**、人工补写 **${stats.manual}**、待补 **${stats.missing}**。`);
+  out.push(`统计：共 **${stats.total}** 个被跟踪文件（其中 ${stats.textFiles} 个文本文件、合计 **${stats.lines.toLocaleString('en-US')}** 行）`
+    + ` —— 文件自带说明 **${stats.auto}**、人工补写 **${stats.manual}**、待补 **${stats.missing}**。`);
   out.push('');
   for (const [dir, list] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
     out.push(`## ${dir}`);
     out.push('');
-    out.push('| 文件 | 作用 | 来源 |');
-    out.push('| --- | --- | --- |');
+    out.push('| 文件 | 行数 | 作用 | 来源 |');
+    out.push('| --- | ---: | --- | --- |');
     for (const row of list.sort((a, b) => a.file.localeCompare(b.file))) {
       const link = `[\`${path.basename(row.file)}\`](../${row.file.split(path.sep).join('/')})`;
       const desc = (row.text || '—').replace(/\|/g, '\\|');
-      out.push(`| ${link} | ${desc} | ${row.source} |`);
+      const n = row.lines === null ? '—' : row.lines.toLocaleString('en-US');
+      out.push(`| ${link} | ${n} | ${desc} | ${row.source} |`);
     }
     out.push('');
   }

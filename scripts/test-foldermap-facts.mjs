@@ -86,18 +86,46 @@ ok('voice-tool 若不存在，文档必须写明"未安装"', () => {
   assert.match(text, /本机未安装/, 'voice-tool 不存在，但文档没写"本机未安装"');
 });
 
-console.log('\n## 不许再手抄会漂移的硬数字（改为指向自动生成的 FILE_INDEX）');
+console.log('\n## 不许再手抄会漂移的硬数字（改为引用自动生成的 FILE_INDEX）');
 // 只看正文：`>` 引用块里是文档自己的沿革说明（会引用这些错误示例当反面教材），不该被误判。
 const body = text.split('\n').filter((l) => !l.trimStart().startsWith('>')).join('\n');
-ok('正文里没有"bridge.js … 约 10,400 行"这类硬行数', () => {
-  const m = /bridge\.js[^\n]{0,40}?(\d[\d,]{3,})\s*行/.exec(body);
-  assert.equal(m, null, `正文仍在手抄行数：${m?.[0]}`);
+// ⚠️ 用**通用模式**而不是上一次的具体字面量：上一版只匹配 `约 10,400 行` / `共 170 个`，
+//    结果改写成 `14,109 行` 就绕过去了（"防住了昨天的错，没防住今天的错"）。
+ok('正文里没有任何行数主张（任何 3 位以上数字 + 「行」）', () => {
+  const m = /(?<![\w.-])\d[\d,]{2,}\s*行/.exec(body);
+  assert.equal(m, null, `正文仍写着行数：${m?.[0]} —— 请引用 FILE_INDEX.md 的「行数」列`);
 });
-ok('正文里没有"共 170 个（167 .mjs + 3 JSON）"这类硬计数', () => {
-  const m = /共\s*\d{3}\s*个文件|共\s*\d{3}\s*个\s*\(/.exec(body);
-  assert.equal(m, null, `正文仍在手抄文件总数：${m?.[0]}`);
+ok('正文里没有文件个数主张（「共 N 个文件/脚本」）', () => {
+  const m = /共\s*\d+\s*个(?:文件|脚本)|共\s*\d{3,}\s*个/.exec(body);
+  assert.equal(m, null, `正文仍写着文件总数：${m?.[0]}`);
+});
+ok('正文里没有扩展名计数（如「181 .mjs」「5 个 .ps1」）', () => {
+  // 负向后顾是必须的：否则 `patch-dsh-base64.mjs`、`probe-015.mjs` 这类**文件名里的数字**
+  // 会被误判成"按扩展名计数"（实测踩过）。
+  const m = /(?<![\w.-])\d+\s*个?\s*`?\.(?:mjs|js|cjs|ps1|json|html)/.exec(body);
+  assert.equal(m, null, `正文仍写着按扩展名的计数：${m?.[0]}`);
 });
 ok('文档指向了 FILE_INDEX.md（硬数字的唯一出处）', () => assert.match(text, /FILE_INDEX\.md/));
+ok('FILE_INDEX.md 真的有「行数」列（否则"以它为准"盖不住行数）', () => {
+  const idx = fs.readFileSync(path.join(ROOT, 'docs', 'FILE_INDEX.md'), 'utf8');
+  assert.match(idx, /\|\s*文件\s*\|\s*行数\s*\|/, 'FILE_INDEX 表头里没有「行数」列');
+  assert.match(idx, /总行数（含空行）/, 'FILE_INDEX 没写清行数口径');
+});
+
+console.log('\n## 正文提到的脚本必须真的存在（§4 那种"列了一堆已删除脚本"的漂移）');
+const mentioned = new Set();
+for (const m of body.matchAll(/`scripts\/([A-Za-z0-9._-]+\.(?:mjs|js|cjs|ps1))`/g)) mentioned.add(m[1]);
+ok(`正文点到 ${mentioned.size} 个具体脚本文件`, () => assert.ok(mentioned.size >= 5, '一个都没解析到，正则要跟着文档格式更新'));
+for (const name of [...mentioned].sort()) {
+  ok(`存在：scripts/${name}`, () => {
+    const abs = path.join(ROOT, 'scripts', name);
+    if (fs.existsSync(abs)) return;
+    // 允许"通配/成组"写法（例如 console-ui-*.json），也允许被显式标记为已清理的行
+    const line = body.split('\n').find((l) => l.includes(name)) ?? '';
+    if (name.includes('*') || /已清理|已删除|已移出|已废弃|曾经的脚本/.test(line)) return;
+    assert.fail(`文档里点了 scripts/${name}，但磁盘上不存在（若是已清理，请挪进 §4.1 并去掉 scripts/ 前缀）`);
+  });
+}
 
 console.log('\n## FILE_INDEX.md 必须与仓库一致（生成物不许过期）');
 const chk = spawnSync(process.execPath, ['scripts/gen-file-index.mjs', '--check'], { cwd: ROOT, encoding: 'utf8' });

@@ -4,15 +4,19 @@
 > 本文**只描述现状**，不构成改动指令。文档索引见 [README.md](README.md)；**逐个文件**的说明见
 > [FILE_INDEX.md](FILE_INDEX.md)。
 >
-> **本文刻意不写会漂移的硬数字**（行数、文件个数、扩展名构成）：那些一律以自动生成的
-> [FILE_INDEX.md](FILE_INDEX.md) 顶部统计行为准。曾经这里手抄过「`bridge.js` 约 10,400 行」
-> 「scripts 共 170 个」，等发现时已经错了 30%+（2026-10-05 实测分别是 14,109 行 / 190 个）。
+> **正文一律不写行数 / 文件个数 / 扩展名构成**：这些一律引用自动生成的
+> [FILE_INDEX.md](FILE_INDEX.md)（它带「行数」列与统计行）。曾经这里手抄过这些数字，
+> 等发现时已经全错（行数差 30%+、文件数少 20 个）；而且"行数"本身还有口径陷阱 ——
+> `wc -l` 数总行、PowerShell `Measure-Object -Line` 只数**非空行**，两者能差几百行
+> （`src/bridge.js`：总行 14,108 / 非空 13,693，差的全是 415 行空行）。要引用就引用
+> FILE_INDEX，别手抄、也别自己现算。
 >
-> 结构类事实（各目录的子目录、工作区根列出的项是否真实存在）由
-> `scripts/test-foldermap-facts.mjs` 断言；**加了目录/脚本请连文档一起改**，然后跑
-> `npm run docs:file-index`。
+> 结构类事实（各目录的子目录、工作区根列出的项是否真实存在、正文提到的脚本是否还在）
+> 由 `scripts/test-foldermap-facts.mjs` 断言；**加了目录/脚本请连文档一起改**，
+> 然后跑 `npm run docs:file-index`。
 >
-> 最后核对：2026-10-05（按事实修正 7 处过时描述 + 加防漂移测试）。
+> 最后核对：2026-10-05（按事实修正 7 处过时描述 + 加防漂移测试；同日再修 4 处：
+> §4 的"已清理"清单、去掉正文里的数字、`.npm-cache`、补登记 `patch-dsh-base64.mjs`）。
 
 ---
 
@@ -49,16 +53,15 @@ D:\dsh/                       ← 工作区根（不是仓库根）
 | `audio/` | **语音库**（用户的真实音频）。桥接的 AI 语音工具只能发这里的文件；独立 `voice-tool` 默认也指向这里 | **用户文件，绝不删除/移动** |
 | `state/` | **运行时数据**（会话映射、模式、角色、黑话库、日志、锁、令牌）。`.gitignore` 排除 | **用户数据，绝不删除/移动** |
 | `docs/` | 全部文档，按用途分子目录（见第三节） | 见第三节 |
-| `node_modules/` `.npm-cache/` | 依赖与 npm 缓存 | 忽略 |
+| `node_modules/` | 依赖（`.gitignore` 排除）。⚠️ npm 缓存**不在仓库里**（本仓库只有 `.npmrc` 这项设置；`.gitignore` 里那条 `.npm-cache/` 是给别处可能出现的缓存目录兜底的） | 忽略 |
 | `config.json` | 运行配置（真实配置**不入库**）；模板是 `config.example.json` | 值属于用户，别改 |
 
 ---
 
 ## 二、`scripts/` 命名约定
 
-脚本的数量与扩展名构成**会变，不在本文手抄**——以 `npm run docs:file-index` 生成的
-[FILE_INDEX.md](FILE_INDEX.md) 顶部统计行为准（2026-10-05 当时：190 个 = 181 `.mjs` + 5 `.ps1`
-+ 3 `.json` + 1 `.html`，另有 `fixtures/` 目录）。按前缀区分用途：
+脚本的数量与扩展名构成**会变，本文不写**——见 `npm run docs:file-index` 生成的
+[FILE_INDEX.md](FILE_INDEX.md)（带「行数」列与统计行）。按前缀区分用途：
 
 | 前缀 / 形态 | 含义 | 归宿 |
 | --- | --- | --- |
@@ -85,6 +88,7 @@ D:\dsh/                       ← 工作区根（不是仓库根）
 | `probe-foldermap-facts.mjs` | 上面那个测试的**人读版**：把同样的核对项打印成一张对照表（文档写什么 / 实际多少），用于手工体检或写报告。只读 | 保留（文档体检） |
 | `*.ps1` | **提权/运维脚本**（非 Node）：`game-daily-setup.ps1`、`arknights-setup.ps1`、`endfield-setup.ps1`（日活工具的一次性提权安装，必须 UTF-8 with BOM）、`backup-before-upgrade.ps1`（升级前备份）、`close-dsh.ps1`（旧版关 DSH；现多用 `close-dsh.mjs`，因为 WMI 起的 powershell `-File` 在本机会静默不执行） | 保留（按需） |
 | `patch-*.mjs` | **补丁**（含 `postinstall` 的 `patch-snowluma-sdk.mjs`：修 `@snowluma/sdk` 的 ESM 打包 bug） | `patch-snowluma-sdk.mjs` **必须保留**（postinstall 依赖）；其余见第四节 |
+| `patch-dsh-base64.mjs` | 给**全局安装的 DSH 包**打本地补丁：把会爆栈的 base64 校验正则换成线性校验（`(?:…)*` 在 V8 里递归实现，4.4MB base64 ≈3.3MB 的图就抛 `Maximum call stack size exceeded`，DSH 于是把图降级成 `[image unavailable…]`，群里的表现是"这张图死活读不出来"）。幂等、自动备份 `.bak-qqbridge`；`--check` 只看状态、`--revert` 还原 | **保留**；⚠️ `npm i -g @deepseek-ai/dsh` 之后补丁会被覆盖，**要重跑**（详见 INSTALL_NOTES） |
 | `cleanup-*.mjs` | **清理一次性残留**（probe 会话/工作区、测试会话） | 见第四节 |
 | `fix-*.mjs` | **一次性修复**（针对某次运行产生的脏数据） | 见第四节 |
 | `diag-*.mjs` | **诊断**（如归档并清理日志） | 见第四节 |
@@ -121,34 +125,39 @@ docs/
 
 ---
 
-## 四、疑似过期的一次性脚本（未删除，待确认）
+## 四、过期脚本：**已清理的**与**仍在的**
 
-> 判断依据：`.gitignore` 已把它们列为「Local one-off dev/debug/patch scripts（machine-specific paths/IDs,
-> or bound to artifacts of a single probe run under `state/`）」——也就是说作者当初就认为**它们不该进公开仓库**；
-> 加上脚本内容绑定某一次运行留下的 `state/` 残留。**本次整理没有移动或删除任何脚本**，仅列出待人工确认。
+### 4.1 已清理（**这些文件现在不存在**，2026-09 整理时清掉）
 
-| 脚本 | 像是过期的理由 |
+> 列在这里只是留个记录，防止有人照旧版文档去 `scripts/` 找 —— 会全部落空。
+> 当时的判断依据：`.gitignore` 已把它们列为「Local one-off dev/debug/patch scripts
+> （machine-specific paths/IDs, or bound to artifacts of a single probe run under `state/`）」，
+> 加上脚本内容绑定某一次运行留下的 `state/` 残留。
+> **下面故意不写 `scripts/` 前缀**：这些路径已经不存在，写成路径形式会让人以为能点开。
+
+| 曾经的脚本 | 当时的理由 |
 | --- | --- |
-| `scripts/cleanup-probe-sessions.mjs` | 清理某次 probe 在 DSH 里建的会话；probe 产物已不在（`state/` 下 `self-test*` 目录仍有余留），脚本本身是一次性的 |
-| `scripts/cleanup-probe-workspaces.mjs` | 同上，清理 probe 建的工作区 |
-| `scripts/cleanup-test-sessions.mjs` | 同上，清理自测会话 |
-| `scripts/fix-probe-workspace-title.mjs` | 修某次 probe 工作区标题的脏数据；一次性 |
-| `scripts/diag-archive.mjs` | 诊断 + 归档日志；日志归档已手动完成，属一次性运维 |
-| `scripts/debug-whitelist.mjs` | 白名单逻辑对照调试；与 `test-audit-*` 的白名单用例重复 |
-| `scripts/patch-qq-chat-v2-presleep.mjs` | 给 `qq-chat-v2` preset **打一次补丁**；目标内容现已直接在 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml` 里，重跑会重复插入 |
-| `scripts/patch-qq-chat-v2-stickers.mjs` | 同上（表情包小节） |
-| `scripts/patch-qq-chat-v2-collect-memory.mjs` | 同上（收藏 + 记忆小节） |
-| `scripts/patch-web-mcp-timeout.mjs` | 给 DSH 的 web MCP 配置打超时补丁；属对**外部 DSH 安装**的一次性改动，重启/升级 DSH 后语义就变了 |
-| `scripts/probe-015.mjs` | 针对 DSH **0.1.5** 的探针；项目现已适配 0.1.5-rc.1，探针结论已被 `verify-dsh-015-adaptation.mjs` 取代 |
-| `scripts/probe-rpc-compat.mjs` / `probe-models.mjs` / `probe-workspace.mjs` / `probe-events.mjs` / `probe-tools.mjs` | 一次性协议/能力探针：问完「DSH 现在长什么样」就没用了；`probe-events` / `probe-tools` 仍挂在 `npm run probe:*` 上，故**保留但视为按需重跑** |
-| `scripts/test-onebot-connection.mjs` / `test-mcp-*.mjs`（`test-mcp-exec` / `-host` / `-safe` / `-web-search`） | **不在** `test-audit.mjs` 的清单里，属手工排查脚本而非回归套件；功能上被 `check-onebot-status.mjs` / `test-audit-security-mcp.mjs` 覆盖 |
+| cleanup-probe-sessions / cleanup-probe-workspaces / cleanup-test-sessions | 清理某次 probe 在 DSH 里建的会话 / 工作区 / 自测会话；probe 产物已不在 |
+| fix-probe-workspace-title | 修某次 probe 工作区标题的脏数据；一次性 |
+| diag-archive | 诊断 + 归档日志；归档已手工完成 |
+| debug-whitelist | 白名单逻辑对照调试；与 `test-audit-*` 的白名单用例重复 |
+| patch-qq-chat-v2-presleep / patch-qq-chat-v2-stickers / patch-qq-chat-v2-collect-memory | 给 `qq-chat-v2` preset 打一次性补丁；内容现已直接在 `dsh/agent-presets/qq-chat-v2/agent.cordis.yml` 里，重跑会重复插入 |
+| patch-web-mcp-timeout | 给 DSH 的 web MCP 配置打超时补丁；属对**外部 DSH 安装**的一次性改动，重启/升级后语义就变了 |
 
-处理建议（**没有执行**，等确认）：确认无用后整批移到一个不影响 `npm run test:audit` 的位置
-（例如 `scripts/legacy/`），或直接删除——它们都不在 `package.json` 脚本里，也没有被 `test-audit.mjs` 引用，
-移动不会影响任何自动化回归。反过来，**下面这些千万别当"过期脚本"清掉**：
+### 4.2 仍在仓库里，但属"按需重跑 / 手工排查"
+
+| 脚本 | 说明 |
+| --- | --- |
+| `scripts/probe-015.mjs` | 针对 DSH 0.1.5 的探针；结论已被 `verify-dsh-015-adaptation.mjs` 取代 |
+| `scripts/probe-rpc-compat.mjs` / `probe-models.mjs` / `probe-workspace.mjs` | 一次性协议/能力探针：问完「DSH 现在长什么样」就没用了 |
+| `scripts/probe-events.mjs` / `probe-tools.mjs` | 同上，但挂在 `npm run probe:*` 上，**保留、按需重跑** |
+| `scripts/test-onebot-connection.mjs` / `test-mcp-exec.mjs` / `test-mcp-host.mjs` / `test-mcp-safe.mjs` / `test-mcp-web-search.mjs` | 手工排查脚本（不在 `test-audit.mjs` 清单里）；功能上被 `check-onebot-status.mjs` / `test-audit-security-mcp.mjs` 覆盖。⚠️ 名字容易与**必需的** `test-audit-*` 混淆，删之前先确认 |
+
+### 4.3 千万别当"过期脚本"清掉
 
 - `scripts/patch-snowluma-sdk.mjs`（`postinstall` 依赖，删了 `npm install` 就坏）
-- `scripts/test-audit.mjs` 清单里的每一个（完整清单见该文件 `tests[]` 数组）
+- `scripts/patch-dsh-base64.mjs`（修全局 DSH 的 base64 爆栈；**每次 `npm i -g @deepseek-ai/dsh` 后都要重跑**）
+- `scripts/test-audit.mjs` 清单里的每一个
 - `scripts/console-ui-*.json` / `console-ui-fixture.mjs` / `fixtures/`（控制台回归基线）
 - `scripts/audit-bridge-harness.mjs`、`scripts/dsh-modules.mjs`（被测试/工具引用）
 
