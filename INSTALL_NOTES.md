@@ -1652,6 +1652,35 @@ worker 改为让两个后端的原因都如实出现，并对审核类失败补�
 且回落策略未动）；`test-image-state.mjs` 的源码断言同步指向新模块并加一条"不再只报 codex"。
 **离线 52/52 通过** ✓。
 
+### 16.14 DSH 会话归档：官方没这功能，用"搬目录"等效（2026-10-12）
+
+**问题**：qq-bridge 每清一次上下文就新开一个 DSH 会话，`--D-dsh-qq-bridge--` 工作区攒到 **441 个**
+（全库 477 个 / 101.8 MB），DSH 的会话列表被撑满。翻遍 `dsh-web-app` / `dsh-session` / 会话 UI 包，
+**没有任何 archive/归档实现** ✗。
+
+**存储事实**（实测）：会话在 `~/.dsh/sessions/<工作区 slug>/session-<uuid>/`，里面是
+`session.jsonl.zstd` + `session.v3.jsonl.zstd`；**没有中央索引文件** → "把会话目录搬走"就等于
+"从界面里归档"，而且完全可逆 ✓。桥接只在 `state/sessions.json` 里记**当前那一个** session id
+（`sessions["group:541026885"] = "session-c3da5e92-…"`），只有它不能动。
+
+**做法**：新增 `scripts/archive-dsh-sessions.mjs`（默认**只预览**，`--apply` 才动手）：
+
+```powershell
+node scripts/archive-dsh-sessions.mjs --only --D-dsh-qq-bridge--          # 预览
+node scripts/archive-dsh-sessions.mjs --only --D-dsh-qq-bridge-- --apply  # 真搬
+node scripts/archive-dsh-sessions.mjs --restore "<manifest.json>"         # 还原
+```
+
+三条保护：① `state/sessions.json` 里记着的会话永不搬；② 最近 `--keep-days`（默认 7）天内更新过的
+永不搬；③ 工作区目录里非 `session-*` 的条目（DSH 自己的工作区元数据）永不碰。搬运目标
+`~/.dsh/sessions-archive/<YYYY-MM>/<工作区>/<session-id>/`，同时写 `manifest-*.json` 供还原 ✓。
+
+**实测预览**：只处理 bot 工作区 → 可归档 **332 个 / 40.8 MB**（保留在用 1 个 + 最近 7 天 108 个）；
+`--keep-days 3` → 383 个 / 47.1 MB。搬完刷新页面即可（列表若仍有缓存就重启 DSH ✓）。
+
+**待办**（未做，属另一项改动）：查清桥接为何频繁新开会话（`sessions.json` 里已有 `sessionPolicies`
+机制），从源头把会话数稳住。
+
 
 
 

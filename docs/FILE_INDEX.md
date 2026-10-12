@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **279** 个被跟踪文件（其中 277 个文本文件、合计 **64,286** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
+统计：共 **280** 个被跟踪文件（其中 278 个文本文件、合计 **64,373** 行） —— 文件自带说明 **257**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 444 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,660 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,689 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -348,6 +348,7 @@
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 219 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
+| [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
 | [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,635 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
