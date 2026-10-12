@@ -1619,6 +1619,39 @@ ChatGPT 订阅后端）。它**极度依赖 VPN**：代理节点一抖就 `image
 版式与数字（404 行 / 今天 15 轮 / 72 小时 82 轮 / lastAt 10-05 17:41 / 214 vs 291 轮）都在 ✓；
 个别字会糊（`旧探针崴催输出`、清单里有一行重复）——要百分百准确就用"空气泡 + 后期贴字"。
 
+**补丁（2026-10-12）：失败文案甩锅给 codex** ✗
+
+owner 反馈"生图失败报的是 codex"，查日志发现**第一个拒的其实是火山方舟** ✓：
+
+```
+[07:04:43] ⚠️ Agent Plan 生图失败 HTTP 400：The request failed because the output image
+           may contain sensitive information. Request id: 0217917…
+[07:04:43] ⚠️ 回落 codex（原因：… sensitive information）
+[07:05:09] ❌ 生图失败 code=1（132s，后端=ark）…输出: … 网络不可达：直连 chatgpt.com 失败 …
+[07:05:10] 💬 图没画出来：codex 那边出错了（不是你的问题）…   ← 群里收到的就是这句 ✗
+```
+
+根因：失败原因分类只读 **codex 那半段日志**，把结论统一说成"codex" ✗ —— 而 Ark 的
+内容审核拒绝和 codex 的网络失败是两回事。后果是 owner 与群友都会误判该改什么。
+
+**改法（只改「怎么说」，不动「要不要回落」）**：新增 `src/image-failure-text.mjs`（纯函数：
+`classifyArkFailure` / `classifyCodexFailure` / `buildImageFailureText` / `looksLikeModeration`），
+worker 改为让两个后端的原因都如实出现，并对审核类失败补一句"换个描述、别用真人参考图
+（重发原样还会被拒）" ✓。同一句失败现在长这样：
+
+```
+图没画出来：火山方舟说输出图可能含敏感内容（内容审核挡下了）；回落的 codex 也失败
+（网络到 chatgpt.com 不通）。这种情况换个描述、或别用真人参考图（重发原样还会被拒）。
+这次不扣次数（你那句「…」我记着，重新 @我 发一次就行）。
+```
+
+⚠️ **按 owner 决定：不改"Ark 失败后仍回落 codex"的策略**（审核类失败也照样试一次 codex）✓。
+
+**回归**：`test-image-backend.mjs` 扩到 **18 组**（新增：两个原因都要出现且首个必须是真正先失败的
+后端 / Ark 401·429·超时·网络·HTTP xxx 分类 / 只跑 codex 时保持原口径 / 审核类识别 / worker 接线
+且回落策略未动）；`test-image-state.mjs` 的源码断言同步指向新模块并加一条"不再只报 codex"。
+**离线 52/52 通过** ✓。
+
 
 
 

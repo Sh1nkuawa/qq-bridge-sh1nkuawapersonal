@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **279** 个被跟踪文件（其中 277 个文本文件、合计 **64,201** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
+统计：共 **279** 个被跟踪文件（其中 277 个文本文件、合计 **64,286** 行） —— 文件自带说明 **256**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 444 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,627 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,660 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -178,7 +178,7 @@
 | [`game-daily-setup.ps1`](../scripts/game-daily-setup.ps1) | 102 | 游戏日活：**一次性**提权安装（必须用管理员身份运行本脚本） | 文件自带 |
 | [`game-daily.mjs`](../scripts/game-daily.mjs) | 969 | !/usr/bin/env node | 文件自带 |
 | [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | 205 | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
-| [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 415 | !/usr/bin/env node | 文件自带 |
+| [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 419 | !/usr/bin/env node | 文件自带 |
 | [`get-agent-token.mjs`](../scripts/get-agent-token.mjs) | 28 | 取当前会话的 agent token（仅用于本地验证限制逻辑） | 文件自带 |
 | [`harden-state-acl.mjs`](../scripts/harden-state-acl.mjs) | 121 | state/ 目录权限收紧的「可提权」入口。 | 文件自带 |
 | [`inspect-meme-pack.mjs`](../scripts/inspect-meme-pack.mjs) | 25 | 只读：打印 dsh-meme 图库索引结构与样例（排查用） | 文件自带 |
@@ -274,9 +274,9 @@
 | [`test-forward.mjs`](../scripts/test-forward.mjs) | 136 | 合并转发消息能力自检脚本： | 文件自带 |
 | [`test-hardening.mjs`](../scripts/test-hardening.mjs) | 131 | 2026-09-20 体检修复的回归测试。 | 文件自带 |
 | [`test-image-ack.mjs`](../scripts/test-image-ack.mjs) | 105 | 生图开始提示（ack）验收：渲染预览 + 配置生效检查（不会往群里发消息）。 | 文件自带 |
-| [`test-image-backend.mjs`](../scripts/test-image-backend.mjs) | 135 | Agent Plan 生图后端：纯函数 + 请求构造 + 错误路径的离线回归（不联网） | 文件自带 |
+| [`test-image-backend.mjs`](../scripts/test-image-backend.mjs) | 178 | Agent Plan 生图后端：纯函数 + 请求构造 + 错误路径的离线回归（不联网） | 文件自带 |
 | [`test-image-skill.mjs`](../scripts/test-image-skill.mjs) | 96 | 生图技能「入库」验收： | 文件自带 |
-| [`test-image-state.mjs`](../scripts/test-image-state.mjs) | 53 | 生图状态口径验收（只读 + 单元）：失败后模型不能再被"没有状态"误导着说"正在画"。 | 文件自带 |
+| [`test-image-state.mjs`](../scripts/test-image-state.mjs) | 58 | 生图状态口径验收（只读 + 单元）：失败后模型不能再被"没有状态"误导着说"正在画"。 | 文件自带 |
 | [`test-mcp-agent-token.mjs`](../scripts/test-mcp-agent-token.mjs) | 74 | 回归：MCP 里每个「智能体调用」都必须带 x-agent-token 头。 | 文件自带 |
 | [`test-mcp-exec.mjs`](../scripts/test-mcp-exec.mjs) | 48 | 测试 @snowluma/mcp 的 write 模式：模拟 DSH MCP 客户端完整握手 | 文件自带 |
 | [`test-mcp-host.mjs`](../scripts/test-mcp-host.mjs) | 23 | 测试桥接自带的 snowluma-host MCP server（status/start/stop） | 文件自带 |

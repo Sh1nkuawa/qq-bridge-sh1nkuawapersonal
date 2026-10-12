@@ -12,6 +12,7 @@ import {
   normalizeArkEndpoint,
   pickImageBackend
 } from '../src/ark-image.mjs';
+import { buildImageFailureText, classifyArkFailure, looksLikeModeration } from '../src/image-failure-text.mjs';
 
 let count = 0;
 function ok(name, fn) { fn(); count += 1; console.log(`  ✅ ${name}`); }
@@ -130,6 +131,48 @@ ok('worker 接线：默认 Agent Plan、失败回落 codex、扩展名按真实�
   assert.match(worker, /outPath\.replace\(\/\\\.\[A-Za-z0-9\]\+\$\/, ext\)/, '写盘前要按真实格式改扩展名');
   assert.match(worker, /state\/ark-key\.txt/);
   assert.match(worker, /state\/ark-base\.txt/);
+});
+
+console.log('\n—— 失败文案（2026-10-12：Ark 与 codex 的原因都要如实报）——');
+
+ok('Ark 内容审核 + codex 网络不通：两个原因都出现，且不能一上来就甩锅 codex', () => {
+  const text = buildImageFailureText({
+    backend: 'ark',
+    arkText: 'Agent Plan 生图失败 HTTP 400：The request failed because the output image may contain sensitive information. Request id: 0217…',
+    codexText: 'RuntimeException | 网络不可达：直连 chatgpt.com 失败'
+  });
+  assert.match(text, /火山方舟说输出图可能含敏感内容/);
+  assert.match(text, /回落的 codex 也失败/);
+  assert.match(text, /chatgpt\.com/);
+  assert.ok(text.startsWith('火山方舟'), '首个原因必须是真正先失败的那个后端');
+});
+
+ok('Ark 401 / 429 / 超时 / 网络 分类正确', () => {
+  assert.match(classifyArkFailure('HTTP 401 The API key format is incorrect'), /401/);
+  assert.match(classifyArkFailure('HTTP 429 too many requests'), /限流/);
+  assert.match(classifyArkFailure('请求失败：The operation was aborted due to timeout'), /超时/);
+  assert.match(classifyArkFailure('请求失败：fetch failed'), /网络不通/);
+  assert.match(classifyArkFailure('HTTP 500 internal error'), /HTTP 500/);
+  assert.equal(classifyArkFailure(''), '');
+});
+
+ok('只跑 codex（没配 Ark）时保持原口径', () => {
+  assert.equal(buildImageFailureText({ backend: 'codex', codexText: 'the request was rejected due to safety policy' }), 'codex 说这个请求它不能画');
+  assert.match(buildImageFailureText({ backend: 'codex', codexText: 'network error' }), /chatgpt\.com/);
+  assert.match(buildImageFailureText({ backend: 'codex', codexText: "referenced photo wasn't attached", hasImages: true }), /没收到我给的参考图/);
+  assert.match(buildImageFailureText({ backend: 'codex', codexText: "referenced photo wasn't attached", hasImages: false }), /没拿到参考图/);
+});
+
+ok('审核类失败会被识别（用来决定要不要劝群友换个描述）', () => {
+  assert.equal(looksLikeModeration(buildImageFailureText({ backend: 'ark', arkText: 'sensitive information' })), true);
+  assert.equal(looksLikeModeration('网络到 chatgpt.com 不通（代理节点问题）'), false);
+});
+
+ok('worker 接线：失败文案走新模块，且策略没动（仍然回落 codex）', () => {
+  assert.match(worker, /import \{ buildImageFailureText, looksLikeModeration \} from '\.\.\/src\/image-failure-text\.mjs';/);
+  assert.match(worker, /let why = buildImageFailureText\(\{/);
+  assert.match(worker, /const retryHint = looksLikeModeration\(why\)/);
+  assert.match(worker, /const r = await runCodexImage\(prompt, out, images\);/, '回落 codex 的策略必须保持不变');
 });
 
 console.log(`\n全部通过：${count} 项断言组`);

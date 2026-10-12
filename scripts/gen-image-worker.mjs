@@ -31,6 +31,7 @@ import {
   normalizeArkEndpoint,
   pickImageBackend
 } from '../src/ark-image.mjs';
+import { buildImageFailureText, looksLikeModeration } from '../src/image-failure-text.mjs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -390,22 +391,25 @@ async function main() {
   })();
   log(`❌ 生图失败 code=${code}（${secs}s，后端=${backend}）${backendLog ? ' 后端日志: ' + String(backendLog).slice(0, 160) : ''}${tail ? ' 输出: ' + tail : ''}`);
   await refund(`code=${code}`);
-  // 分类真实原因：以前一律写"codex 没能在超时前出图"，而实测有一次是
-  // "referenced photo wasn't attached"（没拿到参考图），文案误导了群友和模型。
-  const why = (() => {
-    if (/网络不可达|network error|fetch failed|ECONNRESET|ETIMEDOUT/i.test(tail)) return '网络到 chatgpt.com 不通（代理节点问题）';
-    if (/wasn't attached|was not attached|no image|missing image|attach/i.test(tail)) {
-      return images.length ? 'codex 没收到我给的参考图' : '这次是要改图，但我没拿到参考图';
-    }
-    if (/safety|policy|violat/i.test(tail)) return 'codex 说这个请求它不能画';
-    if (code === 124 || /timed? ?out/i.test(tail)) return 'codex 超时了（没在时限内画完）';
-    return 'codex 那边出错了（不是你的问题）';
-  })();
+  // 失败原因如实分类（[2026-10-12] 改）：以前只看 codex 那半段日志，于是火山方舟因内容
+  // 审核拒绝时，群里收到的却是「codex 那边出错了」✗。现在 Ark 与 codex 的原因都报出来
+  // （分类逻辑在 src/image-failure-text.mjs，有离线回归）。
+  // 注意：这里只改"怎么说"，**不改**"Ark 失败后要不要回落 codex"的策略。
+  let why = buildImageFailureText({
+    backend,
+    arkText: backend === 'ark' ? backendLog : '',
+    codexText: tail,
+    hasImages: images.length > 0
+  });
+  // 只在"根本没走 Ark"时保留老的 124（PowerShell 超时）兜底，避免覆盖掉 Ark 那半段原因
+  if (backend !== 'ark' && code === 124 && !/超时/.test(why)) why = 'codex 超时了（没在时限内画完）';
+  // 内容审核类的失败，重发同样的请求还是会被拒——如实提醒换个说法
+  const retryHint = looksLikeModeration(why) ? '这种情况换个描述、或别用真人参考图（重发原样还会被拒）' : '';
   // 带上请求者与请求内容，避免和上一次失败混淆（模型看到"图没画出来"会以为是别的那单）
   const whoTag = sender ? `@${sender}` : '';
   const brief = String(prompt ?? '').replace(/\s+/g, ' ').slice(0, 40);
   try {
-    await sendAtText(`图没画出来：${why}。这次不扣次数${brief ? `（你那句「${brief}…」我记着，重新 @我 发一次就行）` : '，重新 @我 发一次就行'}。`);
+    await sendAtText(`图没画出来：${why}。${retryHint ? retryHint + '。' : ''}这次不扣次数${brief ? `（你那句「${brief}…」我记着，重新 @我 发一次就行）` : '，重新 @我 发一次就行'}。`);
   } catch (error) { log(`⚠️ 失败通知也发不出去：${error?.message ?? error}`); }
   await markJobFinished(false, why);
   void whoTag;

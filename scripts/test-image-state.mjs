@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bridge = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
 const worker = fs.readFileSync(path.join(ROOT, 'scripts', 'gen-image-worker.mjs'), 'utf8');
+// [2026-10-12] 失败原因分类从 worker 挪进了 src/image-failure-text.mjs（纯函数、可测），
+// 所以这里同时检查"分类逻辑还在"和"worker 确实在用它"。
+const failureText = fs.readFileSync(path.join(ROOT, 'src', 'image-failure-text.mjs'), 'utf8');
 const preset = fs.readFileSync(path.join(ROOT, 'dsh', 'agent-presets', 'qq-chat-v2', 'agent.cordis.yml'), 'utf8');
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
@@ -20,7 +23,9 @@ ok('失败段明确禁止"还在画/等两分钟"', /绝对不要\*\*说"还在�
 ok('仍保留进行中那一段（有 job 时才出现）', /【后台正在生图】/.test(bridge));
 
 console.log('## 失败回执要说清是哪一单、什么原因');
-ok('worker 会分类真实原因（不再一律写"超时"）', /referenced photo|wasn't attached|was not attached/.test(worker));
+ok('worker 会分类真实原因（分类逻辑在 src/image-failure-text.mjs，worker 负责调用）',
+  /referenced photo|wasn't attached|was not attached/.test(failureText) && /buildImageFailureText/.test(worker));
+ok('失败原因不再只报 codex：Ark 与 codex 的原因都要出现', /classifyArkFailure/.test(failureText) && /回落的 codex 也失败/.test(failureText));
 ok('失败文案带上请求内容片段，避免和上一单混淆', /你那句「/.test(worker));
 ok('worker 把成功发出的图回报给桥接（含路径+消息id）', /sentImage/.test(worker) && /message_id/.test(worker));
 
