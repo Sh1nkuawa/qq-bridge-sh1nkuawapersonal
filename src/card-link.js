@@ -41,7 +41,9 @@ export function normalizeUrl(raw) {
 export function linksInText(text) {
   const out = [];
   const seen = new Set();
-  for (const m of String(text ?? '').matchAll(/https?:\/\/[^\s，。；、）)】"'<>｜|]+/gi)) {
+  // ⚠️ 字符类里必须包含 ] 【 】：QQ 卡片文本后面常紧跟 "@某人"，
+  // 少了它们会把链接抓成 "https://b23.tv/xxx]@某人"（2026-10-12 实测踩过 ✗）
+  for (const m of String(text ?? '').matchAll(/https?:\/\/[^\s，。；、）)】\]【"'<>｜|]+/gi)) {
     const url = normalizeUrl(m[0]);
     if (!url || seen.has(url)) continue;
     if (IMAGE_EXT_RE.test(url)) continue;      // 图片直链不是"内容"

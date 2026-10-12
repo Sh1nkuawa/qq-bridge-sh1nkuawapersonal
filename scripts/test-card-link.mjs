@@ -75,6 +75,12 @@ ok('normalizeUrl：反转义、剥跟踪参数、拒非法', () => {
   assert.equal(normalizeUrl('   '), '');
 });
 
+ok('linksInText：URL 遇到 ] / 】 就停（QQ 卡片后面常紧跟"@某人"，别吞进去）', () => {
+  // 真实事故样本：卡片文本 + @段 拼在一起后抓成了 https://b23.tv/Oqt2Dxd]@你这辈子…
+  assert.deepEqual(linksInText('[B站卡片：标题] https://b23.tv/Oqt2Dxd]@你这辈子就是被红眼睛小女孩毁了'), ['https://b23.tv/Oqt2Dxd']);
+  assert.deepEqual(linksInText('[卡片：x] https://b23.tv/AbC】@某人'), ['https://b23.tv/AbC']);
+});
+
 ok('linksInText：多链接去重、滤掉图片直链与 QQ 缩略图', () => {
   const text = '看这个 https://b23.tv/AbC 还有 https://b23.tv/AbC?share_source=qq 和 https://i0.hdslb.com/a.jpg 以及 https://multimedia.nt.qq.com.cn/b.png';
   assert.deepEqual(linksInText(text), ['https://b23.tv/AbC']);

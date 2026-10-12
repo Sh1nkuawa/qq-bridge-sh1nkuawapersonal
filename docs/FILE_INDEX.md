@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **285** 个被跟踪文件（其中 283 个文本文件、合计 **65,195** 行） —— 文件自带说明 **262**、人工补写 **23**、待补 **0**。
+统计：共 **285** 个被跟踪文件（其中 283 个文本文件、合计 **65,215** 行） —— 文件自带说明 **262**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -261,7 +261,7 @@
 | [`test-audit-setup-guards.mjs`](../scripts/test-audit-setup-guards.mjs) | 88 | Execute both real preset plugins against a captured tools service, without DSH/QQ. | 文件自带 |
 | [`test-audit-setup.mjs`](../scripts/test-audit-setup.mjs) | 132 | Offline integration tests. Every setup invocation receives its own repository and DSH_HOME. | 文件自带 |
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
-| [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 107 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
+| [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 113 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |
 | [`test-console-static.mjs`](../scripts/test-console-static.mjs) | 74 | 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。 | 文件自带 |
 | [`test-console-ui.mjs`](../scripts/test-console-ui.mjs) | 589 | !/usr/bin/env node | 文件自带 |
@@ -346,8 +346,8 @@
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,178 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
-| [`card-link.js`](../src/card-link.js) | 197 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,190 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 878 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
