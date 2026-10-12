@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **280** 个被跟踪文件（其中 278 个文本文件、合计 **64,373** 行） —— 文件自带说明 **257**、人工补写 **23**、待补 **0**。
+统计：共 **281** 个被跟踪文件（其中 279 个文本文件、合计 **64,631** 行） —— 文件自带说明 **258**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -21,8 +21,8 @@
 | [`.gitignore`](../.gitignore) | 79 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 444 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,689 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`config.example.json`](../config.example.json) | 452 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,728 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -143,6 +143,7 @@
 | [`affinity-file-admin.mjs`](../scripts/affinity-file-admin.mjs) | 105 | 离线改好感度：直接改 state/social-v2.json（桥接没开时用；开着会被内存覆盖，请停桥上用或改用 HTTP 接口） | 文件自带 |
 | [`affinity-report.mjs`](../scripts/affinity-report.mjs) | 79 | 群友好感度报表（只读）：从运行中的桥接拉当前分数，附今日变动与最近原因。 | 文件自带 |
 | [`apply-allowlists.mjs`](../scripts/apply-allowlists.mjs) | 33 | 按核实过的号写入两个项目的白名单配置 | 文件自带 |
+| [`archive-dsh-sessions.mjs`](../scripts/archive-dsh-sessions.mjs) | 140 | 归档 DSH 会话：把不再使用的会话目录搬到 ~/.dsh/sessions-archive/ 下（**可逆**，不删任何东西）。 | 文件自带 |
 | [`arknights-daily.mjs`](../scripts/arknights-daily.mjs) | 14 | !/usr/bin/env node | 文件自带 |
 | [`arknights-setup.ps1`](../scripts/arknights-setup.ps1) | 5 | 「明日方舟日活」一次性提权安装 | 文件自带 |
 | [`audit-bridge-harness.mjs`](../scripts/audit-bridge-harness.mjs) | 183 | Execute the real bridge initialization/functions against temporary files and fake peers. | 文件自带 |
@@ -343,10 +344,10 @@
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,108 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,178 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 878 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
-| [`forward.js`](../src/forward.js) | 219 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
+| [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
