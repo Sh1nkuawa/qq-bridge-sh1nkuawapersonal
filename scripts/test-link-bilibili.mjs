@@ -1,6 +1,7 @@
 // B 站元信息摘要的离线回归（纯函数 + 不触网的早退路径）。
 // 真实联网验证（可选）：node scripts/test-link-bilibili.mjs --live
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { clearBilibiliCache, formatDuration, formatVideoSummary, humanCount, summarizeBilibili } from '../src/link-bilibili.js';
 
 let n = 0;
@@ -75,6 +76,16 @@ await okAsync('summarizeBilibili：结果会进缓存（第二次标 cached）',
   await summarizeBilibili('https://example.com/cache-me', { fetchImpl: fakeFetch });
   const second = await summarizeBilibili('https://example.com/cache-me', { fetchImpl: fakeFetch });
   assert.equal(second.cached, true);
+});
+
+// 源码防再犯：validateFetchUrl 的契约是「失败抛异常、成功返回 {url, ip}」，**没有 .ok**
+// （2026-10-12 联网实测踩过：写 check?.ok 会导致永远校验失败，且原因是空的）
+ok('源码守卫：不把 validateFetchUrl 当 {ok} 用，三处校验都包在 try/catch 里', () => {
+  const src = fs.readFileSync(new URL('../src/link-bilibili.js', import.meta.url), 'utf8');
+  assert.ok(!/check\?\.ok/.test(src), '不能写 check?.ok');
+  assert.equal((src.match(/await validateFetchUrl\(/g) ?? []).length, 3, '应有 3 处校验');
+  assert.equal((src.match(/try \{ await validateFetchUrl/g) ?? []).length, 3, '三处都要 try/catch 包住');
+  assert.ok(/跳转后再校验一次/.test(src), '短链跳转后要再校验一次');
 });
 
 if (process.argv.includes('--live')) {

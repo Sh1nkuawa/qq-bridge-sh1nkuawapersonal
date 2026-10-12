@@ -71,14 +71,23 @@ export function formatVideoSummary(view, { descChars = 400, url = '' } = {}) {
 
 /** 展开 b23.tv 短链 → 最终 URL（不下载正文） */
 export async function expandShortLink(url, { fetchImpl = fetch, timeoutMs = 6000 } = {}) {
-  const check = await validateFetchUrl(url);
-  if (!check?.ok) return { ok: false, reason: `短链不可访问（${check?.reason ?? '校验未通过'}）` };
+  // ⚠️ validateFetchUrl 的契约是「失败抛异常、成功返回 { url, ip }」（**没有 .ok 字段**）——
+  // 2026-10-12 联网实测踩过这个坑 ✗，别再写成 check.ok。
+  try { await validateFetchUrl(url); } catch (error) {
+    return { ok: false, reason: `短链地址校验未通过（${error?.message ?? '无效地址'}）` };
+  }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const res = await fetchImpl(url, { redirect: 'follow', headers: { 'User-Agent': UA }, signal: ac.signal });
     const finalUrl = normalizeUrl(res?.url ?? '') || url;
     try { res.body?.cancel?.(); } catch { /* ignore */ }
+    // 短链跳到哪儿由对方决定 → **跳转后再校验一次**（SSRF / DNS rebinding 的基本盘）
+    if (finalUrl !== url) {
+      try { await validateFetchUrl(finalUrl); } catch (error) {
+        return { ok: false, reason: `短链跳转到的地址不可访问（${error?.message ?? '校验未通过'}）` };
+      }
+    }
     return { ok: true, url: finalUrl };
   } catch (error) {
     return { ok: false, reason: /abort/i.test(String(error?.name ?? error?.message)) ? '短链展开超时' : '短链展开失败（网络不通）' };
@@ -119,8 +128,10 @@ export async function summarizeBilibili(url, {
     }
     const q = ref.bvid ? `bvid=${encodeURIComponent(ref.bvid)}` : `aid=${encodeURIComponent(String(ref.aid))}`;
     const apiUrl = `${VIEW_API}?${q}`;
-    const check = await validateFetchUrl(apiUrl);
-    if (!check?.ok) return { ok: false, reason: `接口地址校验未通过（${check?.reason ?? ''}）` };
+    // 同 expandShortLink：validateFetchUrl 失败**抛异常**，没有 .ok
+    try { await validateFetchUrl(apiUrl); } catch (error) {
+      return { ok: false, reason: `接口地址校验未通过（${error?.message ?? ''}）` };
+    }
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
     try {
