@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **285** 个被跟踪文件（其中 283 个文本文件、合计 **65,276** 行） —— 文件自带说明 **262**、人工补写 **23**、待补 **0**。
+统计：共 **287** 个被跟踪文件（其中 285 个文本文件、合计 **65,455** 行） —— 文件自带说明 **264**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -301,6 +301,7 @@
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 51 | 静态验证 qq-mode-console 插件在新版 DSH API 下是否仍可注册设置命名空间。 | 文件自带 |
 | [`test-qq-model-view.mjs`](../scripts/test-qq-model-view.mjs) | 273 | 端到端用例：确认模型侧看到的 QQ 工具清单/会话视图符合预期（在 npm run test:token 里） | 人工补写 |
 | [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 191 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
+| [`test-quote-ref.mjs`](../scripts/test-quote-ref.mjs) | 79 | 引用消息"身份证"的离线回归（纯函数 + 源码接线守卫）。 | 文件自带 |
 | [`test-reply-wait.mjs`](../scripts/test-reply-wait.mjs) | 203 | First-reply quiet-window regressions. Real bridge handlers, fixture peers only. | 文件自带 |
 | [`test-role-card.mjs`](../scripts/test-role-card.mjs) | 108 | 人格卡按仿真模式取用（src/role-card.js）的离线单测。 | 文件自带 |
 | [`test-setup-dsh-idempotent.mjs`](../scripts/test-setup-dsh-idempotent.mjs) | 127 | setup-dsh.mjs 幂等性测试：在一个临时 DSH_HOME 里连跑两次， | 文件自带 |
@@ -312,7 +313,7 @@
 | [`test-token-usage.mjs`](../scripts/test-token-usage.mjs) | 303 | Token 用量账本 + 价目表测试。 | 文件自带 |
 | [`test-turn-retry.mjs`](../scripts/test-turn-retry.mjs) | 102 | 回合级重试策略单测：工具参数写成非法 JSON（MALFORMED_RESPONSE）时该不该自动重发。 | 文件自带 |
 | [`test-v2-wait.mjs`](../scripts/test-v2-wait.mjs) | 92 | 二代“对面没说完 / 结束前等待”逻辑测试。 | 文件自带 |
-| [`test-vision-media.mjs`](../scripts/test-vision-media.mjs) | 79 | 视觉/图片链路自检脚本： | 文件自带 |
+| [`test-vision-media.mjs`](../scripts/test-vision-media.mjs) | 82 | 视觉/图片链路自检脚本： | 文件自带 |
 | [`test-voice-edge.mjs`](../scripts/test-voice-edge.mjs) | 136 | 并发与边界体检：确认语音系统在「同时多个请求 / 异常输入 / 重名 / 缺目录」下不炸、不乱。 | 文件自带 |
 | [`test-voice-gui.mjs`](../scripts/test-voice-gui.mjs) | 239 | 图形界面（voice-gui.mjs + public/voice.html）自检： | 文件自带 |
 | [`test-voice-preview.mjs`](../scripts/test-voice-preview.mjs) | 110 | 图形界面音量端点验证（live）：/api/preview 必须真的按音量产出不同音频。 | 文件自带 |
@@ -365,6 +366,7 @@
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
+| [`quote-ref.js`](../src/quote-ref.js) | 97 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |
 | [`role-card.js`](../src/role-card.js) | 108 | 人格卡（roles/<名称>.md）的解析与「按仿真模式取用」。 | 文件自带 |
 | [`safe-fetch.js`](../src/safe-fetch.js) | 352 | 只读 HTTP(S) 安全抓取工具：供 qq-bridge / MCP 共用。 | 文件自带 |
 | [`self-test.js`](../src/self-test.js) | 116 | 自测脚本：不依赖 SnowLuma / QQ，只验证 DSH 侧链路—— | 文件自带 |
