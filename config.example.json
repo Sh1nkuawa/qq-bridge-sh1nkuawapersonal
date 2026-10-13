@@ -447,6 +447,9 @@
       "timeoutMs": 6000,
       "descChars": 400,
       "ttlMinutes": 15
+    },
+    "quote": {
+      "enrich": true
     }
   }
 }

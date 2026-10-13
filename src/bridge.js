@@ -20,6 +20,7 @@ import { NodeApiClient, unwrap, createTurnCollector, discoverDshLaunchToken } fr
 import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-plain.js';
 import { SENSITIVE_RE } from './sensitive.js';
 import { bilibiliRef, cardSegmentText, linksInText } from './card-link.js';
+import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -1447,7 +1448,7 @@ function execFileP(cmd, args, { timeoutMs = 20000 } = {}) {
 }
 
 async function segmentsToText(segments, options = {}) {
-  const { resolveAtName, resolveReply, includeReply = true, recordText = '' } = options ?? {};
+  const { resolveAtName, resolveReply, includeReply = true, recordText = '', lookupMedia = null } = options ?? {};
   // 有些 OneBot 实现直接把纯文本消息放在 message 字段里（string）
   if (typeof segments === 'string') return segments.trim();
   const out = [];
@@ -1475,16 +1476,24 @@ async function segmentsToText(segments, options = {}) {
         // 引用/回复段：默认解析成「被引用人 + 原文」，让 AI 能判断这句话是对谁说的；
         // includeReply=false 时跳过该段，得到“当前消息自己的文字”（用于指令/指向性判断）。
         if (!includeReply) break;
+        // [qq-bridge 本地补丁 2026-10-13] 引用段必须带上「哪一条 + 什么附件」：
+        // 被引用的是图片/表情时原文是空的，以前只会拼出「[引用 某人]」✗，模型只能对一串 id 挨个猜
+        // （2026-10-11 22:51 实测连试 5 个 id）。附件信息来自 messageMediaStore（本地已有，不联网）。
         let replyText = '';
-        if (resolveReply) {
+        const quotedId = String(d.id ?? '').trim();
+        const quotedMedia = (() => {
+          if (!lookupMedia || !quotedId) return [];
+          try { return lookupMedia(quotedId) ?? []; } catch { return []; }
+        })();
+        if (resolveReply || quotedMedia.length) {
           try {
-            const info = await resolveReply(String(d.id));
-            if (info?.sender || info?.text) {
-              const parts = [];
-              if (info.sender) parts.push(info.sender);
-              if (info.text) parts.push(info.text);
-              replyText = `[引用 ${parts.join('：')}]`;
-            }
+            const info = resolveReply ? await resolveReply(quotedId) : null;
+            replyText = buildQuoteText({
+              sender: info?.sender,
+              text: info?.text,
+              messageId: quotedId,
+              media: quotedMedia
+            });
           } catch {}
         }
         out.push(replyText || '[引用消息]');
@@ -5294,7 +5303,7 @@ async function main() {
           const current = fileV2 ?? ((cfg.socialV2 && typeof cfg.socialV2 === 'object') ? cfg.socialV2 : {});
           const merged = { ...current, ...body };
           // 子对象必须是非 null 对象；null/数组/基本类型会覆盖默认值导致工具开关被绕过，这里直接保留当前值。
-          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'memes', 'admin', 'image', 'feedback', 'context', 'links']) {
+          for (const sub of ['tools', 'wake', 'send', 'wait', 'proactive', 'sticker', 'memes', 'admin', 'image', 'feedback', 'context', 'links', 'quote']) {
             if (body[sub] !== undefined && (body[sub] === null || typeof body[sub] !== 'object' || Array.isArray(body[sub]))) {
               merged[sub] = current[sub] ?? {};
             }
@@ -12104,6 +12113,23 @@ async function main() {
     // 生图是异步的：agent 说完"已开始生成"就结束回合，1~4 分钟后由 worker 直接发图到群里。
     // 这段时间 agent 在会话里看不到任何"我发过图"的记录，实测会自己编出
     // "十分钟了图还没出来"这种假消息（图其实早就发出去了）。这里明确告诉它真实状态。
+    // [qq-bridge 本地补丁 2026-10-13] 引用带附件的消息（图片/表情）：把 quotedId 直接给模型，
+    // 免得它拿一串 id 挨个猜（2026-10-11 实测就是这个毛病）。
+    const quotedLine = (() => {
+      if (cfg.socialV2?.quote?.enrich === false) return '';
+      const recent = (social.recentMessages.get(key) ?? []).slice(-8);
+      const hits = [];
+      for (const m of recent) {
+        for (const ref of parseQuotedRefs(`${m?.text ?? ''}\n${m?.plain ?? ''}`)) {
+          if (ref.media) hits.push(ref);
+        }
+      }
+      if (!hits.length) return '';
+      const last = hits[hits.length - 1];
+      const hint = quoteMediaHint({ sender: last.sender, messageId: last.messageId, media: last.media });
+      log(`[quote] 注入引用提示：quotedId=${last.messageId || '未知'} 附件=${last.media}`);
+      return hint ? hint + '\n\n' : '';
+    })();
     // [qq-bridge 本地补丁 2026-10-12] 卡片链接：把"这条消息带了什么链接、B 站那份我已经读过"
     // 明确告诉模型，免得它对着一张 [卡片消息] 干瞪眼，也免得它硬编视频内容。
     const linkLine = (() => {
@@ -12226,7 +12252,7 @@ async function main() {
       st.retryHint = '';
       return `【上一次失败，请重发】${hint}\n\n`;
     })();
-    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
@@ -12724,6 +12750,8 @@ async function main() {
       return resolveGroupMemberName(event.group_id, qq);
     };
     const resolveReply = (messageId) => resolveReplyInfo(kind, id, messageId, event.self_id);
+    // 被引用消息的附件（图片/表情等）在收到时就存进了 messageMediaStore：这里只做本地查询，不联网
+    const lookupQuotedMedia = (ref) => messageMediaStore.get(key)?.get(String(ref)) ?? [];
     // textContent 带引用对象信息，供 DSH 判断“这句话在对谁说”；
     // plainContent 只保留当前消息自己的文字，用于命令/指向性判断，避免被引用原文干扰。
     // 「听懂语音」：这条消息里有 record 段就起一个转写任务（见 voice-transcribe.js）。
@@ -12742,8 +12770,8 @@ async function main() {
       const settled = await settleVoiceTranscript(voiceTask, { timeoutMs: voiceTCfg.inlineWaitMs });
       recordText = settled.ok ? buildVoiceTranscript(settled.text) : '';
     }
-    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, recordText });
-    const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, recordText });
+    const textContent = await segmentsToText(event.message ?? [], { resolveAtName, resolveReply, recordText, lookupMedia: lookupQuotedMedia });
+    const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, recordText, lookupMedia: lookupQuotedMedia });
     // [link] 卡片里的 B 站视频：立刻带缓存地预取元信息（非阻塞），
     // 等模型被唤醒时 linkLine 会把结果注入提示。通用网页不需要预取（模型自己有 web_fetch）。
     try { prefetchBilibiliLinks(key, linksInText(textContent), cfg.socialV2?.links ?? {}); } catch {}
