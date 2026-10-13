@@ -76,4 +76,7 @@ if (fs.existsSync(consoleTokenFile) && fs.existsSync(socialV2File)) {
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
-process.exit(failed > 0 ? 1 : 0);
+// ⚠️ 别用 process.exit()：上面那次 fetch（打桥接图片端点）句柄可能还在收尾，
+// 在 Windows 上会触发 libuv 的 UV_HANDLE_CLOSING 断言把进程打崩
+// （2026-10-13 实测：断言全过、退出码却是 0xC0000409）。设 exitCode 让事件循环自然结束即可。
+process.exitCode = failed > 0 ? 1 : 0;
