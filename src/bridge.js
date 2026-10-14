@@ -21,6 +21,7 @@ import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-p
 import { SENSITIVE_RE } from './sensitive.js';
 import { bilibiliRef, cardSegmentText, linksInText } from './card-link.js';
 import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js';
+import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -7383,11 +7384,16 @@ async function main() {
           // A reply wait must also include messages received while the model
           // was reading/thinking after its snapshot, before this HTTP request.
           const requestSeq = st.lastUnreadSeq || 0;
+          // [qq-bridge 本地补丁 2026-10-14] 这里原本想把 messages 的基线也换成"模型已见水位"来堵
+          // "2 秒缝隙"，但实测那样会让 qq_wait 在"有未读"时**立刻返回**，改变等待契约并打断
+          // in-flight wait 的权限复检流程（回归里 4 条行为断言当场变红 ✗）。而那条缝隙消息当时
+          // 同样进了 pendingWakeReasons，**④ 已经能把它交给当前回合** ✓，所以这里保持原样。
           const baseline = replyWait && (v2ToolEnabled('getUnread') || v2ToolEnabled('getRecent')) ? readThroughSeqV2(st) : requestSeq;
           const start = Date.now();
           let arrived = false;
           let lastNewAt = 0;
           let aborted = false;
+          let backlogDelivered = 0;   // ④ 这次等待顺手交付了几条积压唤醒
           req.on('close', () => { aborted = true; });
           if (replyWait) {
             const incomingAt = () => {
@@ -7412,6 +7418,19 @@ async function main() {
             lastNewAt = incomingAt();
             arrived = (st.lastUnreadSeq || 0) > baseline;
           } else while (Date.now() - start < timeoutMs && !aborted) {
+            // [qq-bridge 本地补丁 2026-10-14] ④ 繁忙期间暂存的唤醒原因**也算"有消息"**：
+            // 以前它只能等这一轮结束后才补发 ✗，于是 AI 在等待里白躺几分钟、最后接一句旧话。
+            // 现在队列非空就立刻返回，并把它**交给这一轮**（清空后不会再补发）。
+            const backlogN = Array.isArray(st.pendingWakeReasons) ? st.pendingWakeReasons.length : 0;
+            if (backlogN > 0) {
+              backlogDelivered = backlogN;
+              st.pendingWakeReasons = [];
+              saveSocialV2State();
+              log(`[reserved2] ${key} 等待中交付 ${backlogN} 条积压唤醒给当前回合，队列已清空（不再补发）`);
+              arrived = true;
+              lastNewAt = Date.now();
+              break;
+            }
             let nowSeq = st.lastUnreadSeq || 0;
             if (nowSeq - baseline >= minNew) {
               arrived = true;
@@ -7491,6 +7510,7 @@ async function main() {
             key,
             purpose: replyWait ? 'reply' : 'messages',
             arrived,
+            pendingWakeDelivered: backlogDelivered,
             quiet,
             quietMs,
             suggestedQuietMs,
@@ -12294,7 +12314,7 @@ async function main() {
       if (!Array.isArray(st.pendingWakeReasons)) st.pendingWakeReasons = [];
       const seq = st.lastUnreadSeq || 0;
       if (!st.pendingWakeReasons.some((r) => r && r.reason === reason && r.seq === seq)) {
-        st.pendingWakeReasons.push({ reason, seq });
+        st.pendingWakeReasons.push({ reason, seq, at: Date.now() });
         // 有界队列：最多保留 20 条，防止消息洪峰下无限增长。
         if (st.pendingWakeReasons.length > 20) st.pendingWakeReasons.splice(0, st.pendingWakeReasons.length - 20);
       }
@@ -12477,7 +12497,7 @@ async function main() {
       if (!Array.isArray(st.pendingWakeReasons)) st.pendingWakeReasons = [];
       const seq = st.lastUnreadSeq || 0;
       if (!st.pendingWakeReasons.some((r) => r && r.reason === reason && r.seq === seq)) {
-        st.pendingWakeReasons.push({ reason, seq });
+        st.pendingWakeReasons.push({ reason, seq, at: Date.now() });
         // 有界队列：最多保留 20 条，防止消息洪峰下无限增长。
         if (st.pendingWakeReasons.length > 20) st.pendingWakeReasons.splice(0, st.pendingWakeReasons.length - 20);
       }
@@ -13670,16 +13690,23 @@ async function main() {
               {
                 const stEnd = getSocialV2State(key);
                 if (Array.isArray(stEnd.pendingWakeReasons) && stEnd.pendingWakeReasons.length) {
-                  const item = stEnd.pendingWakeReasons.shift();
-                  if (!item || typeof item !== 'object') {
-                    // 兼容旧字符串残留
-                  } else {
-                    const stillRelevant = Array.isArray(stEnd.unread) && stEnd.unread.some((m) => m && Number(m.seq) >= Number(item.seq));
+                  // [qq-bridge 本地补丁 2026-10-14] ①+②：以前 shift() 取**最早**那条 ✗，而且无论
+                  // 隔多久都照补 ✗（实测 18:35 的话 18:44 才回）。现在：① 超过 backlogTtlMs 的丢弃；
+                  // ② 只补**最新**那条，其余一并丢弃 —— 被丢的消息本身仍在未读缓冲里，模型照样看得到。
+                  const ttlMs = Number(cfg.socialV2?.wake?.backlogTtlMs) > 0
+                    ? Number(cfg.socialV2.wake.backlogTtlMs)
+                    : DEFAULT_BACKLOG_TTL_MS;
+                  const { pick, expired, dropped, total } = pickBacklogWake(stEnd.pendingWakeReasons, { ttlMs });
+                  stEnd.pendingWakeReasons = [];
+                  if (expired > 0) log(`[reserved2] ${key} 丢弃 ${expired}/${total} 条过期积压唤醒（超过 ${Math.round(ttlMs / 1000)}s 不补发）`);
+                  if (pick) {
+                    if (dropped > 0) log(`[reserved2] ${key} 另有 ${dropped} 条较早的积压唤醒被丢弃（只补最新那条）`);
+                    const stillRelevant = Array.isArray(stEnd.unread) && stEnd.unread.some((m) => m && Number(m.seq) >= Number(pick.seq));
                     if (stillRelevant) {
-                      log(`[reserved2] ${key} 补发繁忙期间积压的唤醒：${item.reason}@seq${item.seq}`);
-                      scheduleWakeV2(key, item.reason);
+                      log(`[reserved2] ${key} 补发积压唤醒（最新那条）：${pick.reason}@seq${pick.seq}`);
+                      scheduleWakeV2(key, pick.reason);
                     } else {
-                      log(`[reserved2] ${key} 繁忙期间唤醒 ${item.reason}@seq${item.seq} 已被当前回合处理，跳过补发`);
+                      log(`[reserved2] ${key} 繁忙期间唤醒 ${pick.reason}@seq${pick.seq} 已被当前回合处理，跳过补发`);
                     }
                   }
                 }
