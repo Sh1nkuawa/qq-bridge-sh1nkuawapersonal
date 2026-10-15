@@ -1785,3 +1785,24 @@ bridge 两处接线守卫）✓；离线全绿 ✓。
 
 **回归**：新增 `scripts/test-wake-backlog.mjs`（8 组断言：空队列 / 单条 / ★只补最新 / ★TTL 丢弃 /
 全过期 / 老结构兼容与坏数据过滤 / TTL 可配置与非法回落 / bridge 四处接线且旧写法已消失）✓。
+
+
+### 16.18 DSH 0.2.0 升级记录（2026-10-15）
+
+正式全局 DSH 已由 **0.1.7-rc.2 升至 0.2.0-rc.2**，继续使用现有 web profile 和自己的 fork，未合并上游。
+本轮按 owner 最新要求优先确认 DSH 能打开，**不执行正式 QQ 桥接回归，也未重启 QQ 桥接进程**。
+兼容源码已部署；已运行的桥接进程将在以后正常重启时载入新的协议适配。
+
+- 插件实际变更：better-sidebar 0.22.1 → 0.26.0，pet 0.2.7 → 0.3.7，dshmarket 1.45.1 → 1.66.22，find-plugin 0.3.7 → 0.4.0。
+- 按 owner 明确选择，**dsh-find-plugin 保留安装但从 profile.bundles 移除，暂不加载**，未启用版本检查豁免。
+- dsh-at-file 保留原 0.7.0 Git commit；对原安装应用 settings 与 lazy codec 兼容补丁，脚本为 scripts/patch-dsh-at-file-settings.mjs。鲸鱼挂件、两套皮肤、表情包插件保持原版本。
+- DSH 升级后重新应用 scripts/patch-dsh-base64.mjs；MCP 与 ACP 两处均保留线性 base64 校验。以后重新安装 DSH 或 dsh-at-file 后需重打相应补丁。
+- 源码适配：队列优先读取 session/projections 并保留 session/control 回退；QQ 工具限制名单依实际安装包校对为 74 项；qq-mode-console 保留配置元数据并移除旧 settings.register 调用。未修改卡片链接、引用图片或唤醒积压业务逻辑。
+
+**本轮正式验证范围**：全局 package.json 为 0.2.0-rc.2，3080 端口正常；通过启动令牌进入网页，关闭新版说明后主界面可用，原工作区、模型选择、皮肤与小鲸鱼挂件显示。桌面启动器使用的 D:/dsh/dsh-web.url.txt 已刷新。
+配置文件 config.json、角色、模式、console-token、ark-key/base 和 DSH credentials 的 SHA256 均与切换前一致。
+未发送模型提示或 QQ 消息；未运行 QQ 功能回归，不能把“网页可打开”当成 QQ、生图等功能已通过验证。隔离演练进程已停止，临时 watchdog.pause 已移除。
+
+**备份与回滚**：D:/dsh/backups/dsh-execution-20261015-1640 下保留原 DSH runtime、完整 profile node_modules、源码与 Git bundle、会话/存储，以及切换前新备份 precut-current（state、config、profile 配置、原启动日志）。upgrade-result.json 记录实际版本与配置核对结果。
+回滚时先停正式 DSH，只还原程序、插件清单/运行目录和必要兼容源码后启动旧版；QQ 插件链接需保持指向自己的 plugins 目录。不要默认覆盖升级后新增的会话、账本或 state。原 preUpgrade 目录的 rollback.ps1 包含全量 state 覆盖，不应不经检查直接运行。
+本轮源码保留在工作区，尚未提交或推送，QQ 回归留待后续安排。

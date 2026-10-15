@@ -152,6 +152,7 @@ test('session retirement removes only its queue items before cancellation', asyn
   api.cookie = 'fixture=ok';
   const calls = [];
   api.callUnary = async (method, payload) => {
+    if (method === 'session/projections') return { result: { ok: false, error: { code: 'gateway/not-found' } } };
     calls.push({ method, payload });
     return { result: { ok: true, value: { accepted: true } } };
   };
@@ -192,7 +193,10 @@ test('session retirement reports control failure while still cancelling active w
   const api = client();
   api.cookie = 'fixture=ok';
   const calls = [];
-  api.callUnary = async (method) => { calls.push(method); return { result: { ok: true } }; };
+  api.callUnary = async (method) => {
+    if (method === 'session/projections') return { result: { ok: false, error: { code: 'gateway/not-found' } } };
+    calls.push(method); return { result: { ok: true } };
+  };
   const stopped = api.stopSessionWork('session-a');
   const failure = assert.rejects(stopped, /session\/control ended/);
   await tick();
@@ -202,6 +206,76 @@ test('session retirement reports control failure while still cancelling active w
   await failure;
   assert.deepEqual(calls, ['session/cancel']);
   assert.equal(socket.readyState, FakeWebSocket.CLOSED);
+});
+
+test('session projections uses request wrapping and reads both inbox lanes without a control socket', async () => {
+  globalThis.WebSocket = FakeWebSocket;
+  const api = client();
+  api.cookie = 'fixture=ok';
+  const before = FakeWebSocket.sockets.length;
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    const envelope = JSON.parse(init.body);
+    calls.push(envelope.method);
+    const value = envelope.method === 'session/projections'
+      ? { asOfSeq: 12, values: { inbox: { 'next-turn': [{ id: 'queued' }], 'next-step': [{ id: 'steering' }] } } }
+      : { accepted: true };
+    if (envelope.method === 'session/projections') {
+      assert.equal(new URL(input).pathname, '/api/session/projections');
+      assert.deepEqual(envelope.payload, { args: { request: { sessionId: 'session-a' } } });
+    }
+    return Response.json({ type: 'server-response', rpcId: envelope.rpcId, result: { ok: true, value } });
+  };
+  assert.deepEqual(await api.stopSessionWork('session-a'), { removed: 2 });
+  assert.deepEqual(calls, ['session/projections', 'session/updateQueue', 'session/updateQueue', 'session/cancel']);
+  assert.equal(FakeWebSocket.sockets.length, before);
+});
+
+test('modern control fallback reads the target projection without consuming another session', async () => {
+  globalThis.WebSocket = FakeWebSocket;
+  const api = client();
+  api.cookie = 'fixture=ok';
+  api.callUnary = async () => ({ result: { ok: false, error: { code: 'gateway/not-found' } } });
+  const pending = api._readSessionQueue('session-a', AbortSignal.timeout(1000));
+  await tick();
+  const socket = FakeWebSocket.sockets.at(-1);
+  socket.open();
+  socket.frame({ type: 'item', streamId: socket.frames.at(-1).streamId, value: { type: 'baseline', value: {
+    projections: {
+      'session-a': { values: { inbox: { 'next-turn': [{ id: 'mine' }], 'next-step': [] } } },
+      'session-b': { values: { inbox: { 'next-turn': [{ id: 'theirs' }], 'next-step': [] } } },
+    },
+  } } });
+  assert.deepEqual(await pending, [{ id: 'mine' }]);
+  assert.equal(socket.readyState, FakeWebSocket.CLOSED);
+});
+
+test('a missing session projection is an empty queue without activating a session', async () => {
+  const api = client();
+  api.callUnary = async () => ({ result: { ok: true, value: null } });
+  assert.deepEqual(await api._readSessionQueue('missing', AbortSignal.timeout(1000)), []);
+});
+
+test('malformed inboxes fail closed and retirement still attempts cancellation', async () => {
+  const api = client();
+  const calls = [];
+  api.callUnary = async (method) => {
+    calls.push(method);
+    return { result: { ok: true, value: { values: { inbox: { 'next-turn': 'bad', 'next-step': [] } } } } };
+  };
+  api._readSessionControlQueue = async () => { throw new Error('invalid session/control inbox'); };
+  await assert.rejects(api.stopSessionWork('session-a'), /invalid session\/control inbox/);
+  assert.deepEqual(calls, ['session/projections', 'session/cancel']);
+});
+
+test('a cancelled projection read never opens the compatibility socket', async () => {
+  const api = client();
+  const abort = new AbortController();
+  let fallback = false;
+  api.callUnary = async () => { abort.abort(); throw abort.signal.reason; };
+  api._readSessionControlQueue = async () => { fallback = true; return []; };
+  await assert.rejects(api._readSessionQueue('session-a', abort.signal), { name: 'AbortError' });
+  assert.equal(fallback, false);
 });
 
 test('pre-aborted event stream never opens a WebSocket', async () => {

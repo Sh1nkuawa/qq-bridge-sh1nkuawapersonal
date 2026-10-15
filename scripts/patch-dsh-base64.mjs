@@ -68,20 +68,25 @@ function selfTest() {
 
 function targets() {
   const roots = [];
+  const rootArg = process.argv.indexOf('--dsh-root');
+  if (rootArg !== -1) {
+    if (!process.argv[rootArg + 1]) throw new Error('--dsh-root requires a package directory');
+    roots.push(path.resolve(process.argv[rootArg + 1]));
+  }
   // 全局 dsh 包（本机：D:\nodejs16\node_global\node_modules\@deepseek-ai\dsh）
-  try {
+  if (rootArg === -1) try {
     const pkg = require.resolve('@deepseek-ai/dsh/package.json');
     roots.push(path.dirname(pkg));
   } catch { /* 解析不到就用下面的候选 */ }
-  for (const guess of [
+  for (const guess of (rootArg === -1 ? [
     'D:/nodejs16/node_global/node_modules/@deepseek-ai/dsh',
     path.join(process.env.APPDATA ?? '', 'npm/node_modules/@deepseek-ai/dsh')
-  ]) if (guess && fs.existsSync(guess)) roots.push(guess);
+  ] : [])) if (guess && fs.existsSync(guess)) roots.push(guess);
 
   const files = [];
   for (const root of roots) {
     for (const sub of ['dsh-mcp-client', 'dsh-acp']) {
-      for (const rel of [['node_modules', '@deepseek-ai', sub, 'lib', 'index.js'], [sub, 'lib', 'index.js']]) {
+      for (const rel of [['node_modules', '@deepseek-ai', sub, 'lib', 'index.js'], ['..', sub, 'lib', 'index.js'], [sub, 'lib', 'index.js']]) {
         const p = path.join(root, ...rel);
         if (fs.existsSync(p)) files.push(p);
       }
@@ -99,7 +104,7 @@ if (!files.length) {
 selfTest();
 console.log(`自检通过（与旧正则行为一致；4.4MB base64 不再爆栈）`);
 
-let patched = 0, already = 0, reverted = 0;
+let patched = 0, already = 0, reverted = 0, unchecked = 0;
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
   const hasOld = src.includes(OLD_LINE);
@@ -108,6 +113,7 @@ for (const file of files) {
 
   if (mode === 'check') {
     console.log(`  ${hasOld ? '❌ 未打补丁（还是老正则）' : (hasNew ? '✅ 已打补丁' : '❔ 认不出（可能改版了）')}  ${file}`);
+    if (hasOld || !hasNew) unchecked += 1;
     continue;
   }
   if (mode === 'revert') {
@@ -131,3 +137,4 @@ for (const file of files) {
 }
 console.log(`\n结果：补丁 ${patched} 个，已是最新 ${already} 个，还原 ${reverted} 个。`);
 if (mode === 'apply' && patched) console.log('⚠️ 需要重启 DSH 才会生效（本次会话也会随之结束）。');
+if (unchecked) process.exitCode = 1;

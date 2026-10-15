@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **287** 个被跟踪文件（其中 285 个文本文件、合计 **65,512** 行） —— 文件自带说明 **264**、人工补写 **23**、待补 **0**。
+统计：共 **289** 个被跟踪文件（其中 287 个文本文件、合计 **65,574** 行） —— 文件自带说明 **266**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 456 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,787 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,808 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -97,7 +97,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`package.json`](../plugins/qq-agent-presets/package.json) | 15 | qq-bridge 的 DSH agent preset bundle：把 qq-chat / qq-chat-v2 作为 @deepseek-ai/dsh-agent-preset 行插入（DSH 0.1.7+ 的 preset 机制），并携带两个 preset 共用的 qq-tool-restrict 安全守卫 | 文件自带（JSON 字段） |
-| [`qq-tool-restrict.mjs`](../plugins/qq-agent-presets/qq-tool-restrict.mjs) | 187 | QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。 | 文件自带 |
+| [`qq-tool-restrict.mjs`](../plugins/qq-agent-presets/qq-tool-restrict.mjs) | 195 | QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。 | 文件自带 |
 
 ## plugins/qq-agent-presets/presets
 
@@ -117,7 +117,7 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`index.js`](../plugins/qq-mode-console/lib/index.js) | 103 | QQ 桥接模式控制台（host 插件，仅注册 settings 命名空间）。 | 文件自带 |
+| [`index.js`](../plugins/qq-mode-console/lib/index.js) | 21 | QQ mode settings use loader entry id `qq-mode` and Config, not runtime registration. | 文件自带 |
 
 ## public
 
@@ -187,7 +187,7 @@
 | [`list-affinity.mjs`](../scripts/list-affinity.mjs) | 89 | list-affinity.mjs —— 只读列出某个会话的**全员好感度**（owner 巡检 / 回答"现在大家多少分"用） | 文件自带 |
 | [`make-config.mjs`](../scripts/make-config.mjs) | 48 | 从 config.example.json 生成 config.json（已存在则跳过、绝不覆盖） | 人工补写 |
 | [`meme-flow-test.mjs`](../scripts/meme-flow-test.mjs) | 125 | 本地表情包链路自检（不依赖桥接进程）。 | 文件自带 |
-| [`patch-dsh-base64.mjs`](../scripts/patch-dsh-base64.mjs) | 133 | !/usr/bin/env node | 文件自带 |
+| [`patch-dsh-base64.mjs`](../scripts/patch-dsh-base64.mjs) | 140 | !/usr/bin/env node | 文件自带 |
 | [`patch-snowluma-sdk.mjs`](../scripts/patch-snowluma-sdk.mjs) | 48 | 修复 @snowluma 系列 npm 包的发布打包 bug：dist 内的相对导入缺少 .js 扩展名， | 文件自带 |
 | [`preflight-publish.mjs`](../scripts/preflight-publish.mjs) | 130 | 发布前体检：把"将要提交的文件"里可能泄漏的内容扫一遍（不会修改任何东西）。 | 文件自带 |
 | [`privacy-rules.example.json`](../scripts/privacy-rules.example.json) | 16 | 本地专用规则模板。复制为 privacy-rules.json 后填写你自己的真实标识；privacy-rules.json 必须加进 .gitignore（它含你的 QQ 号/路径）。本模板本身不含真实数据，可以入库。 | 文件自带（JSON 字段） |
@@ -255,7 +255,7 @@
 | [`test-arknights-daily.mjs`](../scripts/test-arknights-daily.mjs) | 301 | arknights-daily 执行器的离线回归：不联网、不起 MAA、不杀进程（全部注入假实现）。 | 文件自带 |
 | [`test-audit-bridge.mjs`](../scripts/test-audit-bridge.mjs) | 440 | test-audit 子模块：桥接行为审计（跑在 audit-bridge-harness 的虚拟网关上） | 人工补写 |
 | [`test-audit-protocol-helpers.mjs`](../scripts/test-audit-protocol-helpers.mjs) | 42 | test-audit 子模块：协议审计的公共辅助函数 | 人工补写 |
-| [`test-audit-protocol.mjs`](../scripts/test-audit-protocol.mjs) | 302 | Offline regression tests. No real DSH/QQ endpoints or local credentials are read. | 文件自带 |
+| [`test-audit-protocol.mjs`](../scripts/test-audit-protocol.mjs) | 376 | Offline regression tests. No real DSH/QQ endpoints or local credentials are read. | 文件自带 |
 | [`test-audit-security-mcp.mjs`](../scripts/test-audit-security-mcp.mjs) | 164 | Exercise MCP callbacks with a fake transport: no network, config or stdio server. | 文件自带 |
 | [`test-audit-security.mjs`](../scripts/test-audit-security.mjs) | 171 | Offline regression tests: no sockets, QQ messages, production config or secrets. | 文件自带 |
 | [`test-audit-setup-guards.mjs`](../scripts/test-audit-setup-guards.mjs) | 88 | Execute both real preset plugins against a captured tools service, without DSH/QQ. | 文件自带 |
@@ -296,9 +296,9 @@
 | [`test-onebot-connection.mjs`](../scripts/test-onebot-connection.mjs) | 53 | 一次性连接测试：用 @snowluma/sdk 连接 SnowLuma 的 OneBot WebSocket 网关， | 文件自带 |
 | [`test-owner-dm.mjs`](../scripts/test-owner-dm.mjs) | 59 | 验证「owner 私聊命令」链路（用控制台模拟器，不需要 owner 真的发消息）。 | 文件自带 |
 | [`test-persona-lines.mjs`](../scripts/test-persona-lines.mjs) | 105 | persona-lines.js 单元测试：桥接"替机器人说的话"（禁言播报 / 生图开始提示）。 | 文件自带 |
-| [`test-preset-local-tools.mjs`](../scripts/test-preset-local-tools.mjs) | 337 | 铁律 L7 的注册期断言：仿真会话的 preset **不得包含本地执行能力**。 | 文件自带 |
+| [`test-preset-local-tools.mjs`](../scripts/test-preset-local-tools.mjs) | 260 | 铁律 L7 的注册期断言：仿真会话的 preset **不得包含本地执行能力**。 | 文件自带 |
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
-| [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 51 | 静态验证 qq-mode-console 插件在新版 DSH API 下是否仍可注册设置命名空间。 | 文件自带 |
+| [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
 | [`test-qq-model-view.mjs`](../scripts/test-qq-model-view.mjs) | 273 | 端到端用例：确认模型侧看到的 QQ 工具清单/会话视图符合预期（在 npm run test:token 里） | 人工补写 |
 | [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 191 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
 | [`test-quote-ref.mjs`](../scripts/test-quote-ref.mjs) | 79 | 引用消息"身份证"的离线回归（纯函数 + 源码接线守卫）。 | 文件自带 |
@@ -321,6 +321,7 @@
 | [`test-voice-transcribe.mjs`](../scripts/test-voice-transcribe.mjs) | 172 | voice-transcribe（收到语音 → 转写文本）纯函数 + 假网关回归测试：不依赖 SnowLuma / DSH / QQ。 | 文件自带 |
 | [`test-voice-volume.mjs`](../scripts/test-voice-volume.mjs) | 188 | 音量调节自检： | 文件自带 |
 | [`test-voice.mjs`](../scripts/test-voice.mjs) | 343 | 语音发送自检： | 文件自带 |
+| [`test-wake-backlog.mjs`](../scripts/test-wake-backlog.mjs) | 78 | 积压唤醒的离线回归：过期丢弃 + 只补最新（纯函数）+ bridge 接线守卫。 | 文件自带 |
 | [`test-watchdog-bridge.mjs`](../scripts/test-watchdog-bridge.mjs) | 247 | watchdog-bridge（外部看门狗）纯函数 + 假探针回归测试：不联网、不杀进程、不启动桥接。 | 文件自带 |
 | [`trace-depth.mjs`](../scripts/trace-depth.mjs) | 58 | 找出 main() 的 body 在哪里被提前闭合（括号深度第一次回到 0 的那一行）。 | 文件自带 |
 | [`unify-onebot-token.mjs`](../scripts/unify-onebot-token.mjs) | 76 | 把 SnowLuma 的 OneBot HTTP/WS accessToken 统一成同一个值，并触发配置重载 + 复测 | 文件自带 |
@@ -349,7 +350,7 @@
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bridge.js`](../src/bridge.js) | 14,245 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
-| [`dsh-client.js`](../src/dsh-client.js) | 878 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
+| [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
@@ -382,6 +383,7 @@
 | [`v2-wait.js`](../src/v2-wait.js) | 27 | 二代仿真模式：等待/结束回合相关的轻量判断工具。 | 文件自带 |
 | [`voice-core.js`](../src/voice-core.js) | 501 | 语音发送的共享内核：独立工具（上级 voice-tool/ 的 voice-cli.mjs / voice-gui.mjs）与桥接都用同一套规则。 | 文件自带 |
 | [`voice-transcribe.js`](../src/voice-transcribe.js) | 210 | 收到的语音 → 文字（「听懂语音」）。 | 文件自带 |
+| [`wake-backlog.js`](../src/wake-backlog.js) | 34 | "繁忙期间积压的唤醒"怎么挑：① 过期的丢掉 ② 只补最新那条。 | 文件自带 |
 
 ## src/core
 

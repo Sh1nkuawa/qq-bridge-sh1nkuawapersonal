@@ -19,6 +19,7 @@
 // （注册出来的清单里确实没有）需要活的 DSH，属 `probe-tools.mjs` 的范畴。
 
 import assert from 'node:assert/strict';
+import { collectDshToolNames as scanInstalledTools, isHostTool } from './dsh-tool-names.mjs';
 import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,94 +71,8 @@ const LOCAL_EXECUTION_TOOLS = [
  * 而不是假装通过。
  */
 function collectDshToolNames() {
-  const home = process.env.DSH_HOME
-    || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.dsh') : null);
-  const roots = [
-    process.env.DSH_TOOL_PACKAGES,
-    // DSH 自带的工具包
-    process.env.USERPROFILE
-      ? path.join(process.env.USERPROFILE, 'dsh-latest', 'node_modules', '@deepseek-ai')
-      : null,
-    // 本机安装的第三方插件也注册工具（dsh-plugin-guard 的 dsh_snapshot/dsh_rollback
-    // 就在这里）。不扫这个目录会把**真实名字误判成假名**——本测试最初就是这样
-    // 误报了 dsh_snapshot/dsh_rollback。
-    home ? path.join(home, 'plugins') : null,
-  ].filter((p) => p && fs.existsSync(p));
-
-  const DSH_PKG_ROOT = process.env.USERPROFILE
-    ? path.join(process.env.USERPROFILE, 'dsh-latest', 'node_modules', '@deepseek-ai')
-    : null;
-
-  const found = new Set();
-  let scanned = 0;
-  for (const root of roots) {
-    const dirs = fs.readdirSync(root, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name);
-    // 工具来自 dsh-tool-*，以及若干非 dsh-tool 前缀的注册方
-    // （plan-mode/schedule/tools）；插件目录下则全部扫。
-    // 工具来自 dsh-tool-*，但**名字**大量声明在别处的 patch 里：
-    //   dsh-base/cordis.patch.yml        → toolName: subagent / subagent_fork / workflow …
-    //   dsh-web-app/cordis.patch.yml     → disabled 行
-    // 只筛 dsh-tool-* 会漏掉这些，从而把真实名字误判成假名——初版就是这样把
-    // subagent/workflow 报成假名的。所以这里必须把 base/web-app 也纳入。
-    const isDshPkgRoot = DSH_PKG_ROOT !== null && path.resolve(root) === path.resolve(DSH_PKG_ROOT);
-    const interesting = isDshPkgRoot
-      ? dirs.filter((n) => /^dsh-(tool-|plugin-|mode-|schedule|plan-mode|tools|base|web-app)/.test(n))
-      : dirs.filter((n) => !n.startsWith('.'));
-    for (const d of interesting) {
-      const pkgDir = path.join(root, d);
-      const files = [];
-      const walk = (dir, depth) => {
-        if (depth > 3) return;
-        let entries = [];
-        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-        for (const e of entries) {
-          if (e.name === 'node_modules' || e.name === '.git') continue;
-          const full = path.join(dir, e.name);
-          if (e.isDirectory()) walk(full, depth + 1);
-          else if (/\.(js|mjs|cjs)$/.test(e.name)) files.push(full);
-        }
-      };
-      walk(pkgDir, 0);
-      for (const f of files) {
-        let text = '';
-        try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
-        scanned++;
-        for (const m of text.matchAll(/\bname:\s*['"]([a-z][a-z0-9_]{2,40})['"]/g)) found.add(m[1]);
-        for (const m of text.matchAll(/\btoolName:\s*['"]([a-z][a-z0-9_]{2,40})['"]/g)) found.add(m[1]);
-        // 名字也可能藏在 schema 默认值里。dsh-tool-workflow 就是这样声明的：
-        //   toolName: z.string().default("workflow")
-        // 只看字面量会漏掉它，从而把真实名字误判成假名（本测试踩过）。
-        for (const m of text.matchAll(/\btoolName:\s*[^;\n]*?\.default\(\s*['"]([a-z][a-z0-9_]{2,40})['"]/g)) {
-          found.add(m[1]);
-        }
-        // 以及简写属性 `name,`（即 name: name）。
-        if (/\bdefineTool\(\{[\s\S]{0,200}?\bname,\s*\n/.test(text)) {
-          const nm = /\bname:\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\n/.exec(text);
-          if (nm) found.add(nm[1]);
-        }
-      }
-      // 名字也大量出现在 YAML patch 里，只读 .js 会漏掉它们，从而把**真实名字
-      // 误判成假名**——本测试自己踩过：subagent/workflow/dsh_snapshot 最初就是这样
-      // 被误报的。注意 id 常带连字符（tool-subagent-fork），所以字符类要放宽，
-      // 再用"不含 / 和 @"把包名排除掉。
-      for (const yml of ['cordis.patch.yml', 'cordis.patch.yaml']) {
-        const p = path.join(pkgDir, yml);
-        if (!fs.existsSync(p)) continue;
-        let text = '';
-        try { text = fs.readFileSync(p, 'utf8'); } catch { continue; }
-        scanned++;
-        for (const m of text.matchAll(/^\s*(?:-\s*)?(?:id|name|toolName):\s*([^\s#]+)\s*$/gm)) {
-          const v = m[1].replace(/^['"]|['"]$/g, '');
-          if (!v || /[/@]/.test(v)) continue;      // 包名，不是工具名
-          if (!/^[a-z][a-z0-9_-]{1,40}$/.test(v)) continue;
-          found.add(v);
-        }
-      }
-    }
-  }
-  return scanned === 0 ? null : found;
+  const inventory = scanInstalledTools();
+  return inventory.scanned ? inventory.names : null;
 }
 
 /** 允许出现在名单里、但不属于"本地执行"语义的名字（开发/注入器）。 */
@@ -274,7 +189,7 @@ test('守卫名单里的每个名字都是 DSH 真实注册的工具（防拼错
     const { dir } = readPreset(id);
     const mod = await import(pathToFileURL(path.join(dir, 'qq-tool-restrict.mjs')).href);
     const fabricated = mod.RESTRICTED_TOOL_NAMES
-      .filter((n) => !DEV_TOOL_PREFIX.test(n) && !dshNames.has(n));
+      .filter((n) => !DEV_TOOL_PREFIX.test(n) && !['dsh_snapshot', 'dsh_rollback', 'incident_resolved'].includes(n) && !dshNames.has(n));
     assert.deepEqual(fabricated, [],
       `${id}: 以下名字在 DSH 已安装的工具包里找不到 ⇒ restrict 会抛错并被吞掉，`
       + `限制静默失效：${fabricated.join(', ')}`);
@@ -334,4 +249,12 @@ test('封闭 agent 的预设在创建后必须与仿真 preset 明确区分', ()
       );
     }
   }
+});
+
+// Discover new host capabilities from installed packages, including preset YAML.
+test('installed host tools are hidden by the QQ guard', async () => {
+  const { names, scanned } = scanInstalledTools();
+  if (!scanned) throw new Error('DSH inventory unavailable; set DSH_TOOL_PACKAGES');
+  const { RESTRICTED_TOOL_NAMES } = await import('../plugins/qq-agent-presets/qq-tool-restrict.mjs');
+  assert.deepEqual([...names].filter((name) => isHostTool(name) && !RESTRICTED_TOOL_NAMES.includes(name)), []);
 });

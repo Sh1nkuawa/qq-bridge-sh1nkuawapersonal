@@ -95,6 +95,14 @@ const LOCAL_EXECUTION_TOOLS = [
   'get_goal', 'create_goal', 'update_goal',
   // 已装但当前未进 bundles 的插件（一旦加回就是新口子）
   'dev_mode_set', 'dev_mode_status', 'dev_mode_subagent',
+  // DSH 0.2.0-rc.2: checked against actual shipped registrations and patches.
+  'subagent_codex', 'subagent_claude_code',
+  'spawn_teammate', 'wait_agent',
+  'team_task_create', 'team_task_get', 'team_task_list', 'team_task_update',
+  'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete',
+  'exit_plan_mode', 'web_search', 'web_fetch',
+  // Installed profile plugins register global tools outside the QQ MCPs too.
+  'sidebar_open', 'learn_meme', 'send_meme',
 ]
 
 const KNOWN_DANGEROUS_GLOBAL_TOOLS = [

@@ -176,6 +176,7 @@ const METHOD_ARG_WRAPPERS = {
   'session/page': 'request',
   'session/search': 'request',
   'session/follow': 'request',
+  'session/projections': 'request',
   'workspace/create': 'request',
   'workspace/rename': 'request',
   'workspace/delete': 'request',
@@ -407,6 +408,30 @@ export class NodeApiClient extends AbstractApiClient {
   }
 
   async _readSessionQueue(sessionId, signal) {
+    // Read the durable inbox without activating an Agent. An unavailable or
+    // malformed inbox must not silently become an empty queue.
+    try {
+      const projection = unwrap(await this.callUnary('session/projections', { sessionId }, signal), 'session/projections');
+      if (projection === null) return [];
+      const items = this._projectionQueue(projection);
+      if (items !== undefined) return items;
+    } catch (error) {
+      signal.throwIfAborted();
+      // The validated control baseline remains the older-host fallback.
+    }
+    return this._readSessionControlQueue(sessionId, signal);
+  }
+
+  _projectionQueue(projection) {
+    const inbox = projection?.values?.inbox;
+    if (inbox === undefined) return undefined;
+    if (!inbox || !Array.isArray(inbox['next-turn']) || !Array.isArray(inbox['next-step'])) {
+      throw new Error('invalid session/projections inbox');
+    }
+    return [...inbox['next-turn'], ...inbox['next-step']];
+  }
+
+  async _readSessionControlQueue(sessionId, signal) {
     await this.ensureAuth(signal);
     // 建 socket 前先检查取消状态：已经取消的等待不应该再开一条连接。
     signal.throwIfAborted();
@@ -440,10 +465,20 @@ export class NodeApiClient extends AbstractApiClient {
           if (frame.type === 'error' || frame.type === 'end') {
             finish(new Error(`session/control ended before baseline${frame.error?.code ? ` (${frame.error.code})` : ''}`));
           } else if (frame.type === 'item' && frame.value?.type === 'baseline') {
-            const queues = frame.value.value?.queues;
-            if (!queues || typeof queues !== 'object' || Array.isArray(queues)) throw new Error('invalid session/control baseline');
-            const items = Object.hasOwn(queues, sessionId) ? queues[sessionId] : [];
-            if (!Array.isArray(items)) throw new Error('invalid session/control queue');
+            const baseline = frame.value.value;
+            let items;
+            if (!baseline?.queues && baseline?.projections && typeof baseline.projections === 'object' && !Array.isArray(baseline.projections)) {
+              if (!Object.hasOwn(baseline.projections, sessionId)) items = [];
+              else {
+                items = this._projectionQueue(baseline.projections[sessionId]);
+                if (items === undefined) throw new Error('invalid session/control inbox');
+              }
+            } else {
+              const queues = baseline?.queues;
+              if (!queues || typeof queues !== 'object' || Array.isArray(queues)) throw new Error('invalid session/control baseline');
+              items = Object.hasOwn(queues, sessionId) ? queues[sessionId] : [];
+              if (!Array.isArray(items)) throw new Error('invalid session/control queue');
+            }
             finish(null, items);
           }
         } catch (error) { finish(error); }
