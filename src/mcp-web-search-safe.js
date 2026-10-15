@@ -452,6 +452,39 @@ server.tool(
   }
 );
 
+/**
+ * B 站接口/播放页的裸抓拦截（返回要展示给模型的说明，空串 = 放行）。
+ *
+ * 2026-10-15 连续三次事故都是这一条：模型自己去 fetch `x/player/wbi/v2`，因为**匿名**
+ * （login_mid=0）必然拿到 `subtitles: []` + `need_login_subtitle: true`，于是对外说
+ * "这视频没有字幕 / 需要登录"。而桥接其实是用**登录态**取的、字幕早就附在提示里了。
+ * 这里直接把这条路堵掉，并把正确做法讲清楚 —— 光靠提示词它已经不听三次了。
+ */
+function bilibiliRawFetchGuard(url) {
+  let u;
+  try { u = new URL(url); } catch { return ''; }
+  const host = u.hostname.toLowerCase();
+  const path = u.pathname;
+  const isBili = /(^|\.)bilibili\.com$/.test(host) || host === 'b23.tv' || host.endsWith('.b23.tv')
+    || /(^|\.)hdslb\.com$/.test(host) || /(^|\.)bilivideo\.(com|cn)$/.test(host);
+  if (!isBili) return '';
+  const sensitive = /^\/x\//.test(path) || /^\/video\//.test(path) || /^\/bangumi\//.test(path) || /^\/player\//.test(path);
+  if (!sensitive) return '';
+  return [
+    '【已拦截】B 站的接口/播放页不接受**匿名**抓取，这次请求没有发出去。',
+    `  ${url}`,
+    '',
+    '原因：桥接是用登录态（SESSDATA）取 B 站数据的，所以它有字幕；',
+    '而本工具是匿名请求，必然得到 `subtitles: []` + `need_login_subtitle: true`（login_mid=0）——',
+    '那是**匿名**现象，**不代表"这条视频没有字幕"，也不代表"需要登录才能看"**。',
+    '',
+    '正确做法：',
+    '  1) 直接用对话里桥接给出的 `[字幕…]` / 「B 站那条我已经替你读好了」那一段，那是真字幕；',
+    '  2) 如果这一轮没有那段，就如实说"这条我这边没拿到字幕"，**不要**下"要登录/没字幕"的结论；',
+    '  3) 需要重新取字幕时，让群友**再发一次那条卡片**（带链接桥接才会预取），别自己抓接口。'
+  ].join('\n');
+}
+
 server.tool(
   'web_fetch',
   '只读抓取 HTTP(S) 网页并提取正文纯文本（脚本/样式/导航已剔除，另附页面标题与可继续访问的链接）。'
@@ -463,6 +496,8 @@ server.tool(
   },
   async ({ url, maxChars, raw }) => {
     try {
+      const blocked = bilibiliRawFetchGuard(String(url ?? ''));
+      if (blocked) return { content: [{ type: 'text', text: blocked }] };
       const result = await safeFetch(url);
       const limit = Number.isFinite(maxChars) && maxChars > 0 ? Math.min(maxChars, 200000) : 40000;
       const isHtml = /html|xml/i.test(String(result.contentType || ''))

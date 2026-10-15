@@ -150,9 +150,9 @@ export async function summarizeBilibili(url, {
         return { ok: false, reason: map[String(json.code)] ?? `B站接口返回 code=${json.code}` };
       }
       const text = formatVideoSummary(json.data, { descChars, url: target });
-      // 把解析出来的 BV 一起返回：短链（b23.tv/xxx）里没有 BV，下游要拿它去取字幕，
-      // 若只传 URL 会判成 bad-bvid（2026-10-15 实测踩过：元信息成功、字幕却没附上）
-      return { ok: true, text, bvid: String(json.data?.bvid ?? '') };
+      // 把解析出来的 BV 与标题一起返回：短链里没有 BV（下游取字幕要用），
+      // 标题则用于"群友只用文字提这条视频"时把它认出来（2026-10-15 实测踩过）
+      return { ok: true, text, bvid: String(json.data?.bvid ?? ''), title: String(json.data?.title ?? '') };
     } catch (error) {
       const aborted = /abort/i.test(String(error?.name ?? error?.message));
       return { ok: false, reason: aborted ? '抓 B 站元信息超时' : '抓 B 站元信息失败（网络不通）' };

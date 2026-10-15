@@ -175,6 +175,18 @@ ok('事故复盘守卫：412 要说清原因、提示要覆盖 b23.tv 短链', (
   // ★ 2026-10-15 事故：b23.tv 短链里没有 BV，字幕 provider 只收到 URL 就判 bad-bvid
   //（元信息明明已经解析出真 BV）。现在 summarizeBilibili 要把 bvid 一起返回，预取要优先用它。
   assert.match(link, /bvid: String\(json\.data\?\.bvid/, 'summarizeBilibili 必须把解析出的 BV 一起返回');
+  assert.match(link, /title: String\(json\.data\?\.title/, '标题也要返回（用于"只用文字提这条视频"时认回来）');
+  // ★ 2026-10-15 第四次事故：群友**只用文字**提"再看一次诸葛亮那条"，卡片早被顶出 15 条窗口
+  //   ⇒ 没字幕可给 ⇒ 模型自己去裸抓匿名接口，对外说"要登录/没字幕"。
+  assert.match(bridge, /rememberDiscussedVideo/, '要记住最近讨论过的视频');
+  assert.match(bridge, /matchDiscussedVideo/, '文字里要能把它认回来');
+  assert.match(bridge, /重新预取一遍/, '认回来之后要重新预取（字幕才会再附一次）');
+  assert.match(bridge, /const freshMs = 10 \* 60 \* 1000/, 'linkLine 也要收"刚重新预取过"的条目（它不在 15 条窗口里）');
+  // ★ 并且把"自己去裸抓 B 站接口"这条路堵掉（提示词已经不听三次了）
+  const mcp = fs.readFileSync(path.join(root, 'src', 'mcp-web-search-safe.js'), 'utf8');
+  assert.match(mcp, /bilibiliRawFetchGuard/, 'MCP 要有 B 站裸抓拦截');
+  assert.match(mcp, /【已拦截】/, '拦截要给出明确说明');
+  assert.match(mcp, /need_login_subtitle/, '拦截里要点明匿名才会出现 need_login_subtitle');
   assert.match(bridge, /biliSubtitleProvider\(r\.bvid \|\| url\)/, '预取要优先把真 BV 传给字幕 provider');
   // ★ 2026-10-15 第二次事故：no-subtitle 静默 ⇒ 日志上"没附字幕"和"没跑字幕"长得一样，没法排查。
   assert.match(bridge, /没有 CC\/AI 字幕/, 'no-subtitle 也要说清楚');

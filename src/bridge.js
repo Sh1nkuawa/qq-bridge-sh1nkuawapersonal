@@ -39,6 +39,36 @@ const linkSummaries = new Map();   // key(会话) → { at, items: [{url, ok, te
 // B 站字幕精编稿的提供者：由主闭包初始化时注册（要用登录态与 state/ 缓存目录），
 // 这样链接预取不必知道登录态的存在，也不用改 link-bilibili.js。
 let biliSubtitleProvider = null;
+
+// 最近讨论过的 B 站视频（key → [{bvid,url,title,at}]）。
+// 为什么要它（2026-10-15 实测）：群友常**只用文字**说"再看一次诸葛亮那条"（消息里没有链接），
+// 而链接窗口只看最近 15 条 —— 卡片早被顶出去了 ⇒ 提示里没有字幕 ⇒ 模型只能自己去裸抓匿名接口，
+// 拿到空字幕列表后对外说"要登录/没字幕"。用它把链接找回来，字幕就能再附一次。
+const discussedVideos = new Map();
+const DISCUSSED_KEEP = 5;
+const DISCUSSED_TTL_MS = 60 * 60 * 1000;
+
+function rememberDiscussedVideo(key, item) {
+  if (!item?.bvid || !item?.url) return;
+  const list = (discussedVideos.get(key) ?? []).filter((x) => x.bvid !== item.bvid);
+  list.push({ bvid: item.bvid, url: item.url, title: String(item.title ?? ''), at: Date.now() });
+  discussedVideos.set(key, list.slice(-DISCUSSED_KEEP));
+}
+
+/** 文字里提到的是之前聊过的哪条视频（按标题切 3 字窗口匹配，取最近记住的那条） */
+function matchDiscussedVideo(key, text) {
+  const t = String(text ?? '');
+  if (t.length < 4) return null;
+  const list = (discussedVideos.get(key) ?? []).filter((x) => Date.now() - x.at < DISCUSSED_TTL_MS);
+  for (const item of [...list].reverse()) {
+    if (item.bvid && t.includes(item.bvid)) return item;
+    const clean = String(item.title ?? '').replace(/[\s\u3000]+/g, '');
+    for (let i = 0; i + 3 <= clean.length; i += 1) {
+      if (t.includes(clean.slice(i, i + 3))) return item;
+    }
+  }
+  return null;
+}
 const LINK_SUMMARY_KEEP_KEYS = 50;
 
 function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
@@ -83,9 +113,10 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       const entry = linkSummaries.get(key) ?? { at: 0, items: [] };
       entry.at = Date.now();
       entry.items = entry.items.filter((x) => x.url !== url);
-      entry.items.push({ url, ok: !!r.ok, text, reason: r.reason ?? '' });
+      entry.items.push({ url, ok: !!r.ok, text, reason: r.reason ?? '', bvid: r.bvid ?? '', title: r.title ?? '', at: Date.now() });
       entry.items = entry.items.slice(-6);
       linkSummaries.set(key, entry);
+      if (r.ok && r.bvid) rememberDiscussedVideo(key, { bvid: r.bvid, url, title: r.title });
       while (linkSummaries.size > LINK_SUMMARY_KEEP_KEYS) {
         linkSummaries.delete(linkSummaries.keys().next().value);
       }
@@ -12324,7 +12355,12 @@ async function main() {
         for (const u of linksInText(`${m?.text ?? ''}\n${m?.plain ?? ''}`)) urls.push(u);
       }
       const uniq = [...new Set(urls)].slice(0, Number(lc.maxLinks ?? 3) || 3);
-      const summaries = (linkSummaries.get(key)?.items ?? []).filter((x) => uniq.includes(x.url));
+      // 除了"最近 15 条里出现过的链接"，也带上**刚重新预取过**的（10 分钟内）：
+      // 群友用文字提"刚才那条视频"时我们会去重取一次，那条 URL 不在窗口里，
+      // 若只认窗口就会把刚取回的字幕又丢掉（2026-10-15 实测踩过）。
+      const freshMs = 10 * 60 * 1000;
+      const summaries = (linkSummaries.get(key)?.items ?? [])
+        .filter((x) => uniq.includes(x.url) || (Number(x.at) || 0) > Date.now() - freshMs);
       if (!uniq.length && !summaries.length) return '';
       const lines = ['【链接】群里最近发过的链接：'];
       const others = uniq.filter((u) => !bilibiliRef(u));
@@ -12966,7 +13002,21 @@ async function main() {
     const plainContent = await segmentsToText(event.message ?? [], { resolveAtName, includeReply: false, recordText, lookupMedia: lookupQuotedMedia });
     // [link] 卡片里的 B 站视频：立刻带缓存地预取元信息（非阻塞），
     // 等模型被唤醒时 linkLine 会把结果注入提示。通用网页不需要预取（模型自己有 web_fetch）。
-    try { prefetchBilibiliLinks(key, linksInText(textContent), cfg.socialV2?.links ?? {}); } catch {}
+    try {
+      const links = linksInText(textContent);
+      if (links.length) {
+        prefetchBilibiliLinks(key, links, cfg.socialV2?.links ?? {});
+      } else {
+        // 2026-10-15：群友常用**文字**提"再看一次诸葛亮那条"（消息里没有链接），
+        // 那时卡片早被顶出 15 条窗口 ⇒ 没字幕可给 ⇒ 模型自己去裸抓匿名接口。
+        // 这里按标题把那条视频认回来、重新预取一次（字幕会跟着回来）。
+        const hit = matchDiscussedVideo(key, textContent);
+        if (hit?.url) {
+          log(`[link] 文字里提到之前聊过的视频（${hit.bvid}），重新预取一遍好把字幕带上：${String(hit.title).slice(0, 22)}`);
+          prefetchBilibiliLinks(key, [hit.url], cfg.socialV2?.links ?? {});
+        }
+      }
+    } catch {}
     const mediaList = extractMediaFromSegments(event.message ?? []);
     const messageRef = String(event.message_id ?? event.msg_id ?? event.message_seq ?? '');
     const seqRef = event.message_seq != null ? String(event.message_seq) : '';
