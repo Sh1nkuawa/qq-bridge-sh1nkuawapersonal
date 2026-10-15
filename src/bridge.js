@@ -53,7 +53,11 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       // 顺带把 B 站**字幕精编稿**拼上（长字幕分层压缩，见 src/bili-subtitle.js）——
       // 群友分享的 B 站视频因此能"讲内容"，而不只是标题/简介。
       let text = r.text ?? '';
-      if (r.ok && biliSubtitleProvider) {
+      if (!r.ok) {
+        // 元信息都没成功，字幕就无从谈起（上面已经记了失败原因）
+      } else if (!biliSubtitleProvider) {
+        log(`[link] ⚠️ B 站字幕 provider 未注册（配置或启动异常？）：${url}`);
+      } else {
         try {
           // ⚠️ 优先用元信息那步解析出来的 bvid：短链（b23.tv/xxx）里没有 BV，
           // 只把 URL 传下去会被判成 bad-bvid —— 2026-10-15 实测：元信息成功、字幕却"未附"
@@ -61,11 +65,19 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
           if (brief?.ok && brief.text) {
             text = text + '\n' + brief.text;
             log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
-          } else if (brief?.reason && brief.reason !== 'no-subtitle') {
-            log(`[link] B 站字幕未附（${brief.reason}）：${url}`);
+          } else {
+            // ⚠️ no-subtitle 也必须落日志并告诉模型：
+            // 否则"这条视频没字幕"和"字幕流程没跑"在日志里长得一模一样，根本没法排查
+            //（2026-10-15 实测就卡在这：只有"已预取元信息"，下半句什么都没有）
+            const reason = brief?.reason ?? 'unknown';
+            const note = reason === 'no-subtitle'
+              ? '这条视频没有 CC/AI 字幕，只能看标题和简介'
+              : `字幕没取到（${reason}${brief?.message ? '：' + brief.message : ''}）`;
+            log(`[link] ${note}：${url}`);
+            text = text + `\n[字幕] ${note}`;
           }
         } catch (error) {
-          log(`[link] B 站字幕异常：${error?.message ?? error}`);
+          log(`[link] B 站字幕异常（${url}）：${error?.message ?? error}`);
         }
       }
       const entry = linkSummaries.get(key) ?? { at: 0, items: [] };
@@ -77,7 +89,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       while (linkSummaries.size > LINK_SUMMARY_KEEP_KEYS) {
         linkSummaries.delete(linkSummaries.keys().next().value);
       }
-      if (r.ok) log(`[link] 已预取 B 站元信息：${url}`);
+      if (r.ok) log(`[link] 已预取 B 站元信息（${r.bvid || '无 BV'}）：${url}`);
       else log(`[link] B 站元信息预取失败（${r.reason}）：${url}`);
     })).catch((error) => log(`⚠️ 链接预取异常：${error?.message ?? error}`));
   } catch (error) {
@@ -11974,6 +11986,8 @@ async function main() {
     });
     return { ok: true, cached: !!r.cached, ...brief };
   };
+  // 起一行日志：以后排查"字幕流程到底有没有跑"不用再猜（provider 没注册时预取会明确报警）
+  log(`[bili-subs] 字幕 provider 已注册（缓存 ${biliSubDir}）`);
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。

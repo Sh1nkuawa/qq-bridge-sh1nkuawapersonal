@@ -176,6 +176,10 @@ ok('事故复盘守卫：412 要说清原因、提示要覆盖 b23.tv 短链', (
   //（元信息明明已经解析出真 BV）。现在 summarizeBilibili 要把 bvid 一起返回，预取要优先用它。
   assert.match(link, /bvid: String\(json\.data\?\.bvid/, 'summarizeBilibili 必须把解析出的 BV 一起返回');
   assert.match(bridge, /biliSubtitleProvider\(r\.bvid \|\| url\)/, '预取要优先把真 BV 传给字幕 provider');
+  // ★ 2026-10-15 第二次事故：no-subtitle 静默 ⇒ 日志上"没附字幕"和"没跑字幕"长得一样，没法排查。
+  assert.match(bridge, /没有 CC\/AI 字幕/, 'no-subtitle 也要说清楚');
+  assert.match(bridge, /\[字幕\] /, '没字幕时也要把结论写进给模型的文本');
+  assert.match(bridge, /字幕 provider 已注册/, '启动要留一行"provider 已注册"');
   assert.match(bridge, /如实说读不到/, '读不到时要如实说，而不是去试第三方');
 });
 
