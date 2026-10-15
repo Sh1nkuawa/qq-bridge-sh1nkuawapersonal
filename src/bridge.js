@@ -22,6 +22,7 @@ import { SENSITIVE_RE } from './sensitive.js';
 import { bilibiliRef, cardSegmentText, linksInText } from './card-link.js';
 import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js';
 import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
+import { createBiliAuth } from './bili-auth.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -7332,6 +7333,34 @@ async function main() {
           }
           return;
         }
+        if (req.method === 'GET' && url.pathname === '/api/bili/status') {
+          // B 站登录态（cookie jar 滑动续期 + 扫码续期）状态；summary() 不含 cookie 值
+          try {
+            const st = await biliAuth.status({ force: url.searchParams.get('fresh') === '1' });
+            sendJson({
+              ok: true,
+              loggedIn: st.loggedIn,
+              code: st.code,
+              uname: st.uname,
+              mid: st.mid,
+              qrPending: !!biliAuthQrKey,
+              summary: biliAuth.summary()
+            });
+          } catch (error) {
+            sendJson({ ok: false, error: `查询 B 站登录态失败：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
+        if (req.method === 'POST' && url.pathname === '/api/bili/login/start') {
+          // 手动触发扫码续期（会给 ownerQQ 发一条私聊，附二维码链接）
+          try {
+            const sent = await biliAuthNotifyQr('控制台手动触发', true);
+            sendJson({ ok: true, notified: sent, qrPending: !!biliAuthQrKey });
+          } catch (error) {
+            sendJson({ ok: false, error: `发起扫码失败：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
         if (req.method === 'POST' && url.pathname === '/api/socialV2/wait') {
           const body = await readBody();
           const key = String(body.key ?? '').trim();
@@ -11825,6 +11854,80 @@ async function main() {
     if (!owner) return;
     await sendOwnerDM(`【${title}】\n${body}`);
   }
+
+  // ── B 站登录态：① cookie jar 滑动续期 ② 失效自动扫码续期（2026-10-15）───────
+  // 为什么需要：官方字幕/评论接口要登录态，而"抄一次 SESSDATA 写进配置"会在固定 Expires
+  // （一般 ~30 天）后失效。这里用 cookie jar 把响应里的 Set-Cookie 存回（滑动续期），
+  // 失效时把扫码 URL 私聊给 owner —— 扫完自动落盘，不用手抄 cookie。
+  const biliAuth = createBiliAuth({ stateFile: path.join(STATE_DIR, 'bili-auth.json'), log });
+  const biliAuthCfg = () => (cfg.socialV2?.links?.auth && typeof cfg.socialV2.links.auth === 'object')
+    ? cfg.socialV2.links.auth
+    : {};
+  let biliAuthQrKey = '';
+  let biliAuthQrAt = 0;
+  let biliAuthQrNotifiedAt = 0;
+
+  /** 生成二维码并私聊 owner。同一张码 10 分钟内只打扰一次（force = 手动触发时无视） */
+  async function biliAuthNotifyQr(reason, force = false) {
+    if (biliAuthCfg().notifyOnExpiry === false) return false;
+    const nowMs = Date.now();
+    if (!force && biliAuthQrKey && nowMs - biliAuthQrNotifiedAt < 10 * 60 * 1000) return false;
+    try {
+      const { key, url } = await biliAuth.startQrLogin();
+      biliAuthQrKey = key;
+      biliAuthQrAt = nowMs;
+      biliAuthQrNotifiedAt = nowMs;
+      await notifyOwner('B 站登录过期', [
+        `原因：${reason}`,
+        '影响：B 站视频的官方字幕暂时拿不到（会自动降级，不影响其它功能）。',
+        '续期：用手机 B 站 App 扫下面这个链接打开后的二维码（约 3 分钟有效）：',
+        url,
+        '扫完我会自动把凭证存好，不用你复制粘贴。'
+      ].join('\n'));
+      log(`[bili-auth] 已私聊 owner 扫码续期链接（${reason}）`);
+      return true;
+    } catch (error) {
+      log(`[bili-auth] 生成扫码链接失败：${error?.message ?? error}`);
+      return false;
+    }
+  }
+
+  /** 体检：登录着就顺手续期，没登录就发码 */
+  async function biliAuthCheck(reason) {
+    if (biliAuthCfg().enabled === false) return null;
+    const st = await biliAuth.status({ force: reason !== 'timer' });
+    if (st.loggedIn) {
+      if (biliAuthQrKey) log(`[bili-auth] 登录态已恢复（${st.uname || '?'}），扫码流程结束`);
+      biliAuthQrKey = '';
+      return st;
+    }
+    log(`[bili-auth] 未登录（nav code=${st.code}，来源 ${reason}）`);
+    await biliAuthNotifyQr(reason === 'timer' ? '定时体检发现未登录' : '启动时发现未登录');
+    return st;
+  }
+
+  // ② 的核心：后台轮询那张码，扫完自动把凭证落盘（不用人管）
+  const biliAuthQrTimer = setInterval(() => {
+    if (!biliAuthQrKey) return;
+    if (Date.now() - biliAuthQrAt > 10 * 60 * 1000) { biliAuthQrKey = ''; return; }
+    void biliAuth.pollQrLogin(biliAuthQrKey).then((r) => {
+      if (r.state === 'ok') {
+        biliAuthQrKey = '';
+        log(`[bili-auth] 扫码成功，登录态已保存（${r.status?.uname ?? '?'}）`);
+        void notifyOwner('B 站登录已续期', `账号：${r.status?.uname ?? '(未知)'}\n之后靠滑动续期自动保活；再失效我会再发一次二维码。`);
+      } else if (r.state === 'expired' || r.state === 'unknown') {
+        biliAuthQrKey = '';
+        log(`[bili-auth] 扫码流程结束：${r.state}${r.message ? '（' + r.message + '）' : ''}`);
+      }
+    }).catch(() => {});
+  }, 3000);
+  if (biliAuthQrTimer.unref) biliAuthQrTimer.unref();
+
+  const biliAuthEveryMs = Math.max(1, Number(biliAuthCfg().checkHours) || 12) * 3600000;
+  const biliAuthStartTimer = setTimeout(() => { void biliAuthCheck('startup').catch(() => {}); }, 45000);
+  if (biliAuthStartTimer.unref) biliAuthStartTimer.unref();
+  const biliAuthTimer = setInterval(() => { void biliAuthCheck('timer').catch(() => {}); }, biliAuthEveryMs);
+  if (biliAuthTimer.unref) biliAuthTimer.unref();
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。

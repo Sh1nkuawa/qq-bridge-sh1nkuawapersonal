@@ -447,7 +447,12 @@
       "maxLinks": 3,
       "timeoutMs": 6000,
       "descChars": 400,
-      "ttlMinutes": 15
+      "ttlMinutes": 15,
+      "auth": {
+        "enabled": true,
+        "checkHours": 12,
+        "notifyOnExpiry": true
+      }
     },
     "quote": {
       "enrich": true

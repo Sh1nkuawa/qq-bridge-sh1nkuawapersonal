@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **289** 个被跟踪文件（其中 287 个文本文件、合计 **65,574** 行） —— 文件自带说明 **266**、人工补写 **23**、待补 **0**。
+统计：共 **293** 个被跟踪文件（其中 291 个文本文件、合计 **65,907** 行） —— 文件自带说明 **270**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -21,8 +21,8 @@
 | [`.gitignore`](../.gitignore) | 79 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 456 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,808 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`config.example.json`](../config.example.json) | 461 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,842 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -165,6 +165,7 @@
 | [`console-ui-legacy-ids.json`](../scripts/console-ui-legacy-ids.json) | 227 | 控制台历史元素 id 清单（回归用：确保老 id 没被悄悄删掉） | 人工补写 |
 | [`debug-auth.mjs`](../scripts/debug-auth.mjs) | 43 | 隔离测试：用配置里的 cookie 分别走 raw fetch 和 NodeApiClient，看差在哪 | 文件自带 |
 | [`dsh-modules.mjs`](../scripts/dsh-modules.mjs) | 66 | 定位「DSH 安装目录下的 node_modules」—— 供仓库脚本加载 DSH 自身的模块做校验。 | 文件自带 |
+| [`dsh-tool-names.mjs`](../scripts/dsh-tool-names.mjs) | 83 | Read-only inventory of tool registrations in the installed DSH packages. | 文件自带 |
 | [`dsh-with-token.mjs`](../scripts/dsh-with-token.mjs) | 65 | 启动 DSH 并自动捕获 launch token 写入 config.json | 文件自带 |
 | [`dump-session-reasoning.mjs`](../scripts/dump-session-reasoning.mjs) | 31 | 打印某个 DSH 会话里模型每一步的 reasoning 摘要（做"它为什么没做某件事"的复盘用）。 | 文件自带 |
 | [`dump-session-tail.mjs`](../scripts/dump-session-tail.mjs) | 63 | 解码某个 DSH 会话（zstd 分帧）并打印最近的工具调用/结果，用于还原"模型到底看到了什么" | 文件自带 |
@@ -187,6 +188,7 @@
 | [`list-affinity.mjs`](../scripts/list-affinity.mjs) | 89 | list-affinity.mjs —— 只读列出某个会话的**全员好感度**（owner 巡检 / 回答"现在大家多少分"用） | 文件自带 |
 | [`make-config.mjs`](../scripts/make-config.mjs) | 48 | 从 config.example.json 生成 config.json（已存在则跳过、绝不覆盖） | 人工补写 |
 | [`meme-flow-test.mjs`](../scripts/meme-flow-test.mjs) | 125 | 本地表情包链路自检（不依赖桥接进程）。 | 文件自带 |
+| [`patch-dsh-at-file-settings.mjs`](../scripts/patch-dsh-at-file-settings.mjs) | 38 | Reproducible compatibility patch for the pinned dsh-at-file 0.7.0 git build. | 文件自带 |
 | [`patch-dsh-base64.mjs`](../scripts/patch-dsh-base64.mjs) | 140 | !/usr/bin/env node | 文件自带 |
 | [`patch-snowluma-sdk.mjs`](../scripts/patch-snowluma-sdk.mjs) | 48 | 修复 @snowluma 系列 npm 包的发布打包 bug：dist 内的相对导入缺少 .js 扩展名， | 文件自带 |
 | [`preflight-publish.mjs`](../scripts/preflight-publish.mjs) | 130 | 发布前体检：把"将要提交的文件"里可能泄漏的内容扫一遍（不会修改任何东西）。 | 文件自带 |
@@ -236,6 +238,7 @@
 | [`replay-dsh-attempt.mjs`](../scripts/replay-dsh-attempt.mjs) | 47 | 复盘一次失败的 assistant/attempt：把流式 chunk 汇总成「块类型 / 工具名 / 工具入参原文 / 结束原因」。 | 文件自带 |
 | [`run-offline-tests.mjs`](../scripts/run-offline-tests.mjs) | 59 | 本机离线回归总入口：顺序跑 scripts/test-*.mjs，跳过依赖外部环境的用例 | 文件自带 |
 | [`scan-dsh-session-errors.mjs`](../scripts/scan-dsh-session-errors.mjs) | 94 | 扫 DSH 会话记录（session.v4.jsonl.zstd）找报错：解压后按行解析，挑出 error / tool input / | 文件自带 |
+| [`scan-dsh-tool-names.mjs`](../scripts/scan-dsh-tool-names.mjs) | 16 | Compare real package tool registrations with the QQ preset's restriction list. | 文件自带 |
 | [`send-test-card.mjs`](../scripts/send-test-card.mjs) | 33 | 发一张卡图到指定群，验证网关发图链路（用本地文件的 base64，兼容性最好） | 文件自带 |
 | [`send-test-group.mjs`](../scripts/send-test-group.mjs) | 40 | 向指定名称的 QQ 群发送一条测试消息（从桥接侧主动发送，验证 群聊 方向）。 | 文件自带 |
 | [`send-voice.mjs`](../scripts/send-voice.mjs) | 483 | !/usr/bin/env node | 文件自带 |
@@ -328,6 +331,7 @@
 | [`upgrade-dsh-017.mjs`](../scripts/upgrade-dsh-017.mjs) | 216 | !/usr/bin/env node | 文件自带 |
 | [`verify-agent-presets-017.mjs`](../scripts/verify-agent-presets-017.mjs) | 87 | 验证 DSH 0.1.7 的 agent preset 是否真的装上了（只读探测 + 断言）。 | 文件自带 |
 | [`verify-dsh-015-adaptation.mjs`](../scripts/verify-dsh-015-adaptation.mjs) | 192 | DSH 适配总验证（0.1.5 建立，0.1.7 迁移后继续沿用文件名以免打断既有调用）： | 文件自带 |
+| [`verify-dsh-020.mjs`](../scripts/verify-dsh-020.mjs) | 54 | Local-only smoke checks. No prompts, QQ sends, or existing-session mutations. | 文件自带 |
 | [`verify-ids.mjs`](../scripts/verify-ids.mjs) | 59 | 核实 ownerQQ / 群号：查机器人账号、好友、群列表、指定群是否存在 | 文件自带 |
 | [`verify-onebot.mjs`](../scripts/verify-onebot.mjs) | 47 | 用官方 SDK 通过 OneBot WebSocket 验证：登录的是哪个号、群列表、能否发消息（只读调用，不发送） | 文件自带 |
 | [`verify-persona-config.mjs`](../scripts/verify-persona-config.mjs) | 74 | 用 DSH 自身的 dsh-persona 配置 schema 校验修复后的 preset persona 配置。 | 文件自带 |
@@ -348,7 +352,7 @@
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,245 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,348 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

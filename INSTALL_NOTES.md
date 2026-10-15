@@ -1806,3 +1806,37 @@ bridge 两处接线守卫）✓；离线全绿 ✓。
 **备份与回滚**：D:/dsh/backups/dsh-execution-20261015-1640 下保留原 DSH runtime、完整 profile node_modules、源码与 Git bundle、会话/存储，以及切换前新备份 precut-current（state、config、profile 配置、原启动日志）。upgrade-result.json 记录实际版本与配置核对结果。
 回滚时先停正式 DSH，只还原程序、插件清单/运行目录和必要兼容源码后启动旧版；QQ 插件链接需保持指向自己的 plugins 目录。不要默认覆盖升级后新增的会话、账本或 state。原 preUpgrade 目录的 rollback.ps1 包含全量 state 覆盖，不应不经检查直接运行。
 本轮源码保留在工作区，尚未提交或推送，QQ 回归留待后续安排。
+
+### 16.18 B 站登录态：cookie jar 滑动续期 + 扫码自动续期（2026-10-15）
+
+**为什么做**：官方字幕/评论接口需要登录态，而"抄一次 SESSDATA 写进配置"会在固定
+`Expires`（一般 ~30 天）后失效 —— 这就是"每过一段时间都要重弄一次"的根因。
+参考项目 **dsh-bili-scroll**（MIT，`github.com/c1overzz/dsh-bili-scroll`）的 `lib/login.mjs`
+与 `lib/asr.py`：我们只借它的**结论与接口参数**，代码是自己写的。
+
+**① cookie jar 滑动续期**（`src/bili-auth.js`）：
+- B 站是**滑动续期**：带有效 cookie 请求时，响应里常会再 `Set-Cookie` 一个新的（过期时间往后推）；
+  所以核心动作就一句 —— **把响应里的 Set-Cookie 存回 jar**（`absorb()`），并落盘到
+  `state/bili-auth.json`（gitignored）。
+- 失效判据：`GET /x/web-interface/nav` → `code=-101` / `data.isLogin=false`（实测）。
+- 细节坑（离线回归抓到过）：B 站登出时发的是 `Expires=Thu, 01 Jan 1970`，解析出来正好是 **0**，
+  而 0 在本模块里又表示"会话级/无过期" —— 只看 `exp` 会把"删除"误判成"会话级"。
+  所以 `parseSetCookie` 额外返回 `hasExpiry`，删除判断必须用它。
+
+**② 失效自动扫码续期**（`bridge.js` 里的 `biliAuthCheck` / `biliAuthNotifyQr`）：
+- 定时体检（`socialV2.links.auth.checkHours`，默认 12 小时）+ 启动后 45 秒各查一次；
+- 未登录 → 生成二维码 URL **私聊 owner**（走 `sendOwnerDM` 底层通道，绕过白名单），
+  同一条码 10 分钟内只打扰一次；后台每 3 秒轮询，**扫完自动落盘**并回报"已续期"；
+- 控制台接口：`GET /api/bili/status`（含 `summary()`，**只给 cookie 名字与过期时间，绝不给值**）、
+  `POST /api/bili/login/start`（手动重发二维码）；
+- 手动入口：`node scripts/bili-login.mjs`（默认扫码）/ `--status` / `--png` / `--clear`。
+- ⭐ 扫码续期的关键接口（照抄它踩过的结论）：`qrcode/generate` 拿 `qrcode_key`；
+  `qrcode/poll` 的 `data.code`：86101 未扫 / 86090 已扫待确认 / 0 成功 / 86038 过期；
+  **凭证在轮询响应的 `Set-Cookie` 头里**，不在 `data.url` 里（那条 url 是别的域的游戏票）。
+
+**回归**：`scripts/test-bili-auth.mjs` 11 组断言（解析/合并/过期删除/`summary` 不泄漏 cookie 值/
+滑动续期真的写回磁盘/扫码全流程/过期与超时/源码接线与出处署名），全程不联网（fetch 注入假实现）。
+
+**另一处教训（复用仓库已有的）**：CLI 里**不要**用 `process.exit()` —— 有挂起句柄时会在 Windows 上
+触发 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` 崩溃（`test-vision-media.mjs` 踩过），
+统一用 `process.exitCode`。
