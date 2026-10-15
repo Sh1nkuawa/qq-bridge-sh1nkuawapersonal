@@ -162,6 +162,19 @@ await okAsync('fetchSubtitle：bvid 不合法 / 未登录 都能安全返回（�
 
 console.log('\n出处与接线：');
 
+ok('事故复盘守卫：412 要说清原因、提示要覆盖 b23.tv 短链', () => {
+  const root = path.dirname(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')));
+  const link = fs.readFileSync(path.join(root, 'src', 'link-bilibili.js'), 'utf8');
+  // 2026-10-15 事故：代理把 B 站流量走国外节点 → B 站回 -412 request was banned，
+  // 当时只报"接口返回不是 JSON"，模型只好去搜第三方；现在必须给出可操作的原因。
+  assert.match(link, /'-412'/, '要单独识别 -412 风控');
+  assert.match(link, /request was banned/, '要把 B 站的原话带上');
+  assert.match(link, /DIRECT/, '要给出"让 B 站走直连"的处置建议');
+  const bridge = fs.readFileSync(path.join(root, 'src', 'bridge.js'), 'utf8');
+  assert.match(bridge, /短链（b23\.tv/, '提示里要点名短链也算 B 站');
+  assert.match(bridge, /如实说读不到/, '读不到时要如实说，而不是去试第三方');
+});
+
 ok('源码守卫：借鉴出处署名 + 桥接接线都在', () => {
   const root = path.dirname(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')));
   const mod = fs.readFileSync(path.join(root, 'src', 'bili-subtitle.js'), 'utf8');

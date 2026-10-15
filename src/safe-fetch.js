@@ -63,6 +63,25 @@ function parseEmbeddedIpv4(h) {
   return null;
 }
 
+/**
+ * mihomo/clash 的 fake-ip 池（默认 198.18.0.0/15，RFC 2544 基准测试段）。
+ *
+ * 它**不是内网地址**，也无法路由到局域网：开了 fake-ip 的代理会在本地劫持这些地址、
+ * 交给代理出网。把它当"内网"拦掉，会让**所有走代理的域名**都抓不到 ——
+ * 2026-10-15 实测：群友发的 B 站短链 `b23.tv/xxx` 解析成 198.18.x.x 后被判
+ * “域名解析到内网/本机地址，已阻止”，整条 B 站预取直接失效（连模型自己的 web_fetch 也一起被挡）。
+ *
+ * 默认放行；要恢复严格拦截就设环境变量 `QQB_SAFE_FETCH_FAKE_IP=deny`。
+ */
+export function isFakeIpPool(ip) {
+  const h = String(ip || '').trim();
+  if (net.isIP(h) !== 4) return false;
+  const parts = h.split('.').map(Number);
+  return parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19;
+}
+
+export const FAKE_IP_ALLOWED = String(process.env.QQB_SAFE_FETCH_FAKE_IP ?? 'allow').toLowerCase() !== 'deny';
+
 export function isPrivateIp(ip) {
   let h = String(ip || '').toLowerCase().replace(/^\[|\]$/g, '');
   const family = net.isIP(h);
@@ -79,7 +98,8 @@ export function isPrivateIp(ip) {
     if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
     if (parts[0] === 192 && parts[1] === 168) return true;
     if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
-    if (parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19) return true;
+    // fake-ip 池（198.18.0.0/15）：见 isFakeIpPool 的注释 —— 默认放行，否则走代理的域名全都抓不到
+    if (parts[0] === 198 && parts[1] >= 18 && parts[1] <= 19) return !FAKE_IP_ALLOWED;
     if (parts[0] === 192 && parts[1] === 0 && parts[2] === 0) return true;
     if (parts[0] >= 224) return true;
     return false;

@@ -137,9 +137,16 @@ export async function summarizeBilibili(url, {
     try {
       const res = await fetchImpl(apiUrl, { headers: { 'User-Agent': UA, Referer: 'https://www.bilibili.com/' }, signal: ac.signal });
       const json = await res.json().catch(() => null);
-      if (!json) return { ok: false, reason: 'B站接口返回不是 JSON' };
+      if (!json) return { ok: false, reason: 'B站接口返回的不是 JSON（可能是代理/风控页）—— 若代理把 B 站流量走了国外节点，请给 bilibili.com / b23.tv / hdslb.com 配 DIRECT' };
       if (json.code !== 0) {
-        const map = { '-404': '视频不存在或已删除', '-403': 'B站拒绝访问（可能需要登录）', '-400': '请求参数不对' };
+        const map = {
+          '-404': '视频不存在或已删除',
+          '-403': 'B站拒绝访问（可能需要登录）',
+          '-400': '请求参数不对',
+          // 2026-10-15 实测：代理把 B 站流量走国外节点时，B 站直接回 -412 request was banned
+          //（同一天 yt-dlp 取音频也是 412，同一个原因）
+          '-412': 'B站风控拒绝了请求（-412 request was banned）—— 通常是代理让 B 站走了国外节点；请在代理里给 bilibili.com / b23.tv / hdslb.com 配 DIRECT'
+        };
         return { ok: false, reason: map[String(json.code)] ?? `B站接口返回 code=${json.code}` };
       }
       const text = formatVideoSummary(json.data, { descChars, url: target });

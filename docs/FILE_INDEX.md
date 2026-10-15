@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **301** 个被跟踪文件（其中 299 个文本文件、合计 **67,406** 行） —— 文件自带说明 **278**、人工补写 **23**、待补 **0**。
+统计：共 **301** 个被跟踪文件（其中 299 个文本文件、合计 **67,448** 行） —— 文件自带说明 **278**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -269,7 +269,7 @@
 | [`test-audit-setup.mjs`](../scripts/test-audit-setup.mjs) | 132 | Offline integration tests. Every setup invocation receives its own repository and DSH_HOME. | 文件自带 |
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
 | [`test-bili-auth.mjs`](../scripts/test-bili-auth.mjs) | 200 | B 站登录态（cookie jar 滑动续期 + 扫码续期）的离线回归。 | 文件自带 |
-| [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 178 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
+| [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 191 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
 | [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 113 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |
 | [`test-console-static.mjs`](../scripts/test-console-static.mjs) | 74 | 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。 | 文件自带 |
@@ -360,14 +360,14 @@
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,392 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,394 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
-| [`link-bilibili.js`](../src/link-bilibili.js) | 160 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
+| [`link-bilibili.js`](../src/link-bilibili.js) | 167 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
 | [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,635 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
@@ -381,7 +381,7 @@
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
 | [`quote-ref.js`](../src/quote-ref.js) | 97 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |
 | [`role-card.js`](../src/role-card.js) | 108 | 人格卡（roles/<名称>.md）的解析与「按仿真模式取用」。 | 文件自带 |
-| [`safe-fetch.js`](../src/safe-fetch.js) | 352 | 只读 HTTP(S) 安全抓取工具：供 qq-bridge / MCP 共用。 | 文件自带 |
+| [`safe-fetch.js`](../src/safe-fetch.js) | 372 | 只读 HTTP(S) 安全抓取工具：供 qq-bridge / MCP 共用。 | 文件自带 |
 | [`self-test.js`](../src/self-test.js) | 116 | 自测脚本：不依赖 SnowLuma / QQ，只验证 DSH 侧链路—— | 文件自带 |
 | [`send-voice-lib.js`](../src/send-voice-lib.js) | 31 | 语音发送共享库 —— 薄转发层（唯一实现在 voice-core.js）。 | 文件自带 |
 | [`sensitive.js`](../src/sensitive.js) | 15 | 共享的敏感信息审计正则：桥接回复、MCP 发送、审批/提问文本等统一使用，避免两处维护不一致。 | 文件自带 |
