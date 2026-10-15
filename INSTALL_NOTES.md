@@ -1888,25 +1888,17 @@ outlineThreshold, cacheTtlMinutes, maxCharsHard }`。
 **回归**：`scripts/test-bili-subtitle.mjs` 13 组离线断言（清洗/格式化/解析/抽样覆盖前中后段且守预算/
 三档分层/骨架共享预算/分页跨界/缓存路径/未登录与坏 bvid 安全返回/出处与接线守卫）。
 
-### 16.20 B 站视频的"轻记忆"：记住自己说过什么，防前后矛盾（2026-10-15）
+### 16.20 踩坑：模块级 const 的 TDZ（2026-10-15）
 
-**owner 的口径**（原话）："这里不需要记得很精确，只需要能记住自己总结什么不会出现前后矛盾就好。"
-⇒ 因此**主动放弃**了"按时间精确分页取字幕原文"那套 ✗，改为只记"我对这条视频说过什么"。
+> 背景：曾为"记住自己对某条 B 站视频说过什么"加过一层桥接侧轻记忆（`src/bili-notes.js`），
+> owner 判断**没必要**（话题一热，同一条视频会在 15 条上下文窗口里反复出现，而"记忆"这条路
+> 本来就有 `qq_memory_append` 的 activeTopic/memberImpression），**已按 owner 要求撤掉** ✓。
+> 但那次改动踩的坑值得留下：
 
-做法：
-- **记录**：在桥接**实际发送**的路径上（`[reserved2] 工具统一发送` 那处）顺手把这一轮发出去的话
-  整理成一条 take（去 URL / CQ 码、压空白、默认截 400 字），落 `state/bili-notes.json`
-  （gitignored；最多 200 条，按时间裁掉最旧的）。归属规则刻意"不精确"：这一轮聊的是哪条 B 站链接，
-  就记到那条 —— owner 明确说了不需要精确。
-- **注入**：`linkLine` 渲染该视频时附一行 `【你之前对这条视频说过】…`，要求保持一致；
-  **同时留一个改口的正当出口**（"如果发现上次说错了，就直接说上次不准"），免得为了不矛盾而硬撑错话。
-- **提示文案**：`outline` 档不再承诺"按时间取片段"✗，改为明说"不必逐句精确"✓。
-
-**踩坑（值得记住）**：把 `const BILI_NOTES_FILE = path.join(STATE_DIR, …)` 放到了文件**顶部**，
+把 `const BILI_NOTES_FILE = path.join(STATE_DIR, 'bili-notes.json')` 放到了文件**顶部**，
 而 `STATE_DIR` 在 185 行才定义 ⇒ 模块初始化就撞 TDZ：
-`ReferenceError: Cannot access 'STATE_DIR' before initialization`，**一次打红 3 个测试**
-（audit-bridge / reply-wait / token-economy）。
-→ 教训：**模块级 `const` 若依赖另一个模块级 `const`，必须写在它之后**。
+`ReferenceError: Cannot access 'STATE_DIR' before initialization`，
+**一次打红 3 个测试**（audit-bridge / reply-wait / token-economy）。
 
-**回归**：`scripts/test-bili-notes.mjs` 9 组（BV 提取 / 整理 take / 覆盖与计数 / 有界裁剪 / 坏输入不写入 /
-一致性提示与改口出口 / 存取往返 / 坏文件容错 / 接线与口径守卫）；离线套件 **59/59**。
+→ 教训：**模块级 `const` 若依赖另一个模块级 `const`，必须写在它之后**。
+   这类错误在"单个测试跑得通"时看不出来（只有整体 import 顺序才会暴露），所以改完要跑**全量**套件。

@@ -24,7 +24,6 @@ import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js'
 import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { createBiliAuth } from './bili-auth.js';
 import { buildSubtitleBrief, fetchSubtitle } from './bili-subtitle.js';
-import { buildConsistencyLine, bvidOf, loadNotes, rememberTake, saveNotes, takeFromMessages } from './bili-notes.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -219,26 +218,6 @@ const TOOL_LOG_FILE = path.join(STATE_DIR, 'tool-calls.jsonl');
 const TOKEN_USAGE_FILE = path.join(STATE_DIR, 'token-usage.jsonl');
 const ACTIVITY_LOG = path.join(STATE_DIR, 'qq-activity.log');
 const BRIDGE_LOG = path.join(STATE_DIR, 'bridge.log');
-
-// B 站"我对这条视频说过什么"的轻记忆（防前后矛盾；owner 口径：不需要精确）—— 见 src/bili-notes.js
-// ⚠️ 必须放在 STATE_DIR 定义**之后**：之前放在文件顶部，模块初始化时就撞 TDZ
-// （ReferenceError: Cannot access 'STATE_DIR' before initialization），把 3 个测试直接打红。
-const BILI_NOTES_FILE = path.join(STATE_DIR, 'bili-notes.json');
-let biliNotes = loadNotes(BILI_NOTES_FILE);
-
-/** 本轮若在聊某条 B 站视频，就把刚发到群里的那几句话记成它的 take */
-function rememberTakeIfVideo(key, messages) {
-  const items = (linkSummaries.get(key)?.items ?? []).filter((x) => x.ok && bvidOf(x.url));
-  if (!items.length) return;
-  const take = takeFromMessages(messages);
-  if (!take) return;
-  const target = items[items.length - 1];               // 最近那条 B 站链接
-  const bvid = bvidOf(target.url);
-  const title = String(target.text ?? '').match(/《([^》]{1,40})》/)?.[1] ?? '';
-  biliNotes = rememberTake(biliNotes, { bvid, title, take, at: Date.now() });
-  saveNotes(BILI_NOTES_FILE, biliNotes);
-  log(`[bili-notes] 记下对 ${bvid} 的说法（${take.length} 字，第 ${biliNotes[bvid]?.count ?? 1} 次）`);
-}
 
 /**
  * 模式拼写的**唯一**归一入口（输入边界）。
@@ -6260,10 +6239,6 @@ async function main() {
             saveSocialV2State();
             log(`[reserved2] 工具统一发送 ${key}: 成功 ${sentMessages.length}/${messages.length} 条`);
             appendActivity(`${key} [reserved2] 工具统一发送：成功 ${sentMessages.length}/${messages.length} 条`);
-            // 轻记忆：正在聊某条 B 站视频时，把"我说了什么"记下来（下次提到保持一致）
-            if (sentMessages.length > 0) {
-              try { rememberTakeIfVideo(key, messages); } catch { /* 记忆失败不影响发送 */ }
-            }
             if (sentMessages.length > 0) scheduleReplyCheckV2(key);
             const burstHint = messages.length >= 3 ? '你已经连发了多条，确认是必要的吗？真人很少一口气补完。' : undefined;
             const spaceWarn = findCjkSpaceWarning(messages);
@@ -12345,9 +12320,6 @@ async function main() {
         } else {
           lines.push(`- ${s.url}（B 站元信息没读到：${s.reason}）`);
         }
-        // 轻记忆：这条视频你之前总结过，就把当时的说法摆出来要求保持一致（防前后矛盾）
-        const prior = buildConsistencyLine(biliNotes, s.url);
-        if (prior) lines.push('\n' + prior);
       }
       for (const u of biliOnly) lines.push(`- ${u}（B 站链接，元信息还没取到）`);
       if (uniq.some((u) => bilibiliRef(u))) {
