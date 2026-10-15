@@ -144,7 +144,33 @@ function pickTitleFromObject(obj) {
 }
 
 /**
- * 解析卡片数据 → { url, title, app }；解析不出 url 时 url 为空串。
+ * 递归找"摘要/简介"类字段（desc/description/summary/prompt）。
+ * 与标题相反：这里**要**取 desc —— 只是排除顶层 desc（那通常是 App 名"哔哩哔哩"）与和标题重复的值。
+ */
+function pickDescFromObject(obj, title = '') {
+  const weak = ['desc', 'description', 'summary', 'prompt'];
+  const hits = [];
+  const walk = (node, depth = 0) => {
+    if (!node || depth > 6) return;
+    if (Array.isArray(node)) { for (const x of node) walk(x, depth + 1); return; }
+    if (typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node)) {
+      const key = k.toLowerCase();
+      if (typeof v === 'string' && v.trim()) {
+        const text = v.trim();
+        if (weak.includes(key) && !(depth === 0 && (key === 'desc' || key === 'description'))) hits.push(text);
+      } else if (v && typeof v === 'object') {
+        walk(v, depth + 1);
+      }
+    }
+  };
+  walk(obj);
+  const t = String(title ?? '').trim();
+  return hits.find((h) => h !== t && h.length >= 8 && !/^https?:\/\//.test(h) && !/^[a-z0-9_.-]+\.(jpg|jpeg|png|webp|gif)$/i.test(h)) ?? '';
+}
+
+/**
+ * 解析卡片数据 → { url, title, app, desc }；解析不出 url 时 url 为空串。
  * data 可以是对象，也可以是 JSON 字符串（QQ 的 json 段通常是字符串）。
  */
 export function parseCard(data) {
@@ -171,7 +197,9 @@ export function parseCard(data) {
     if (m) title = m[1];
   }
   const app = (obj && typeof obj === 'object' && typeof obj.app === 'string') ? obj.app : '';
-  return { url, title: String(title).replace(/\\n/g, ' ').trim(), app };
+  const cleanTitle = String(title).replace(/\\n/g, ' ').trim();
+  const desc = obj ? pickDescFromObject(obj, cleanTitle) : '';
+  return { url, title: cleanTitle, app, desc: String(desc).replace(/\\n/g, ' ').trim() };
 }
 
 /**
@@ -181,12 +209,16 @@ export function parseCard(data) {
 export function cardSegmentText(seg) {
   try {
     const d = seg?.data ?? {};
-    const { url, title } = parseCard(d);
+    const { url, title, desc } = parseCard(d);
     if (!url) return '[卡片消息]';
     const site = siteLabel(url);
     const label = site ? `${site}卡片` : '卡片';
     const t = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 30);
-    return t ? `[${label}：${t}] ${url}` : `[${label}] ${url}`;
+    // 把卡片自带的摘要也带上（2026-10-15：以前只留标题，摘要被丢掉；
+    // 对"没有字幕"的视频，这往往是唯一的内容线索）
+    const dz = String(desc ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (!t) return `[${label}] ${url}`;
+    return `[${label}：${t}${dz ? `｜${dz}` : ''}] ${url}`;
   } catch {
     return '[卡片消息]';
   }
@@ -194,6 +226,6 @@ export function cardSegmentText(seg) {
 
 /** 给测试/排障用：把卡片原文里的关键字段抖出来（不改任何状态）。 */
 export function describeCard(data) {
-  const { url, title, app } = parseCard(data);
-  return { url, title, app, site: siteLabel(url), ref: url ? bilibiliRef(url) : null };
+  const { url, title, app, desc } = parseCard(data);
+  return { url, title, app, desc, site: siteLabel(url), ref: url ? bilibiliRef(url) : null };
 }
