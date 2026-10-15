@@ -452,6 +452,13 @@
         "enabled": true,
         "checkHours": 12,
         "notifyOnExpiry": true
+      },
+      "subtitle": {
+        "enabled": true,
+        "injectMaxChars": 2500,
+        "outlineThreshold": 12000,
+        "cacheTtlMinutes": 10080,
+        "maxCharsHard": 200000
       }
     },
     "quote": {

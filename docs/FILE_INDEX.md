@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **293** 个被跟踪文件（其中 291 个文本文件、合计 **65,907** 行） —— 文件自带说明 **270**、人工补写 **23**、待补 **0**。
+统计：共 **297** 个被跟踪文件（其中 295 个文本文件、合计 **66,810** 行） —— 文件自带说明 **274**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -21,8 +21,8 @@
 | [`.gitignore`](../.gitignore) | 79 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 461 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,842 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,889 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -148,6 +148,8 @@
 | [`arknights-setup.ps1`](../scripts/arknights-setup.ps1) | 5 | 「明日方舟日活」一次性提权安装 | 文件自带 |
 | [`audit-bridge-harness.mjs`](../scripts/audit-bridge-harness.mjs) | 183 | Execute the real bridge initialization/functions against temporary files and fake peers. | 文件自带 |
 | [`backup-before-upgrade.ps1`](../scripts/backup-before-upgrade.ps1) | 57 | 升级前完整备份：仓库运行数据 + preset + DSH 配置 + git bundle | 文件自带 |
+| [`bili-login.mjs`](../scripts/bili-login.mjs) | 75 | !/usr/bin/env node | 文件自带 |
+| [`bili-transcribe.py`](../scripts/bili-transcribe.py) | 214 | !/usr/bin/env python3 | 文件自带 |
 | [`build-agent-preset-patches.mjs`](../scripts/build-agent-preset-patches.mjs) | 172 | !/usr/bin/env node | 文件自带 |
 | [`check-announcement-draft.mjs`](../scripts/check-announcement-draft.mjs) | 25 | 提交前本地校验：公告正文是否过得了桥接的 validateAnnouncement（长度/链接/@全体/敏感特征）。 | 文件自带 |
 | [`check-braces.mjs`](../scripts/check-braces.mjs) | 90 | 精确一点的 JS 括号平衡检查：正确处理字符串、模板字面量（含 ${} 嵌套）、注释与正则字面量。 | 文件自带 |
@@ -264,6 +266,7 @@
 | [`test-audit-setup-guards.mjs`](../scripts/test-audit-setup-guards.mjs) | 88 | Execute both real preset plugins against a captured tools service, without DSH/QQ. | 文件自带 |
 | [`test-audit-setup.mjs`](../scripts/test-audit-setup.mjs) | 132 | Offline integration tests. Every setup invocation receives its own repository and DSH_HOME. | 文件自带 |
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
+| [`test-bili-auth.mjs`](../scripts/test-bili-auth.mjs) | 200 | B 站登录态（cookie jar 滑动续期 + 扫码续期）的离线回归。 | 文件自带 |
 | [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 113 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |
 | [`test-console-static.mjs`](../scripts/test-console-static.mjs) | 74 | 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。 | 文件自带 |
@@ -352,7 +355,8 @@
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,348 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,392 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

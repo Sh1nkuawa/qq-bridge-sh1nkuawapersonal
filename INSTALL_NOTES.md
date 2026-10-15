@@ -1840,3 +1840,50 @@ bridge 两处接线守卫）✓；离线全绿 ✓。
 **另一处教训（复用仓库已有的）**：CLI 里**不要**用 `process.exit()` —— 有挂起句柄时会在 Windows 上
 触发 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` 崩溃（`test-vision-media.mjs` 踩过），
 统一用 `process.exitCode`。
+
+### 16.19 B 站字幕：抓取 + 长字幕分层精编 + 缓存分页（2026-10-15）
+
+**为什么做**：群友分享的 B 站视频，光有标题/简介没法"讲内容"。官方字幕能拿到正文，
+但**字幕很长** —— 实测 44 分钟视频：1529 条 cue、原始 JSON 221,494 字、**正文 15,586 字**
+（≈1.6 万 token），60 分钟视频能到 2 万字，直接塞进一轮群聊会把上下文打爆。所以要做分层。
+
+**抓取（实测确认的接口链）**：
+```
+x/web-interface/view?bvid=                  → aid / cid / duration / title
+x/player/pagelist?aid=&bvid=                → 多 P 时解析目标分 P 的 cid
+x/player/wbi/v2?aid=&cid=&bvid=             → 主路径；**不需要 WBI 签名**（实测 code=0）
+x/player/v2?aid=&cid=&bvid=                 → 兜底
+  ├ need_login_subtitle=true                → 明确判"该字幕需登录"
+  └ subtitle.subtitles[]                    → 优先 ai-zh / 任意 zh / 第一条
+subtitle_url                                → 字幕 JSON（body[]：from/to/content）
+```
+⚠️ 两个实测坑：
+- `lan` 形如 `ai-zh` 时 `ai_status` **可能不是 1**，所以"是否 AI 字幕"要两个信号一起看；
+- `subtitle_url` 可能是 `//` 或 `/` 开头，都要补全。
+
+**长字幕分层（`buildSubtitleBrief`）**：
+| 档 | 触发 | 处理 |
+|---|---|---|
+| `raw` | 正文与稿本都放得下 | 原文进 prompt |
+| `sampled` | 中等 | **按时间桶均匀抽样** + 一句**必须带的声明**："这是全片代表性抽样，要点须分布在全片前中后段，不要都堆在开头" |
+| `outline` | 正文 > `outlineThreshold`（默认 12000 字） | 骨架（开头 + 结尾 + 全片抽样）+ 告诉模型"用 `qq_bili_subtitle(bvid, fromSec)` 按时间取原文" |
+
+**长字幕适配借鉴 SmartNote 项目**（本机 `D:\SmartNote`，课程实训项目；**只借鉴思路/参数/正则，未抄代码**）：
+- 稿本格式 `[mm:ss] 内容`、单条清洗去赘词（`那个/然后/就是说/其实…`）与语气词；
+- 超长时按时间桶抽样、分段在 cue 边界切、提示词里声明"代表性抽样"；
+- 同时**修掉它那套的两处问题**（我们离线回归抓到的）：
+  1. 桶数一多，`max(64, 预算/桶数)` 的地板会让总长超预算，最后暴力截断 → **结尾段整段丢失** ✗；
+     现在**桶数反过来服从预算**（每桶不足 MIN_PER_BUCKET=80 字就减桶数）✓；
+  2. `outline` 模式把骨架（头 + 尾）**算在预算之外** ✗ → 预算 2500 会返回 3642 字；
+     现在头/尾/抽样三段**共享同一个 injectMaxChars 预算** ✓。
+
+**缓存与分页**：字幕原文（含时间轴）落 `state/bili-subs/<bvid>[-pN].json`（gitignored，默认 7 天）；
+全文常驻缓存，进 prompt 的永远只是 ≤`injectMaxChars`（默认 2500 字）的精编稿；
+模型想看细节可按 `fromSec` 分页取（`pageSubtitle` 会包含跨过起点的那一条，并给出 `nextFromSec`）。
+
+**接线**：链接预取（`prefetchBilibiliLinks`）拿到元信息后，通过 `biliSubtitleProvider` 追加精编稿
+（这样 `link-bilibili.js` 零改动）；配置 `socialV2.links.subtitle = { enabled, injectMaxChars,
+outlineThreshold, cacheTtlMinutes, maxCharsHard }`。
+
+**回归**：`scripts/test-bili-subtitle.mjs` 13 组离线断言（清洗/格式化/解析/抽样覆盖前中后段且守预算/
+三档分层/骨架共享预算/分页跨界/缓存路径/未登录与坏 bvid 安全返回/出处与接线守卫）。

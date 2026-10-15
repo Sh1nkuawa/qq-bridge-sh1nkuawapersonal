@@ -23,6 +23,7 @@ import { bilibiliRef, cardSegmentText, linksInText } from './card-link.js';
 import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js';
 import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { createBiliAuth } from './bili-auth.js';
+import { buildSubtitleBrief, fetchSubtitle } from './bili-subtitle.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -35,6 +36,9 @@ import { looksLikeUnfinished } from './v2-wait.js';
 //     所以天然满足“被 @ 或呼叫时才处理”。
 // 设计约束：预取是**非阻塞 + 带缓存**的，抓不到就只留 URL（绝不因此耽误聊天）。
 const linkSummaries = new Map();   // key(会话) → { at, items: [{url, ok, text, reason}] }
+// B 站字幕精编稿的提供者：由主闭包初始化时注册（要用登录态与 state/ 缓存目录），
+// 这样链接预取不必知道登录态的存在，也不用改 link-bilibili.js。
+let biliSubtitleProvider = null;
 const LINK_SUMMARY_KEEP_KEYS = 50;
 
 function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
@@ -46,10 +50,26 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
     const descChars = Number(linksCfg.descChars) > 0 ? Number(linksCfg.descChars) : 400;
     void Promise.all(targets.map(async (url) => {
       const r = await summarizeBilibili(url, { timeoutMs, descChars });
+      // 顺带把 B 站**字幕精编稿**拼上（长字幕分层压缩，见 src/bili-subtitle.js）——
+      // 群友分享的 B 站视频因此能"讲内容"，而不只是标题/简介。
+      let text = r.text ?? '';
+      if (r.ok && biliSubtitleProvider) {
+        try {
+          const brief = await biliSubtitleProvider(url);
+          if (brief?.ok && brief.text) {
+            text = text + '\n' + brief.text;
+            log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
+          } else if (brief?.reason && brief.reason !== 'no-subtitle') {
+            log(`[link] B 站字幕未附（${brief.reason}）：${url}`);
+          }
+        } catch (error) {
+          log(`[link] B 站字幕异常：${error?.message ?? error}`);
+        }
+      }
       const entry = linkSummaries.get(key) ?? { at: 0, items: [] };
       entry.at = Date.now();
       entry.items = entry.items.filter((x) => x.url !== url);
-      entry.items.push({ url, ok: !!r.ok, text: r.text ?? '', reason: r.reason ?? '' });
+      entry.items.push({ url, ok: !!r.ok, text, reason: r.reason ?? '' });
       entry.items = entry.items.slice(-6);
       linkSummaries.set(key, entry);
       while (linkSummaries.size > LINK_SUMMARY_KEEP_KEYS) {
@@ -11928,6 +11948,30 @@ async function main() {
   if (biliAuthStartTimer.unref) biliAuthStartTimer.unref();
   const biliAuthTimer = setInterval(() => { void biliAuthCheck('timer').catch(() => {}); }, biliAuthEveryMs);
   if (biliAuthTimer.unref) biliAuthTimer.unref();
+
+  // 字幕精编稿：链接预取到 B 站视频时调用（长字幕分层压缩 + state/ 缓存；全文留在缓存里供分页）
+  const biliSubDir = path.join(STATE_DIR, 'bili-subs');
+  biliSubtitleProvider = async (url) => {
+    const subCfg = (cfg.socialV2?.links?.subtitle && typeof cfg.socialV2.links.subtitle === 'object')
+      ? cfg.socialV2.links.subtitle
+      : {};
+    if (subCfg.enabled === false) return { ok: false, reason: 'disabled' };
+    const m = String(url ?? '').match(/BV[0-9A-Za-z]{10}/);
+    if (!m) return { ok: false, reason: 'bad-bvid' };
+    const r = await fetchSubtitle(m[0], {
+      auth: biliAuth,
+      cacheDir: biliSubDir,
+      ttlMinutes: Number(subCfg.cacheTtlMinutes) > 0 ? Number(subCfg.cacheTtlMinutes) : 10080,
+      maxCharsHard: Number(subCfg.maxCharsHard) > 0 ? Number(subCfg.maxCharsHard) : 200000,
+      log
+    });
+    if (!r.ok) return { ok: false, reason: r.reason, message: r.message ?? '' };
+    const brief = buildSubtitleBrief(r.subtitle, {
+      injectMaxChars: Number(subCfg.injectMaxChars) > 0 ? Number(subCfg.injectMaxChars) : 2500,
+      outlineThreshold: Number(subCfg.outlineThreshold) > 0 ? Number(subCfg.outlineThreshold) : 12000
+    });
+    return { ok: true, cached: !!r.cached, ...brief };
+  };
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。
