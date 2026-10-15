@@ -62,7 +62,8 @@ ok('没有链接的卡片仍然回退成 [卡片消息]（不改变旧行为）'
 ok('卡片文本形状：[来源卡片：标题｜摘要] URL，且标题截断到 30 字', () => {
   const text = cardSegmentText({ type: 'json', data: { data: CARD_NEWS } });
   // 2026-10-15 起：卡片自带的摘要（desc/summary）也要带上 —— 对没有字幕的视频，它常是唯一内容线索
-  assert.match(text, /^\[B站卡片：【测试】这个视频很好看｜某UP主\] https:\/\/www\.bilibili\.com\/video\/BV1xx411c7mD$/);
+  // （夹具里还有个 desc='某UP主'，只有 3 字，被"至少 8 字"的规则滤掉了 ✓）
+  assert.match(text, /^\[B站卡片：【测试】这个视频很好看｜\[分享\]这个视频很好看\] https:\/\/www\.bilibili\.com\/video\/BV1xx411c7mD$/);
   const long = JSON.stringify({ meta: { detail_1: { title: 'x'.repeat(80), qqdocurl: 'https://zhihu.com/question/1' } } });
   const t2 = cardSegmentText({ type: 'json', data: { data: long } });
   assert.match(t2, /^\[知乎卡片：x{30}\] https:\/\/zhihu\.com\/question\/1$/, '没有摘要时不能多出分隔符');
