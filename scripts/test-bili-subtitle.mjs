@@ -180,6 +180,11 @@ ok('事故复盘守卫：412 要说清原因、提示要覆盖 b23.tv 短链', (
   assert.match(bridge, /没有 CC\/AI 字幕/, 'no-subtitle 也要说清楚');
   assert.match(bridge, /\[字幕\] /, '没字幕时也要把结论写进给模型的文本');
   assert.match(bridge, /字幕 provider 已注册/, '启动要留一行"provider 已注册"');
+  // ★ 2026-10-15 第三次事故：模型自己去裸抓 player 接口，拿到匿名空数组 + need_login_subtitle=true，
+  //   就对外说"没有字幕/要登录"。提示里必须写死：别裸抓、匿名结果不算结论、以桥接给的为准。
+  assert.match(bridge, /不要自己去抓 B 站的字幕接口/, '要禁止模型裸抓字幕接口');
+  assert.match(bridge, /need_login_subtitle/, '要点明匿名时会出现 need_login_subtitle');
+  assert.match(bridge, /一律\*\*忽略\*\*/, '要明确说匿名的空数组忽略掉');
   assert.match(bridge, /如实说读不到/, '读不到时要如实说，而不是去试第三方');
 });
 
