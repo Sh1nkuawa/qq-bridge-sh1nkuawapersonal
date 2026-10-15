@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **297** 个被跟踪文件（其中 295 个文本文件、合计 **66,810** 行） —— 文件自带说明 **274**、人工补写 **23**、待补 **0**。
+统计：共 **301** 个被跟踪文件（其中 299 个文本文件、合计 **67,442** 行） —— 文件自带说明 **278**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,889 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,912 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -202,6 +202,8 @@
 | [`probe-affinity-prompt.mjs`](../scripts/probe-affinity-prompt.mjs) | 48 | 检查最新 QQ 会话里有没有注入好感度（关系）面板，并打印片段 | 文件自带 |
 | [`probe-balance-tool.mjs`](../scripts/probe-balance-tool.mjs) | 63 | 用 MCP stdio 协议实测：服务器能否启动、是否列出 qq_get_balance、调用是否返回余额 | 文件自带 |
 | [`probe-ban-plumbing.mjs`](../scripts/probe-ban-plumbing.mjs) | 40 | 只读探活：只验证"禁言动作能不能被 QQ 侧正确理解"，不会禁言任何真人。 | 文件自带 |
+| [`probe-bili-brief.mjs`](../scripts/probe-bili-brief.mjs) | 42 | 真机验证字幕模块：抓取 → 分层精编 → 分页 → 缓存命中 | 文件自带 |
+| [`probe-bili-subtitle.mjs`](../scripts/probe-bili-subtitle.mjs) | 75 | 真机探针：① 登录态 ② 滑动续期有没有发生 ③ 字幕接口真实返回形状 | 文件自带 |
 | [`probe-bridge.mjs`](../scripts/probe-bridge.mjs) | 53 | 只读探活：桥接控制台是否在跑、什么模式、AI 是否暂停、表情包库状态。 | 文件自带 |
 | [`probe-codex-logs.mjs`](../scripts/probe-codex-logs.mjs) | 38 | 一次性排查脚本：看 codex CLI 自己的日志库里最近发生了什么 | 文件自带 |
 | [`probe-codex-recent.mjs`](../scripts/probe-codex-recent.mjs) | 15 | 看 codex 日志库里最近 N 分钟的记录（判断 codex exec 卡在哪一步） | 文件自带 |
@@ -267,6 +269,7 @@
 | [`test-audit-setup.mjs`](../scripts/test-audit-setup.mjs) | 132 | Offline integration tests. Every setup invocation receives its own repository and DSH_HOME. | 文件自带 |
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
 | [`test-bili-auth.mjs`](../scripts/test-bili-auth.mjs) | 200 | B 站登录态（cookie jar 滑动续期 + 扫码续期）的离线回归。 | 文件自带 |
+| [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 178 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
 | [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 113 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |
 | [`test-console-static.mjs`](../scripts/test-console-static.mjs) | 74 | 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。 | 文件自带 |
@@ -356,7 +359,8 @@
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,392 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,420 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 199 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

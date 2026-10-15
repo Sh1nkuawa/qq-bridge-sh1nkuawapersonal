@@ -144,8 +144,8 @@ export function buildSubtitleBrief(subtitle, { injectMaxChars = 2500, outlineThr
   // 超长：骨架（开头 + 结尾）+ 全片抽样，总长**必须**守住 injectMaxChars（实测踩过：
   // 不把骨架算进预算，预算 2500 会返回 3642 字 ✗ —— 那这个"上限"就没意义了）
   const header = `${head}\n[视频很长（正文约 ${totalChars} 字，约 ${Math.round(totalChars / 400)} 分钟口播）]`
-    + '\n下面是**骨架**：开头片段 + 结尾片段 + 全片均匀抽样。'
-    + '（完整字幕带 [mm:ss] 时间轴，可按时间取任意片段；要细看某段时向群里说明是哪一段即可。）';
+    + '\n下面是**骨架**：开头片段 + 结尾片段 + 全片均匀抽样，够你概括全片。'
+    + '（不必逐句精确，抓住主干、别把抽样段当成原话引用即可。）';
   const tailChars = Math.min(400, Math.floor(injectMaxChars * 0.15));
   const headChars = Math.min(600, Math.floor(injectMaxChars * 0.2));
   const sampleBudget = Math.max(200, injectMaxChars - header.length - headChars - tailChars - 40);

@@ -119,8 +119,11 @@ ok('★超长字幕 → outline，且总长（含骨架）守住 injectMaxChars'
   const b = buildSubtitleBrief(s, { injectMaxChars: 2500, outlineThreshold: 12000 });
   assert.equal(b.mode, 'outline');
   assert.ok(b.text.includes('骨架'));
-  assert.ok(b.text.includes('按时间取任意片段'), '要告诉模型可以按时间取片段（但不要指向尚未注册的工具名）');
-  assert.ok(!/qq_bili_subtitle/.test(b.text), '★ 工具还没注册前，提示里不能出现它的名字（否则模型会去调一个不存在的工具）');
+  // owner 的口径（2026-10-15）：不需要精确分页，只要总结前后一致 ⇒ 提示里明说"不必逐句精确"，
+  // 且**不许**承诺"按时间取片段"、也不许出现尚未注册的工具名
+  assert.ok(b.text.includes('不必逐句精确'), '要按 owner 口径说明"不必精确"');
+  assert.ok(!/按时间取任意片段/.test(b.text), '不再承诺精确分页');
+  assert.ok(!/qq_bili_subtitle/.test(b.text), '★ 工具还没注册前，提示里不能出现它的名字');
   assert.ok(b.text.includes('[开头]') && b.text.includes('[结尾]') && b.text.includes('[全片抽样]'));
   // ★ 这里钉住实测踩到的 bug：不把骨架算进预算时，预算 2500 会返回 3642 字
   assert.ok(b.text.length <= 2560, `骨架+抽样必须守住预算，实际 ${b.text.length}`);
