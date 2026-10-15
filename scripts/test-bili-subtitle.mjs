@@ -172,6 +172,10 @@ ok('事故复盘守卫：412 要说清原因、提示要覆盖 b23.tv 短链', (
   assert.match(link, /DIRECT/, '要给出"让 B 站走直连"的处置建议');
   const bridge = fs.readFileSync(path.join(root, 'src', 'bridge.js'), 'utf8');
   assert.match(bridge, /短链（b23\.tv/, '提示里要点名短链也算 B 站');
+  // ★ 2026-10-15 事故：b23.tv 短链里没有 BV，字幕 provider 只收到 URL 就判 bad-bvid
+  //（元信息明明已经解析出真 BV）。现在 summarizeBilibili 要把 bvid 一起返回，预取要优先用它。
+  assert.match(link, /bvid: String\(json\.data\?\.bvid/, 'summarizeBilibili 必须把解析出的 BV 一起返回');
+  assert.match(bridge, /biliSubtitleProvider\(r\.bvid \|\| url\)/, '预取要优先把真 BV 传给字幕 provider');
   assert.match(bridge, /如实说读不到/, '读不到时要如实说，而不是去试第三方');
 });
 

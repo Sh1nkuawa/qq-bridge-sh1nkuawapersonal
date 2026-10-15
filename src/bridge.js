@@ -55,7 +55,9 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       let text = r.text ?? '';
       if (r.ok && biliSubtitleProvider) {
         try {
-          const brief = await biliSubtitleProvider(url);
+          // ⚠️ 优先用元信息那步解析出来的 bvid：短链（b23.tv/xxx）里没有 BV，
+          // 只把 URL 传下去会被判成 bad-bvid —— 2026-10-15 实测：元信息成功、字幕却"未附"
+          const brief = await biliSubtitleProvider(r.bvid || url);
           if (brief?.ok && brief.text) {
             text = text + '\n' + brief.text;
             log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
