@@ -48,6 +48,12 @@ const biliFetch = createBiliFetch({ log });
 // 这样链接预取不必知道登录态的存在，也不用改 link-bilibili.js。
 let biliSubtitleProvider = null;
 
+// 字幕"来得太晚"的记录：卡片到达时如果**当前回合已经在跑**，那一轮的提示早就构建好了，
+// 字幕再怎么快也补不进去 ⇒ 必须在它收尾后**再排一轮**。
+// （2026-10-16 实测：15:13:58 卡片到、字幕同一秒备好，那轮却回"没拿到字幕" ✗；
+//   而我原先用"交付后有没有新发言"当判据会误判 —— 它明明说话了，说的却是"没拿到" ✗。）
+const pendingSubtitleWake = new Map();   // key → { at, bvid }
+
 // 最近讨论过的 B 站视频（key → [{bvid,url,title,at}]）。
 // 为什么要它（2026-10-15 实测）：群友常**只用文字**说"再看一次诸葛亮那条"（消息里没有链接），
 // 而链接窗口只看最近 15 条 —— 卡片早被顶出去了 ⇒ 提示里没有字幕 ⇒ 模型只能自己去裸抓匿名接口，
@@ -103,6 +109,12 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
           if (brief?.ok && brief.text) {
             text = text + '\n' + brief.text;
             log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
+            // ⚠️ 如果这一刻已经有回合在跑（pendingWakeKeys 就是"这个会话有在途回合"的标记），
+            // 那这一轮**看不到**刚备好的字幕（它的提示已经发出去了）⇒ 记下来，回合结束再补一轮。
+            if (pendingWakeKeys.has(key)) {
+              pendingSubtitleWake.set(key, { at: Date.now(), bvid: r.bvid || '' });
+              log(`[link] ⚠️ 字幕是在当前回合开始之后才备好的 ⇒ 本轮看不到它，已记下"回合结束补排一轮"（${r.bvid || url}）`);
+            }
           } else {
             // ⚠️ no-subtitle 也必须落日志并告诉模型：
             // 否则"这条视频没字幕"和"字幕流程没跑"在日志里长得一模一样，根本没法排查
@@ -13928,8 +13940,16 @@ async function main() {
               {
                 const stEnd = getSocialV2State(key);
                 let scheduled = false;
-                // 先看"交付给上一轮但没被接住"的（比下面的队列更靠前，免得一回合排两次唤醒）
-                if (stEnd.deliveredBacklog) {
+                // ① 最硬的信号：字幕是在"本轮开始之后"才备好的 ⇒ 本轮必然看不到 ⇒ 无条件补一轮
+                if (pendingSubtitleWake.has(key)) {
+                  const p = pendingSubtitleWake.get(key);
+                  pendingSubtitleWake.delete(key);
+                  log(`[reserved2] ${key} 本轮开始后才备好的 B 站字幕（${p.bvid || '?'}）需要补一轮，重新排唤醒`);
+                  scheduleWakeV2(key, 'speaker');
+                  scheduled = true;
+                }
+                // ② 再看"交付给上一轮但没被接住"的
+                if (!scheduled && stEnd.deliveredBacklog) {
                   const db = stEnd.deliveredBacklog;
                   stEnd.deliveredBacklog = null;
                   const handled = Number(stEnd.lastAiReplyAt) >= Number(db.at);
@@ -13941,6 +13961,9 @@ async function main() {
                     scheduleWakeV2(key, db.reason || 'speaker');
                     scheduled = true;
                   }
+                } else if (stEnd.deliveredBacklog) {
+                  stEnd.deliveredBacklog = null;
+                  saveSocialV2State();
                 }
                 if (!scheduled && Array.isArray(stEnd.pendingWakeReasons) && stEnd.pendingWakeReasons.length) {
                   // [qq-bridge 本地补丁 2026-10-14] ①+②：以前 shift() 取**最早**那条 ✗，而且无论

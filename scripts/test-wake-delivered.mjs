@@ -31,4 +31,13 @@ ok('与原有"积压队列回放"不能互相打架（同一回合不要排两�
   assert.match(bridge, /pickBacklogWake\(stEnd\.pendingWakeReasons/, '原有回放逻辑仍在');
 });
 
+ok('★ 字幕来得太晚（本轮已开始）→ 无条件补一轮，不能用"有没有发言"来判断', () => {
+  // 2026-10-16 实测：15:13:58 卡片到、字幕同一秒备好，那一轮却回"没拿到字幕"；
+  // 而"交付后有没有新发言"会误判成"接住了"（它说话了，但说的是"没拿到"）。
+  assert.match(bridge, /pendingSubtitleWake/, '要记录"字幕来得太晚"');
+  assert.match(bridge, /pendingWakeKeys\.has\(key\)/, '判据必须是"这一刻有没有在途回合"');
+  assert.match(bridge, /需要补一轮，重新排唤醒/, '回合结束要无条件补一轮');
+  assert.match(bridge, /if \(pendingSubtitleWake\.has\(key\)\) \{/, '补一轮要在回合结束处执行');
+});
+
 console.log(`\n全部通过：${n} 项断言组`);
