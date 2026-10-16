@@ -908,6 +908,36 @@ if (!EXTERNAL_WAIT_TOOL) server.tool(
 );
 
 server.tool(
+  'qq_bili_subtitle',
+  'P2：按需取某条 B 站视频的字幕（桥接用登录态取的，你自己匿名抓只会得到空数组）。'
+  + '默认给"分层精编稿"：短视频=全文；长视频=按时间均匀抽样 + 明确标注"这是抽样稿"，够你概括全片。'
+  + '传 fromSec 则给从那一刻起的原文（按时间翻页，适合"第 20 分钟讲了什么"这种追问）。'
+  + '视频没有 CC/AI 字幕时会明确告诉你 —— 那就如实说拿不到，不要编。',
+  {
+    key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+    bvid: z.string().describe('视频 BV 号，形如 BV1xx411c7mD'),
+    fromSec: z.number().optional().describe('可选：从第几秒开始给原文（给了就是按时间翻页）'),
+    maxChars: z.number().optional().describe('可选：最多返回多少字（精编默认 2500，翻页默认 4000）')
+  },
+  async ({ key, token, bvid, fromSec, maxChars }) => {
+    try {
+      const qs = new URLSearchParams({ bvid: String(bvid ?? '').trim(), key: String(key ?? '').trim() });
+      if (Number.isFinite(Number(fromSec))) qs.set('fromSec', String(Math.max(0, Number(fromSec))));
+      if (Number.isFinite(Number(maxChars))) qs.set('maxChars', String(Number(maxChars)));
+      const data = await agentApi(`/api/bili/subtitle?${qs.toString()}`, {
+        method: 'GET',
+        headers: { 'x-agent-token': token },
+        timeoutMs: 60000
+      });
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `取字幕失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
   'qq_report_feedback',
   '向控制台/管理端反馈 AI 遇到的问题、困惑或需要管理员介入的情况。',
   {

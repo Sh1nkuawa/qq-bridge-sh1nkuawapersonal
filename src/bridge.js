@@ -24,7 +24,7 @@ import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js'
 import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { createBiliAuth } from './bili-auth.js';
 import { createBiliFetch } from './bili-direct.js';
-import { buildSubtitleBrief, fetchSubtitle } from './bili-subtitle.js';
+import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -61,25 +61,23 @@ let biliTurnActive = null;
 let biliWakeProbe = null;
 
 /**
- * 字幕"来得太晚"的兜底补排：**不依赖 turn/end 事件**
- * （2026-10-16 实测：写在回合结束事件里的那段压根没被走到 ✗，卡片白发了两次）。
- * 这里用轮询：等这一轮跑完（biliTurnActive 变 false）就排一次唤醒，最多等 90 秒。
- */
-/**
- * 字幕"来得太晚"的兜底补排。
+ * 字幕"来得太晚"的兜底补排（P3）。
  *
  * ⚠️ 2026-10-16 两次实测的结论：**不要试图判断"这一轮结束了没有"** ✗
  *   - 写在 turn/end 事件块里 ⇒ 那个块压根没被走到 ✗；
  *   - 改用 `pendingWakeKeys`（turnActive）轮询 ⇒ 群里回合一个接一个，它会被**一直重新置上**，
  *     实测连续 90 秒都是 true ⇒ 兜底直接放弃 ✗。
- * ⇒ 直接交给 `scheduleWakeV2`：它自己会安排 ~8 秒后的唤醒，忙时进 `pendingWakeReasons` 积压队列，
- *   回合结束后再由"交付 / 未接住重排"那套逻辑补上（那套已经有回归网 ✓）。
+ * ⇒ 直接交给 `scheduleWakeV2`，原因用 `subtitleReady`（那个 reason 会让提示词明确说
+ *   "字幕刚取好，把话补上；已经讲过了就不用重复"）。
+ *
+ * 注意：这只是**兜底**。主路径是 P1 —— 把字幕塞进工具结果（qq_wait_for_messages 的返回值），
+ * 正在跑的那一轮就能在线拿到，根本不用等下一轮。
  */
 function scheduleSubtitleWakeRetry(key, bvid) {
   try {
     if (!biliWakeProbe) { log('[link] 补排失败：biliWakeProbe 未注册 ✗'); return; }
-    biliWakeProbe(key, 'speaker');
-    log(`[link] 已为刚备好的 B 站字幕排一次唤醒（${bvid || '?'}）—— 若此刻忙，会走积压队列 ✓`);
+    biliWakeProbe(key, 'subtitleReady');
+    log(`[link] 已为刚备好的 B 站字幕排一次「字幕就绪」唤醒（${bvid || '?'}）—— 若此刻忙，会走积压队列 ✓`);
   } catch (error) {
     log(`[link] 补排异常：${error?.message ?? error}`);
   } finally {
@@ -116,6 +114,27 @@ function matchDiscussedVideo(key, text) {
   }
   return null;
 }
+/**
+ * P1「在线交付」：最近 10 分钟内**已经取好字幕**的那条 B 站视频。
+ *
+ * 为什么需要它：一轮开始后提示词就是固定的一次性输入 ✗，桥接没有接口往"正在跑的那一轮"
+ * 里追加文本。唯一的在线通道是**工具返回值** —— 而每一轮都会调 qq_wait_for_messages /
+ * qq_get_unread_messages，所以把这些结果里带上它，正在工作的那一轮立刻就能拿到字幕 ✓。
+ */
+function pickReadySubtitle(key) {
+  const items = (linkSummaries.get(key)?.items ?? [])
+    .filter((x) => x.subtitleBrief && Date.now() - (Number(x.at) || 0) < 10 * 60 * 1000);
+  const it = items[items.length - 1];
+  if (!it) return null;
+  return {
+    bvid: it.bvid || '',
+    title: it.title || '',
+    mode: it.briefMode || '',
+    chars: it.briefChars || 0,
+    brief: String(it.text ?? '')
+  };
+}
+
 const LINK_SUMMARY_KEEP_KEYS = 50;
 
 function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
@@ -130,6 +149,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       // 顺带把 B 站**字幕精编稿**拼上（长字幕分层压缩，见 src/bili-subtitle.js）——
       // 群友分享的 B 站视频因此能"讲内容"，而不只是标题/简介。
       let text = r.text ?? '';
+      let briefInfo = null;   // P1/P3 用：记录这条视频的字幕状态（有没有、什么模式、多少字）
       if (!r.ok) {
         // 元信息都没成功，字幕就无从谈起（上面已经记了失败原因）
       } else if (!biliSubtitleProvider) {
@@ -141,6 +161,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
           const brief = await biliSubtitleProvider(r.bvid || url);
           if (brief?.ok && brief.text) {
             text = text + '\n' + brief.text;
+            briefInfo = { mode: brief.mode || 'raw', chars: brief.usedChars || 0, totalChars: brief.totalChars || 0 };
             log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
             // ⚠️ 如果这一刻已经有回合在跑（pendingWakeKeys 就是"这个会话有在途回合"的标记），
             // 那这一轮**看不到**刚备好的字幕（它的提示已经发出去了）⇒ 记下来，回合结束再补一轮。
@@ -159,6 +180,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
               : `字幕没取到（${reason}${brief?.message ? '：' + brief.message : ''}）`;
             log(`[link] ${note}：${url}`);
             text = text + `\n[字幕] ${note}`;
+            briefInfo = { mode: 'none', chars: 0, totalChars: 0, note };
           }
         } catch (error) {
           log(`[link] B 站字幕异常（${url}）：${error?.message ?? error}`);
@@ -167,7 +189,19 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
       const entry = linkSummaries.get(key) ?? { at: 0, items: [] };
       entry.at = Date.now();
       entry.items = entry.items.filter((x) => x.url !== url);
-      entry.items.push({ url, ok: !!r.ok, text, reason: r.reason ?? '', bvid: r.bvid ?? '', title: r.title ?? '', at: Date.now() });
+      entry.items.push({
+        url,
+        ok: !!r.ok,
+        text,
+        reason: r.reason ?? '',
+        bvid: r.bvid ?? '',
+        title: r.title ?? '',
+        at: Date.now(),
+        // P1：只有"真的有字幕"才算 ready（no-subtitle / 失败都不算，免得在线交付一条空稿 ✗）
+        subtitleBrief: !!(briefInfo && briefInfo.chars > 0),
+        briefMode: briefInfo?.mode ?? '',
+        briefChars: briefInfo?.chars ?? 0
+      });
       entry.items = entry.items.slice(-6);
       linkSummaries.set(key, entry);
       if (r.ok && r.bvid) rememberDiscussedVideo(key, { bvid: r.bvid, url, title: r.title });
@@ -4416,6 +4450,10 @@ async function main() {
             || url.pathname.startsWith('/api/socialV2/')
             || url.pathname.startsWith('/api/send/')
             || url.pathname.startsWith('/api/images/')
+            // P2：按需取 B 站字幕（工具 qq_bili_subtitle）。
+            // 只读、且端点内部自己校验 agent token 与会话允许范围（照 /api/socialV2/wait 的做法），
+            // 所以放进 AI 白名单是安全的 —— 它拿不到任何管理能力。
+            || url.pathname === '/api/bili/subtitle'
             || url.pathname === '/api/authorize/read';
           if (!agentAllowed) {
             sendJson({ ok: false, error: '该接口仅控制台可用' }, 403);
@@ -7452,6 +7490,55 @@ async function main() {
           }
           return;
         }
+        if (req.method === 'GET' && url.pathname === '/api/bili/subtitle') {
+          // P2：按需取字幕（给 qq_bili_subtitle 工具用）。
+          // 默认给分层精编稿；带 fromSec 则从那一刻起给原文（按时间翻页）。
+          try {
+            const bvid = String(url.searchParams.get('bvid') ?? '').trim();
+            if (!/^BV[0-9A-Za-z]{10}$/.test(bvid)) { sendJson({ ok: false, error: 'bvid 不合法（形如 BV1xx411c7mD）' }, 400); return; }
+            // 与 wait 同款校验：带 agent token 时必须属于当前模式允许的会话（AI 白名单里也做了同样的事）
+            const agentTok = req.headers['x-agent-token'];
+            if (agentTok) {
+              const aKey = String(url.searchParams.get('key') ?? '').trim();
+              if (!aKey) { sendJson({ ok: false, error: 'key 不能为空' }, 400); return; }
+              if (!agentTokenOk(aKey, agentTok)) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
+              if (!v2SessionAllowed(aKey)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
+            }
+            const fromSecRaw = Number(url.searchParams.get('fromSec'));
+            const maxCharsRaw = Number(url.searchParams.get('maxChars'));
+            const r = await fetchSubtitle(bvid, {
+              auth: biliAuth,
+              cacheDir: path.join(STATE_DIR, 'bili-subs'),
+              log
+            });
+            if (!r.ok) {
+              const hint = r.reason === 'no-subtitle'
+                ? '这条视频没有 CC/AI 字幕（只有标题/简介可用）'
+                : `取字幕失败：${r.reason}${r.message ? '（' + r.message + '）' : ''}`;
+              sendJson({ ok: false, error: hint, reason: r.reason });
+              return;
+            }
+            if (Number.isFinite(fromSecRaw) && fromSecRaw >= 0) {
+              const page = pageSubtitle(r.subtitle, {
+                fromSec: fromSecRaw,
+                maxChars: Number.isFinite(maxCharsRaw) && maxCharsRaw > 0 ? Math.min(maxCharsRaw, 8000) : 4000
+              });
+              sendJson({
+                ok: true, bvid, title: r.subtitle.title, mode: 'page',
+                totalChars: page.totalChars, returnedChars: page.returnedChars,
+                fromSec: page.fromSec, nextFromSec: page.nextFromSec, text: page.text
+              });
+            } else {
+              const brief = buildSubtitleBrief(r.subtitle, {
+                injectMaxChars: Number.isFinite(maxCharsRaw) && maxCharsRaw > 0 ? Math.min(maxCharsRaw, 6000) : 2500
+              });
+              sendJson({ ok: true, bvid, title: r.subtitle.title, mode: brief.mode, totalChars: brief.totalChars, usedChars: brief.usedChars, text: brief.text });
+            }
+          } catch (error) {
+            sendJson({ ok: false, error: `取字幕异常：${error?.message ?? error}` }, 500);
+          }
+          return;
+        }
         if (req.method === 'GET' && url.pathname === '/api/bili/status') {
           // B 站登录态（cookie jar 滑动续期 + 扫码续期）状态；summary() 不含 cookie 值
           try {
@@ -7667,6 +7754,9 @@ async function main() {
             purpose: replyWait ? 'reply' : 'messages',
             arrived,
             pendingWakeDelivered: backlogDelivered,
+            // P1「在线交付」：把刚取好的字幕精编稿直接放进工具结果 ——
+            // 这是唯一能"传给正在工作的那一轮"的通道（提示词是一次性的，改不了）。
+            subtitleReady: pickReadySubtitle(key),
             quiet,
             quietMs,
             suggestedQuietMs,
@@ -12567,6 +12657,9 @@ async function main() {
     }
     if (reason === 'proactiveCheck') {
       return `${base}【主动机会】${key}\n原因：群里已经安静了一段时间，这是一次你可以主动冒泡的机会。\n优先主动开个话题、追问上次没聊完的事、分享一个刚想到的想法；如果一时想不到，可以用 mcp__web-search-safe__web_search 搜一下当前热点/时事/网络热梗，再结合记忆里的群友兴趣挑一个自然角度。只要内容自然，就大胆开口；如果实在没话想说，再安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
+    }
+    if (reason === 'subtitleReady') {
+      return `${base}【字幕就绪】${key}\n原因：你刚才（或上一轮）看到的那条 B 站视频，字幕**刚刚取好** —— 就在上面的「B 站那条我已经替你读好了」/ \`[字幕…]\` 段里。\n请把话补上：用一两句讲清这条视频**到底讲了什么**（用字幕里的具体说法，别只复述标题）。\n如果你其实已经讲过了，就不用重复 —— 按场景自然收尾（qq_mark_read 或 qq_set_wake_config）。`;
     }
     if (reason === 'poke') {
       return `${base}【唤醒】${key}\n原因：有人拍了一拍（可能拍了你，也可能拍了别人）。\n先看未读/最近消息里的 [拍一拍] 事件：如果是拍你，可以自然回应一句，也可以用 qq_send_poke 回一个拍一拍；如果是拍别人，觉得有趣也可以接梗。除了回应，偶尔也可以主动戳一下正在聊的人/熟人，像真人手贱/提醒/逗一下，但别频繁。不想接就安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
