@@ -40,16 +40,33 @@ export function describeMediaList(media, { max = 4 } = {}) {
  * 形如：`[引用 张三：看这个｜附件：图片×1｜quotedId=-1370457565]`
  * 有 id 就一定带上；有附件就一定标注（这是这次修复的核心）。
  */
-export function buildQuoteText({ sender, text, messageId, media, maxText = 60, maxMedia = 4 } = {}) {
+export function buildQuoteText({ sender, text, messageId, media, maxText = 60, maxMedia = 4, maxUrls = 2 } = {}) {
   const parts = [];
   const who = String(sender ?? '').replace(/[｜\]]/g, ' ').trim();
-  const body = String(text ?? '').replace(/\s+/g, ' ').replace(/[｜\]]/g, ' ').trim().slice(0, maxText);
+  const raw = String(text ?? '').replace(/\s+/g, ' ').trim();
+  // ★ 先把完整 URL 抠出来：正文可以截断，**链接绝不能切一半**
+  //（2026-10-16 实测：引用旧卡片时正文超过 60 字，https://b23.tv/BT9EUTI 被切成 https://b23.tv/B
+  //   ⇒ 预取报"不是 B 站视频链接" ⇒ 卡片白引用一次 ✗）
+  const urls = [];
+  for (const m of raw.matchAll(/https?:\/\/[^\s｜\]]+/g)) {
+    const u = m[0].replace(/[.,，。、；;：:!?！？)）】」"']+$/, '');
+    if (u && !urls.includes(u)) urls.push(u);
+    if (urls.length >= maxUrls) break;
+  }
+  const body = raw
+    .replace(/https?:\/\/[^\s｜\]]+/g, ' ')      // 正文里先去掉链接（下面原样补回）
+    .replace(/[｜\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxText);
+  // 链接放在正文**之后、同一个字段里**：不能新增 `｜` 段，否则会破坏 parseQuotedRefs 的解析
+  const bodyWithUrls = [body, ...urls].filter(Boolean).join(' ').trim();
   const tail = [];
   const attachments = describeMediaList(media, { max: maxMedia });
   if (attachments) tail.push(`附件：${attachments}`);
   const id = String(messageId ?? '').trim();
   if (id) tail.push(`quotedId=${id}`);
-  const head = who ? (body ? `${who}：${body}` : who) : body;
+  const head = who ? (bodyWithUrls ? `${who}：${bodyWithUrls}` : who) : bodyWithUrls;
   if (head) parts.push(head);
   parts.push(...tail);
   if (!parts.length) return '[引用消息]';

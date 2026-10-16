@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **307** 个被跟踪文件（其中 305 个文本文件、合计 **68,205** 行） —— 文件自带说明 **284**、人工补写 **23**、待补 **0**。
+统计：共 **307** 个被跟踪文件（其中 305 个文本文件、合计 **68,222** 行） —— 文件自带说明 **284**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -385,7 +385,7 @@
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
-| [`quote-ref.js`](../src/quote-ref.js) | 97 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |
+| [`quote-ref.js`](../src/quote-ref.js) | 114 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |
 | [`role-card.js`](../src/role-card.js) | 108 | 人格卡（roles/<名称>.md）的解析与「按仿真模式取用」。 | 文件自带 |
 | [`safe-fetch.js`](../src/safe-fetch.js) | 372 | 只读 HTTP(S) 安全抓取工具：供 qq-bridge / MCP 共用。 | 文件自带 |
 | [`self-test.js`](../src/self-test.js) | 116 | 自测脚本：不依赖 SnowLuma / QQ，只验证 DSH 侧链路—— | 文件自带 |
