@@ -23,6 +23,7 @@ import { bilibiliRef, cardSegmentText, linksInText } from './card-link.js';
 import { buildQuoteText, parseQuotedRefs, quoteMediaHint } from './quote-ref.js';
 import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { createBiliAuth } from './bili-auth.js';
+import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle } from './bili-subtitle.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
@@ -36,6 +37,13 @@ import { looksLikeUnfinished } from './v2-wait.js';
 //     所以天然满足“被 @ 或呼叫时才处理”。
 // 设计约束：预取是**非阻塞 + 带缓存**的，抓不到就只留 URL（绝不因此耽误聊天）。
 const linkSummaries = new Map();   // key(会话) → { at, items: [{url, ok, text, reason}] }
+
+// [2026-10-16] B 站专用通道：本机代理（mihomo TUN + fake-ip）会把 B 站流量送出国，
+// 导致 B 站回 -412 request was banned（元信息/字幕/yt-dlp 全废）。
+// 这里对 B 站域名改成 **DoH 拿真实 IP + 带 SNI 直连**，失败自动回落到默认 fetch。
+// 实测：同一接口走代理 412、直连 200 正常 JSON（见 src/bili-direct.js 的文件头）。
+const biliFetch = createBiliFetch({ log });
+
 // B 站字幕精编稿的提供者：由主闭包初始化时注册（要用登录态与 state/ 缓存目录），
 // 这样链接预取不必知道登录态的存在，也不用改 link-bilibili.js。
 let biliSubtitleProvider = null;
@@ -79,7 +87,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
     const timeoutMs = Number(linksCfg.timeoutMs) > 0 ? Number(linksCfg.timeoutMs) : 6000;
     const descChars = Number(linksCfg.descChars) > 0 ? Number(linksCfg.descChars) : 400;
     void Promise.all(targets.map(async (url) => {
-      const r = await summarizeBilibili(url, { timeoutMs, descChars });
+      const r = await summarizeBilibili(url, { timeoutMs, descChars, fetchImpl: biliFetch });
       // 顺带把 B 站**字幕精编稿**拼上（长字幕分层压缩，见 src/bili-subtitle.js）——
       // 群友分享的 B 站视频因此能"讲内容"，而不只是标题/简介。
       let text = r.text ?? '';
@@ -11924,7 +11932,7 @@ async function main() {
   // 为什么需要：官方字幕/评论接口要登录态，而"抄一次 SESSDATA 写进配置"会在固定 Expires
   // （一般 ~30 天）后失效。这里用 cookie jar 把响应里的 Set-Cookie 存回（滑动续期），
   // 失效时把扫码 URL 私聊给 owner —— 扫完自动落盘，不用手抄 cookie。
-  const biliAuth = createBiliAuth({ stateFile: path.join(STATE_DIR, 'bili-auth.json'), log });
+  const biliAuth = createBiliAuth({ stateFile: path.join(STATE_DIR, 'bili-auth.json'), log, fetchImpl: biliFetch });
   const biliAuthCfg = () => (cfg.socialV2?.links?.auth && typeof cfg.socialV2.links.auth === 'object')
     ? cfg.socialV2.links.auth
     : {};

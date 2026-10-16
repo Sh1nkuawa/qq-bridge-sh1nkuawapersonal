@@ -1902,3 +1902,42 @@ outlineThreshold, cacheTtlMinutes, maxCharsHard }`。
 
 → 教训：**模块级 `const` 若依赖另一个模块级 `const`，必须写在它之后**。
    这类错误在"单个测试跑得通"时看不出来（只有整体 import 顺序才会暴露），所以改完要跑**全量**套件。
+
+### 16.21 B 站专用直连通道：DoH 拿真实 IP + SNI 直连（绕过 fake-ip 代理） 2026-10-16
+
+**问题（一因多果）**：本机代理（qiqi/mihomo，TUN + fake-ip）**全局劫持 DNS** ——
+连 223.5.5.5 / 119.29.29.29 都返回 `198.18.x.x`。B 站流量因此走国外出口，B 站回
+`{"code":-412,"message":"request was banned"}` ⇒ 卡片元信息预取失败 ✗、官方字幕取不到 ✗、
+yt-dlp 也是 412 ✗（三个症状同一个根因）。
+
+**为什么不在代理侧解决**：qiqi 把配置**全加密**（`mihomo.yaml` / `profiles/*.yaml` 都是单行密文），
+控制台 API 未开（9090/9091/9097/6170/9095 全无响应），日志里也没有规则匹配记录
+⇒ 从代码侧拿到规则/改规则都不现实。改为**我们自己的请求绕开代理**。
+
+**方案**（`src/bili-direct.js`，只用 `node:https`，零依赖 —— 桥接跑在 Node 16 上没有全局 fetch）：
+1. **DoH 解析真实 IP**：`https://223.5.5.5/resolve?name=…&type=A`（多端点依次试，结果按 host 缓存 10 分钟）；
+2. **带 SNI 直连**：`https.request({ host: ip, servername: hostname, headers: { Host } })`
+   —— servername 必须是域名，否则 TLS 校验/回源都不对；
+3. **只对 B 站域名生效**：`bilibili.com` / `b23.tv` / `hdslb.com` / `bilivideo.com|cn`（子域算，伪装域名不算）；
+4. **任何一步失败都回落**到默认 fetch（DoH 不通 / IP 连不上 / 超时 / 跳转到非 B 站域名），
+   回落日志 5 分钟节流一次 —— 保证"绝不比原来更差"；
+5. 返回 **fetch 兼容**对象（`ok/status/headers.get/getSetCookie/text/json/arrayBuffer`），
+   这样 `bili-auth` 的 Set-Cookie 续期、`link-bilibili` 的 `json()` 都能原样复用。
+
+**实测（关键对照 + 通道效果）**：
+| 请求方式 | 结果 |
+| --- | --- |
+| 走代理访问 `x/web-interface/view` | **HTTP 412 request was banned** ✗ |
+| DoH 解析出真实 IP（121.194.11.74）后带 SNI 直连 | **HTTP 200 正常 JSON** ✓ |
+| 通道里取元信息 `b23.tv/GPk04QI` | ok ✓ bvid=BV1KZ3x6SEBb ✓ **0.6s**（含短链展开） |
+| 通道里取元信息 `b23.tv/b9dEBIc` | ok ✓ bvid=BV1ARp26aEHv ✓ **0.3s** |
+| 通道里取字幕（带登录态） | BV1KZ3x6SEBb **65 条/587 字** ✓、BV1ARp26aEHv **222 条/2681 字** ✓ |
+| 通道日志 | **无回落记录** ✓（全程直连成功） |
+
+**接线**：`bridge.js` 里建一次 `createBiliFetch({ log })`，然后
+① `createBiliAuth({ …, fetchImpl: biliFetch })`（字幕与 player 接口都走它）；
+② `summarizeBilibili(url, { …, fetchImpl: biliFetch })`（元信息与短链展开都走它）。
+
+**回归**：`scripts/test-bili-direct.mjs` 6 组离线断言（域名判定含"伪装域名不算"、
+DoH 解析与缓存命中、端点失败换下一个、非 B 站域名直通、B 站 DoH 全失败必须回落且抱怨节流、
+接线与 412 证据守卫）；离线套件 **59/59**。
