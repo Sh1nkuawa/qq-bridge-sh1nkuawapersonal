@@ -12424,7 +12424,14 @@ async function main() {
     const linkLine = (() => {
       const lc = cfg.socialV2?.links ?? {};
       if (lc.enabled === false) return '';
-      const recent = (social.recentMessages.get(key) ?? []).slice(-15);
+      // ⚠️ 必须读 **v2** 的消息窗口（st.recentMessages）：卡片/消息都记在那里。
+      // 这里原来读的是 `social.recentMessages`（v1 的老 Map，reserved2 下基本是空的）✗
+      // ⇒ uniq 永远是 0 条链接 ⇒ 下面那一整段 B 站提示（别 web_fetch / 别裸抓字幕接口 /
+      //   摘要可能是 null / 以字幕为准）**从来没被注入过** ✗✗
+      //（2026-10-16 实测：日志每次都是"注入提示：0 条链接"，机器人因此一直裸抓匿名接口 ✗）
+      const stForLinks = getSocialV2State(key);
+      const recent = ((Array.isArray(stForLinks?.recentMessages) ? stForLinks.recentMessages : null)
+        ?? social.recentMessages.get(key) ?? []).slice(-15);
       const urls = [];
       for (const m of recent) {
         for (const u of linksInText(`${m?.text ?? ''}\n${m?.plain ?? ''}`)) urls.push(u);
@@ -12449,12 +12456,14 @@ async function main() {
         }
       }
       for (const u of biliOnly) lines.push(`- ${u}（B 站链接，元信息还没取到）`);
-      if (uniq.some((u) => bilibiliRef(u))) {
+      // 只要出现过 B 站链接（窗口里的，或刚预取到的）就要给这段说明 ——
+      // 以前只看 uniq，而 uniq 因读错存储常年为空 ⇒ 说明永远不出现 ✗
+      if (uniq.some((u) => bilibiliRef(u)) || summaries.some((x) => bilibiliRef(x.url))) {
         lines.push('');
         lines.push('⚠️ B 站视频页是 JS 渲染的，**web_fetch 抓不到正文**（2026-10-12 实测：抓完只会得到空白，');
         lines.push('然后你就会以为"看不了"✗）。所以：**B 站链接不要用 web_fetch**，直接用上面那份元信息回答；');
-        lines.push('上面只有标题/UP/时长/简介/分P，**没有字幕或转写** → 不要编造视频里具体讲了什么，');
-        lines.push('需要说清是"我没法看视频内容，只能看到简介"。');
+        lines.push('上面是一份元信息；**如果还有 `[字幕…]` 段，那就是这条视频的真字幕**（桥接用登录态取的）——');
+        lines.push('**以字幕为准**去讲视频内容，别只复述标题；**没有 `[字幕…]` 段时**才如实说"这条我这边没拿到字幕，只能看标题/简介"，并**不要编造**视频里讲了什么。');
         lines.push('⚠️ 短链（b23.tv/xxx）也算 B 站，**同样别去 web_fetch、别找第三方解析站** —— 桥接已经替你展开并预取过了。');
         lines.push('如果上面写着"元信息没读到（…）"，就**如实说读不到**（可以念一下原因），不要反复试别的办法把这一轮耗掉。');
         lines.push('ℹ️ 分享卡片自带的「摘要/简介」是 QQ 或作者填的，**可能整条为空、字段直接是 null** —— 那不等于"你什么都看不到"：');
