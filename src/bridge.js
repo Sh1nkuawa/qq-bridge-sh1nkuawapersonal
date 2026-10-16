@@ -53,6 +53,10 @@ let biliSubtitleProvider = null;
 // （2026-10-16 实测：15:13:58 卡片到、字幕同一秒备好，那轮却回"没拿到字幕" ✗；
 //   而我原先用"交付后有没有新发言"当判据会误判 —— 它明明说话了，说的却是"没拿到" ✗。）
 const pendingSubtitleWake = new Map();   // key → { at, bvid }
+// "这个会话现在有没有在途回合"的探针：由主闭包注册（pendingWakeKeys 在闭包内，
+// 模块级的 prefetchBilibiliLinks 拿不到它 —— 2026-10-16 直接引用导致
+// `pendingWakeKeys is not defined`，把"字幕来得太晚"的标记整个吞掉 ✗）
+let biliTurnActive = null;
 
 // 最近讨论过的 B 站视频（key → [{bvid,url,title,at}]）。
 // 为什么要它（2026-10-15 实测）：群友常**只用文字**说"再看一次诸葛亮那条"（消息里没有链接），
@@ -111,7 +115,7 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
             log(`[link] 已附 B 站字幕（${brief.mode}，正文 ${brief.totalChars} 字 → 取 ${brief.usedChars} 字${brief.buckets ? `，均匀抽样 ${brief.buckets} 段` : ''}）：${url}`);
             // ⚠️ 如果这一刻已经有回合在跑（pendingWakeKeys 就是"这个会话有在途回合"的标记），
             // 那这一轮**看不到**刚备好的字幕（它的提示已经发出去了）⇒ 记下来，回合结束再补一轮。
-            if (pendingWakeKeys.has(key)) {
+            if (biliTurnActive?.(key)) {
               pendingSubtitleWake.set(key, { at: Date.now(), bvid: r.bvid || '' });
               log(`[link] ⚠️ 字幕是在当前回合开始之后才备好的 ⇒ 本轮看不到它，已记下"回合结束补排一轮"（${r.bvid || url}）`);
             }
@@ -12047,6 +12051,8 @@ async function main() {
   };
   // 起一行日志：以后排查"字幕流程到底有没有跑"不用再猜（provider 没注册时预取会明确报警）
   log(`[bili-subs] 字幕 provider 已注册（缓存 ${biliSubDir}）`);
+  // 给模块级的 prefetchBilibiliLinks 用：判断这个会话此刻有没有在途回合
+  biliTurnActive = (k) => pendingWakeKeys.has(k);
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。
