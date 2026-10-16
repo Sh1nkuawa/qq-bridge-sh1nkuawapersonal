@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **307** 个被跟踪文件（其中 305 个文本文件、合计 **68,172** 行） —— 文件自带说明 **284**、人工补写 **23**、待补 **0**。
+统计：共 **307** 个被跟踪文件（其中 305 个文本文件、合计 **68,205** 行） —— 文件自带说明 **284**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -335,7 +335,7 @@
 | [`test-voice-volume.mjs`](../scripts/test-voice-volume.mjs) | 188 | 音量调节自检： | 文件自带 |
 | [`test-voice.mjs`](../scripts/test-voice.mjs) | 343 | 语音发送自检： | 文件自带 |
 | [`test-wake-backlog.mjs`](../scripts/test-wake-backlog.mjs) | 78 | 积压唤醒的离线回归：过期丢弃 + 只补最新（纯函数）+ bridge 接线守卫。 | 文件自带 |
-| [`test-wake-delivered.mjs`](../scripts/test-wake-delivered.mjs) | 53 | "交付给当前回合的积压唤醒没被接住 → 回合结束要重排" 的源码守卫 | 文件自带 |
+| [`test-wake-delivered.mjs`](../scripts/test-wake-delivered.mjs) | 56 | "交付给当前回合的积压唤醒没被接住 → 回合结束要重排" 的源码守卫 | 文件自带 |
 | [`test-watchdog-bridge.mjs`](../scripts/test-watchdog-bridge.mjs) | 247 | watchdog-bridge（外部看门狗）纯函数 + 假探针回归测试：不联网、不杀进程、不启动桥接。 | 文件自带 |
 | [`trace-depth.mjs`](../scripts/trace-depth.mjs) | 58 | 找出 main() 的 body 在哪里被提前闭合（括号深度第一次回到 0 的那一行）。 | 文件自带 |
 | [`unify-onebot-token.mjs`](../scripts/unify-onebot-token.mjs) | 76 | 把 SnowLuma 的 OneBot HTTP/WS accessToken 统一成同一个值，并触发配置重载 + 复测 | 文件自带 |
@@ -366,7 +366,7 @@
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,527 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,557 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

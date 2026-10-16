@@ -57,6 +57,33 @@ const pendingSubtitleWake = new Map();   // key → { at, bvid }
 // 模块级的 prefetchBilibiliLinks 拿不到它 —— 2026-10-16 直接引用导致
 // `pendingWakeKeys is not defined`，把"字幕来得太晚"的标记整个吞掉 ✗）
 let biliTurnActive = null;
+// 排唤醒的探针（scheduleWakeV2 也在闭包里）
+let biliWakeProbe = null;
+
+/**
+ * 字幕"来得太晚"的兜底补排：**不依赖 turn/end 事件**
+ * （2026-10-16 实测：写在回合结束事件里的那段压根没被走到 ✗，卡片白发了两次）。
+ * 这里用轮询：等这一轮跑完（biliTurnActive 变 false）就排一次唤醒，最多等 90 秒。
+ */
+function scheduleSubtitleWakeRetry(key, bvid) {
+  const deadline = Date.now() + 90000;
+  const tick = () => {
+    if (!pendingSubtitleWake.has(key)) return;      // 已被其它路径处理
+    if (!biliWakeProbe) return;                      // 桥接尚未就绪
+    if (biliTurnActive?.(key)) {
+      if (Date.now() < deadline) {
+        const t = setTimeout(tick, 3000);
+        if (t.unref) t.unref();
+      }
+      return;
+    }
+    pendingSubtitleWake.delete(key);
+    biliWakeProbe(key, 'speaker');
+    log(`[link] 这一轮已结束 ⇒ 为刚备好的 B 站字幕补排一轮唤醒（${bvid || '?'}）`);
+  };
+  const t = setTimeout(tick, 4000);
+  if (t.unref) t.unref();
+}
 
 // 最近讨论过的 B 站视频（key → [{bvid,url,title,at}]）。
 // 为什么要它（2026-10-15 实测）：群友常**只用文字**说"再看一次诸葛亮那条"（消息里没有链接），
@@ -117,7 +144,8 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
             // 那这一轮**看不到**刚备好的字幕（它的提示已经发出去了）⇒ 记下来，回合结束再补一轮。
             if (biliTurnActive?.(key)) {
               pendingSubtitleWake.set(key, { at: Date.now(), bvid: r.bvid || '' });
-              log(`[link] ⚠️ 字幕是在当前回合开始之后才备好的 ⇒ 本轮看不到它，已记下"回合结束补排一轮"（${r.bvid || url}）`);
+              log(`[link] ⚠️ 字幕是在当前回合开始之后才备好的 ⇒ 本轮看不到它，改用定时器兜底补排一轮（${r.bvid || url}）`);
+              scheduleSubtitleWakeRetry(key, r.bvid || '');
             }
           } else {
             // ⚠️ no-subtitle 也必须落日志并告诉模型：
@@ -12053,6 +12081,8 @@ async function main() {
   log(`[bili-subs] 字幕 provider 已注册（缓存 ${biliSubDir}）`);
   // 给模块级的 prefetchBilibiliLinks 用：判断这个会话此刻有没有在途回合
   biliTurnActive = (k) => pendingWakeKeys.has(k);
+  // 同上：让"字幕来得太晚"能补排一轮唤醒（不依赖 turn/end 事件）
+  biliWakeProbe = (k, reason) => scheduleWakeV2(k, reason);
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。
