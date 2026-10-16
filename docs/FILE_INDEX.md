@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **307** 个被跟踪文件（其中 305 个文本文件、合计 **68,222** 行） —— 文件自带说明 **284**、人工补写 **23**、待补 **0**。
+统计：共 **308** 个被跟踪文件（其中 306 个文本文件、合计 **68,292** 行） —— 文件自带说明 **285**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -315,6 +315,7 @@
 | [`test-qq-model-view.mjs`](../scripts/test-qq-model-view.mjs) | 273 | 端到端用例：确认模型侧看到的 QQ 工具清单/会话视图符合预期（在 npm run test:token 里） | 人工补写 |
 | [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 191 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
 | [`test-quote-ref.mjs`](../scripts/test-quote-ref.mjs) | 79 | 引用消息"身份证"的离线回归（纯函数 + 源码接线守卫）。 | 文件自带 |
+| [`test-quote-url.mjs`](../scripts/test-quote-url.mjs) | 59 | 引用消息里的链接必须完整 —— 事故现场回归 | 文件自带 |
 | [`test-reply-wait.mjs`](../scripts/test-reply-wait.mjs) | 203 | First-reply quiet-window regressions. Real bridge handlers, fixture peers only. | 文件自带 |
 | [`test-role-card.mjs`](../scripts/test-role-card.mjs) | 108 | 人格卡按仿真模式取用（src/role-card.js）的离线单测。 | 文件自带 |
 | [`test-setup-dsh-idempotent.mjs`](../scripts/test-setup-dsh-idempotent.mjs) | 127 | setup-dsh.mjs 幂等性测试：在一个临时 DSH_HOME 里连跑两次， | 文件自带 |
@@ -366,7 +367,7 @@
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,557 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,568 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

@@ -67,19 +67,30 @@ let biliWakeProbe = null;
  */
 function scheduleSubtitleWakeRetry(key, bvid) {
   const deadline = Date.now() + 90000;
+  let ticks = 0;
   const tick = () => {
-    if (!pendingSubtitleWake.has(key)) return;      // 已被其它路径处理
-    if (!biliWakeProbe) return;                      // 桥接尚未就绪
-    if (biliTurnActive?.(key)) {
-      if (Date.now() < deadline) {
-        const t = setTimeout(tick, 3000);
-        if (t.unref) t.unref();
+    ticks += 1;
+    try {
+      if (!pendingSubtitleWake.has(key)) { log('[link] 补排轮询：标记已被清（别的路径处理了），停止'); return; }
+      if (!biliWakeProbe) { log('[link] 补排轮询：biliWakeProbe 未注册，停止 ✗'); return; }
+      const active = !!biliTurnActive?.(key);
+      // 每 5 次（约 15 秒）报一次状态，免得静默失败又得靠猜（2026-10-16 教训）
+      if (ticks === 1 || ticks % 5 === 0) log(`[link] 补排轮询 #${ticks}：turnActive=${active}`);
+      if (active) {
+        if (Date.now() < deadline) {
+          const t = setTimeout(tick, 3000);
+          if (t.unref) t.unref();
+        } else {
+          log('[link] 补排轮询：90 秒内这一轮一直没结束，放弃补排 ✗');
+        }
+        return;
       }
-      return;
+      pendingSubtitleWake.delete(key);
+      biliWakeProbe(key, 'speaker');
+      log(`[link] 这一轮已结束 ⇒ 为刚备好的 B 站字幕补排一轮唤醒（${bvid || '?'}）（第 ${ticks} 次轮询）`);
+    } catch (error) {
+      log(`[link] 补排轮询异常（第 ${ticks} 次）：${error?.message ?? error}`);
     }
-    pendingSubtitleWake.delete(key);
-    biliWakeProbe(key, 'speaker');
-    log(`[link] 这一轮已结束 ⇒ 为刚备好的 B 站字幕补排一轮唤醒（${bvid || '?'}）`);
   };
   const t = setTimeout(tick, 4000);
   if (t.unref) t.unref();
