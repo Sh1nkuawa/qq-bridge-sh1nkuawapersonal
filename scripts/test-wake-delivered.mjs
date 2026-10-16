@@ -35,9 +35,19 @@ ok('★ 字幕来得太晚（本轮已开始）→ 无条件补一轮，不能�
   // 2026-10-16 实测：15:13:58 卡片到、字幕同一秒备好，那一轮却回"没拿到字幕"；
   // 而"交付后有没有新发言"会误判成"接住了"（它说话了，但说的是"没拿到"）。
   assert.match(bridge, /pendingSubtitleWake/, '要记录"字幕来得太晚"');
-  assert.match(bridge, /pendingWakeKeys\.has\(key\)/, '判据必须是"这一刻有没有在途回合"');
+  assert.match(bridge, /biliTurnActive\?\.\(key\)/, '判据必须走"有没有在途回合"的探针');
   assert.match(bridge, /需要补一轮，重新排唤醒/, '回合结束要无条件补一轮');
   assert.match(bridge, /if \(pendingSubtitleWake\.has\(key\)\) \{/, '补一轮要在回合结束处执行');
+});
+
+ok('★ 模块级函数里不许裸用闭包变量（pendingWakeKeys 那次就是这么炸的）', () => {
+  // 2026-10-16：先写了 `if (pendingWakeKeys.has(key))` —— pendingWakeKeys 声明在闭包内，
+  // 模块级的 prefetchBilibiliLinks 拿不到 ⇒ ReferenceError ⇒ 被那里的 try/catch 吞成
+  // "B 站字幕异常"（字幕进没进得去先不说，"字幕来得太晚"的标记压根没记上 ⇒ 补一轮永不触发）。
+  assert.ok(!/pendingSubtitleWake[\s\S]{0,200}pendingWakeKeys\.has/.test(bridge),
+    '★ 不许在模块级函数里直接引用闭包里的 pendingWakeKeys');
+  assert.match(bridge, /let biliTurnActive = null;/, '要有模块级探针');
+  assert.match(bridge, /biliTurnActive = \(k\) => pendingWakeKeys\.has\(k\)/, '主闭包里注册探针');
 });
 
 console.log(`\n全部通过：${n} 项断言组`);
