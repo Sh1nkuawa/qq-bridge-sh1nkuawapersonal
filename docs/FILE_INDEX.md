@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **309** 个被跟踪文件（其中 307 个文本文件、合计 **68,492** 行） —— 文件自带说明 **286**、人工补写 **23**、待补 **0**。
+统计：共 **310** 个被跟踪文件（其中 308 个文本文件、合计 **68,544** 行） —— 文件自带说明 **287**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -273,6 +273,7 @@
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
 | [`test-bili-auth.mjs`](../scripts/test-bili-auth.mjs) | 200 | B 站登录态（cookie jar 滑动续期 + 扫码续期）的离线回归。 | 文件自带 |
 | [`test-bili-direct.mjs`](../scripts/test-bili-direct.mjs) | 102 | B 站直连通道的离线回归：域名判定 / DoH 解析与缓存 / 回落行为 / 接线守卫 | 文件自带 |
+| [`test-bili-online.mjs`](../scripts/test-bili-online.mjs) | 52 | P1/P2/P3 的源码守卫：把"在线交付 / 按需工具 / 兜底唤醒"三条路钉住 | 文件自带 |
 | [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 216 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
 | [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 115 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |

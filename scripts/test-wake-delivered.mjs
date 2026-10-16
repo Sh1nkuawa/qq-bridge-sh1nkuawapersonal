@@ -39,8 +39,8 @@ ok('★ 字幕来得太晚（本轮已开始）→ 无条件补一轮，不能�
   // 2026-10-16 第二次实测：写在"回合结束事件块"里 ⇒ 那个块没被走到 ✗；
   // 改用 turnActive 轮询 ⇒ 群里回合一个接一个，它被一直重新置上（实测连续 90 秒 true）⇒ 放弃 ✗。
   // 最终方案：不判断"回合结束"，直接交给 scheduleWakeV2（忙时自动进积压队列）。
-  assert.match(bridge, /已为刚备好的 B 站字幕排一次唤醒/, '兜底成功要落日志');
-  assert.match(bridge, /biliWakeProbe\(key, 'speaker'\)/, '兜底就是直接排一次唤醒');
+  assert.match(bridge, /已为刚备好的 B 站字幕排一次「字幕就绪」唤醒/, '兜底成功要落日志');
+  assert.match(bridge, /biliWakeProbe\(key, 'subtitleReady'\)/, '兜底就是排一次 subtitleReady 唤醒');
   assert.ok(!/补排轮询 #/.test(bridge), '★ 不要再靠轮询 turnActive（实测不可靠）');
 });
 
