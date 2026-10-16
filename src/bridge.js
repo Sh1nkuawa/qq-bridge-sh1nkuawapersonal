@@ -7526,9 +7526,17 @@ async function main() {
             const backlogN = Array.isArray(st.pendingWakeReasons) ? st.pendingWakeReasons.length : 0;
             if (backlogN > 0) {
               backlogDelivered = backlogN;
+              // ⚠️ 交付 ≠ 被处理：这一轮可能正好在收尾 —— 2026-10-16 实测，交付后它一句话都没再说，
+              // 那个 @ 唤醒就这么丢了（群里表现就是"发了卡片、@ 了它，它却只回一句看不了"）。
+              // 所以记下交付时刻与内容；turn 结束时若此后没有新发言，就重新排一次唤醒。
+              st.deliveredBacklog = {
+                at: Date.now(),
+                reason: st.pendingWakeReasons.at(-1)?.reason ?? 'speaker',
+                seq: st.pendingWakeReasons.at(-1)?.seq ?? 0
+              };
               st.pendingWakeReasons = [];
               saveSocialV2State();
-              log(`[reserved2] ${key} 等待中交付 ${backlogN} 条积压唤醒给当前回合，队列已清空（不再补发）`);
+              log(`[reserved2] ${key} 等待中交付 ${backlogN} 条积压唤醒给当前回合（这一轮若没接，回合结束会重排）`);
               arrived = true;
               lastNewAt = Date.now();
               break;
@@ -13919,7 +13927,22 @@ async function main() {
               // 但如果触发它的消息已经被 AI 在当前回合处理（unread 中已不存在该 seq），则不再补发。
               {
                 const stEnd = getSocialV2State(key);
-                if (Array.isArray(stEnd.pendingWakeReasons) && stEnd.pendingWakeReasons.length) {
+                let scheduled = false;
+                // 先看"交付给上一轮但没被接住"的（比下面的队列更靠前，免得一回合排两次唤醒）
+                if (stEnd.deliveredBacklog) {
+                  const db = stEnd.deliveredBacklog;
+                  stEnd.deliveredBacklog = null;
+                  const handled = Number(stEnd.lastAiReplyAt) >= Number(db.at);
+                  saveSocialV2State();
+                  if (handled) {
+                    log(`[reserved2] ${key} 上一轮交付的积压唤醒已被接住（此后有新发言）✓`);
+                  } else {
+                    log(`[reserved2] ${key} ⚠️ 上一轮交付的积压唤醒没被接住（此后没有新发言），重新排一次`);
+                    scheduleWakeV2(key, db.reason || 'speaker');
+                    scheduled = true;
+                  }
+                }
+                if (!scheduled && Array.isArray(stEnd.pendingWakeReasons) && stEnd.pendingWakeReasons.length) {
                   // [qq-bridge 本地补丁 2026-10-14] ①+②：以前 shift() 取**最早**那条 ✗，而且无论
                   // 隔多久都照补 ✗（实测 18:35 的话 18:44 才回）。现在：① 超过 backlogTtlMs 的丢弃；
                   // ② 只补**最新**那条，其余一并丢弃 —— 被丢的消息本身仍在未读缓冲里，模型照样看得到。
