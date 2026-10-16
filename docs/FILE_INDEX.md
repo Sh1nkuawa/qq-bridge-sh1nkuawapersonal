@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **308** 个被跟踪文件（其中 306 个文本文件、合计 **68,301** 行） —— 文件自带说明 **285**、人工补写 **23**、待补 **0**。
+统计：共 **309** 个被跟踪文件（其中 307 个文本文件、合计 **68,335** 行） —— 文件自带说明 **286**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -293,6 +293,7 @@
 | [`test-image-skill.mjs`](../scripts/test-image-skill.mjs) | 96 | 生图技能「入库」验收： | 文件自带 |
 | [`test-image-state.mjs`](../scripts/test-image-state.mjs) | 58 | 生图状态口径验收（只读 + 单元）：失败后模型不能再被"没有状态"误导着说"正在画"。 | 文件自带 |
 | [`test-link-bilibili.mjs`](../scripts/test-link-bilibili.mjs) | 100 | B 站元信息摘要的离线回归（纯函数 + 不触网的早退路径）。 | 文件自带 |
+| [`test-link-window.mjs`](../scripts/test-link-window.mjs) | 42 | 链接窗口必须读 v2 存储 —— 事故回归 | 文件自带 |
 | [`test-mcp-agent-token.mjs`](../scripts/test-mcp-agent-token.mjs) | 74 | 回归：MCP 里每个「智能体调用」都必须带 x-agent-token 头。 | 文件自带 |
 | [`test-mcp-exec.mjs`](../scripts/test-mcp-exec.mjs) | 48 | 测试 @snowluma/mcp 的 write 模式：模拟 DSH MCP 客户端完整握手 | 文件自带 |
 | [`test-mcp-host.mjs`](../scripts/test-mcp-host.mjs) | 23 | 测试桥接自带的 snowluma-host MCP server（status/start/stop） | 文件自带 |
@@ -336,7 +337,7 @@
 | [`test-voice-volume.mjs`](../scripts/test-voice-volume.mjs) | 188 | 音量调节自检： | 文件自带 |
 | [`test-voice.mjs`](../scripts/test-voice.mjs) | 343 | 语音发送自检： | 文件自带 |
 | [`test-wake-backlog.mjs`](../scripts/test-wake-backlog.mjs) | 78 | 积压唤醒的离线回归：过期丢弃 + 只补最新（纯函数）+ bridge 接线守卫。 | 文件自带 |
-| [`test-wake-delivered.mjs`](../scripts/test-wake-delivered.mjs) | 56 | "交付给当前回合的积压唤醒没被接住 → 回合结束要重排" 的源码守卫 | 文件自带 |
+| [`test-wake-delivered.mjs`](../scripts/test-wake-delivered.mjs) | 57 | "交付给当前回合的积压唤醒没被接住 → 回合结束要重排" 的源码守卫 | 文件自带 |
 | [`test-watchdog-bridge.mjs`](../scripts/test-watchdog-bridge.mjs) | 247 | watchdog-bridge（外部看门狗）纯函数 + 假探针回归测试：不联网、不杀进程、不启动桥接。 | 文件自带 |
 | [`trace-depth.mjs`](../scripts/trace-depth.mjs) | 58 | 找出 main() 的 body 在哪里被提前闭合（括号深度第一次回到 0 的那一行）。 | 文件自带 |
 | [`unify-onebot-token.mjs`](../scripts/unify-onebot-token.mjs) | 76 | 把 SnowLuma 的 OneBot HTTP/WS accessToken 统一成同一个值，并触发配置重载 + 复测 | 文件自带 |
@@ -367,7 +368,7 @@
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,577 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,568 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

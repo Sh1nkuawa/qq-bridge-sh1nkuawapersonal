@@ -36,11 +36,12 @@ ok('★ 字幕来得太晚（本轮已开始）→ 无条件补一轮，不能�
   // 而"交付后有没有新发言"会误判成"接住了"（它说话了，但说的是"没拿到"）。
   assert.match(bridge, /pendingSubtitleWake/, '要记录"字幕来得太晚"');
   assert.match(bridge, /biliTurnActive\?\.\(key\)/, '判据必须走"有没有在途回合"的探针');
-  // 2026-10-16 第二次实测：写在"回合结束事件块"里的补排**压根没被走到**（日志里那行从未出现）
-  // ⇒ 改成定时器兜底，不依赖任何事件。
-  assert.match(bridge, /scheduleSubtitleWakeRetry\(key, r\.bvid/, '要在备好字幕时就arm定时器兜底');
-  assert.match(bridge, /为刚备好的 B 站字幕补排一轮唤醒/, '兜底成功要落日志');
-  assert.match(bridge, /setTimeout\(tick, 3000\)/, '轮询间隔 3 秒');
+  // 2026-10-16 第二次实测：写在"回合结束事件块"里 ⇒ 那个块没被走到 ✗；
+  // 改用 turnActive 轮询 ⇒ 群里回合一个接一个，它被一直重新置上（实测连续 90 秒 true）⇒ 放弃 ✗。
+  // 最终方案：不判断"回合结束"，直接交给 scheduleWakeV2（忙时自动进积压队列）。
+  assert.match(bridge, /已为刚备好的 B 站字幕排一次唤醒/, '兜底成功要落日志');
+  assert.match(bridge, /biliWakeProbe\(key, 'speaker'\)/, '兜底就是直接排一次唤醒');
+  assert.ok(!/补排轮询 #/.test(bridge), '★ 不要再靠轮询 turnActive（实测不可靠）');
 });
 
 ok('★ 模块级函数里不许裸用闭包变量（pendingWakeKeys 那次就是这么炸的）', () => {

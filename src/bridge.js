@@ -65,35 +65,26 @@ let biliWakeProbe = null;
  * （2026-10-16 实测：写在回合结束事件里的那段压根没被走到 ✗，卡片白发了两次）。
  * 这里用轮询：等这一轮跑完（biliTurnActive 变 false）就排一次唤醒，最多等 90 秒。
  */
+/**
+ * 字幕"来得太晚"的兜底补排。
+ *
+ * ⚠️ 2026-10-16 两次实测的结论：**不要试图判断"这一轮结束了没有"** ✗
+ *   - 写在 turn/end 事件块里 ⇒ 那个块压根没被走到 ✗；
+ *   - 改用 `pendingWakeKeys`（turnActive）轮询 ⇒ 群里回合一个接一个，它会被**一直重新置上**，
+ *     实测连续 90 秒都是 true ⇒ 兜底直接放弃 ✗。
+ * ⇒ 直接交给 `scheduleWakeV2`：它自己会安排 ~8 秒后的唤醒，忙时进 `pendingWakeReasons` 积压队列，
+ *   回合结束后再由"交付 / 未接住重排"那套逻辑补上（那套已经有回归网 ✓）。
+ */
 function scheduleSubtitleWakeRetry(key, bvid) {
-  const deadline = Date.now() + 90000;
-  let ticks = 0;
-  const tick = () => {
-    ticks += 1;
-    try {
-      if (!pendingSubtitleWake.has(key)) { log('[link] 补排轮询：标记已被清（别的路径处理了），停止'); return; }
-      if (!biliWakeProbe) { log('[link] 补排轮询：biliWakeProbe 未注册，停止 ✗'); return; }
-      const active = !!biliTurnActive?.(key);
-      // 每 5 次（约 15 秒）报一次状态，免得静默失败又得靠猜（2026-10-16 教训）
-      if (ticks === 1 || ticks % 5 === 0) log(`[link] 补排轮询 #${ticks}：turnActive=${active}`);
-      if (active) {
-        if (Date.now() < deadline) {
-          const t = setTimeout(tick, 3000);
-          if (t.unref) t.unref();
-        } else {
-          log('[link] 补排轮询：90 秒内这一轮一直没结束，放弃补排 ✗');
-        }
-        return;
-      }
-      pendingSubtitleWake.delete(key);
-      biliWakeProbe(key, 'speaker');
-      log(`[link] 这一轮已结束 ⇒ 为刚备好的 B 站字幕补排一轮唤醒（${bvid || '?'}）（第 ${ticks} 次轮询）`);
-    } catch (error) {
-      log(`[link] 补排轮询异常（第 ${ticks} 次）：${error?.message ?? error}`);
-    }
-  };
-  const t = setTimeout(tick, 4000);
-  if (t.unref) t.unref();
+  try {
+    if (!biliWakeProbe) { log('[link] 补排失败：biliWakeProbe 未注册 ✗'); return; }
+    biliWakeProbe(key, 'speaker');
+    log(`[link] 已为刚备好的 B 站字幕排一次唤醒（${bvid || '?'}）—— 若此刻忙，会走积压队列 ✓`);
+  } catch (error) {
+    log(`[link] 补排异常：${error?.message ?? error}`);
+  } finally {
+    pendingSubtitleWake.delete(key);
+  }
 }
 
 // 最近讨论过的 B 站视频（key → [{bvid,url,title,at}]）。
