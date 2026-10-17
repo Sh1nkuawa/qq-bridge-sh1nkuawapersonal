@@ -14,7 +14,11 @@ const prefix = persona?.config?.prefix ?? '';
 test('reserved2 YAML resolves to the expected persona and template variables', () => {
   assert.equal(persona?.name, '@deepseek-ai/dsh-persona');
   assert.match(prefix, /\{\{model\}\}/);
-  assert.match(persona.config.suffix, /\{\{cwd\}\}/);
+  // 2026-10-18（DSH 0.2.1-rc.1）：{{cwd}} 不再是已注册的提示词变量（只剩 provider / model）。
+  // 写进 suffix 会让每一轮都报
+  //   unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"
+  // 并直接失败 ⇒ 契约改为**禁止**在值里出现 {{cwd}}（注释里提到不算）。
+  assert.doesNotMatch(String(persona.config.suffix ?? '').replace(/#[^\n]*/g, ''), /\{\{cwd\}\}/);
   assert.equal(Object.hasOwn(persona.config, 'text'), false);
 });
 

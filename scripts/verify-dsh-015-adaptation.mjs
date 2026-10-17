@@ -37,7 +37,14 @@ for (const p of ['qq-chat', 'qq-chat-v2']) {
   let schemaOk = false;
   try { persona.Config(row.config); schemaOk = true; } catch {}
   check(`preset ${p}: persona.config 通过 DSH schema`, schemaOk);
-  check(`preset ${p}: 保留 {{model}} / {{cwd}} 变量`, /\{\{model\}\}/.test(row.config.prefix) && /\{\{cwd\}\}/.test(row.config.suffix ?? ''));
+  // 2026-10-18：DSH 0.2.1-rc.1 起**不再注册 {{cwd}}**（只注册 provider / model）。
+  // 一旦把 {{cwd}} 写进 suffix，每一轮都会报
+  //   unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"
+  // 并直接失败（升级后实测：bot 完全不能说话 ✗）。所以正确期望是：
+  // 保留 {{model}}，且**值里不能再出现 {{cwd}}**（注释里提到没关系）。
+  check(`preset ${p}: 保留 {{model}} 且不再使用 {{cwd}}`,
+    /\{\{model\}\}/.test(row.config.prefix)
+    && !/\{\{cwd\}\}/.test(String(row.config.suffix ?? '')));
 }
 
 // ── 2. 部署侧：DSH 0.1.7 的 preset 机制 ──────────────────────────────────────

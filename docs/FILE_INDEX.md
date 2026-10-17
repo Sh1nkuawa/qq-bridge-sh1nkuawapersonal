@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **310** 个被跟踪文件（其中 308 个文本文件、合计 **68,544** 行） —— 文件自带说明 **287**、人工补写 **23**、待补 **0**。
+统计：共 **310** 个被跟踪文件（其中 308 个文本文件、合计 **68,563** 行） —— 文件自带说明 **287**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -76,7 +76,7 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`agent.cordis.yml`](../dsh/agent-presets/qq-chat-v2/agent.cordis.yml) | 232 | The `qq-chat-v2` agent preset: 二代仿真模式（reserved2）专用。 | 文件自带 |
+| [`agent.cordis.yml`](../dsh/agent-presets/qq-chat-v2/agent.cordis.yml) | 234 | The `qq-chat-v2` agent preset: 二代仿真模式（reserved2）专用。 | 文件自带 |
 | [`preset.yml`](../dsh/agent-presets/qq-chat-v2/preset.yml) | 3 | name: QQ 聊天角色（二代仿真） | 文件自带 |
 | [`qq-tool-restrict.mjs`](../dsh/agent-presets/qq-chat-v2/qq-tool-restrict.mjs) | 7 | re-export 壳：qq-tool-restrict 的权威实现只有一份，在 | 文件自带 |
 
@@ -97,7 +97,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`package.json`](../plugins/qq-agent-presets/package.json) | 15 | qq-bridge 的 DSH agent preset bundle：把 qq-chat / qq-chat-v2 作为 @deepseek-ai/dsh-agent-preset 行插入（DSH 0.1.7+ 的 preset 机制），并携带两个 preset 共用的 qq-tool-restrict 安全守卫 | 文件自带（JSON 字段） |
-| [`qq-tool-restrict.mjs`](../plugins/qq-agent-presets/qq-tool-restrict.mjs) | 195 | QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。 | 文件自带 |
+| [`qq-tool-restrict.mjs`](../plugins/qq-agent-presets/qq-tool-restrict.mjs) | 201 | QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。 | 文件自带 |
 
 ## plugins/qq-agent-presets/presets
 
@@ -315,7 +315,7 @@
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
 | [`test-qq-model-view.mjs`](../scripts/test-qq-model-view.mjs) | 273 | 端到端用例：确认模型侧看到的 QQ 工具清单/会话视图符合预期（在 npm run test:token 里） | 人工补写 |
-| [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 191 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
+| [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 195 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
 | [`test-quote-ref.mjs`](../scripts/test-quote-ref.mjs) | 79 | 引用消息"身份证"的离线回归（纯函数 + 源码接线守卫）。 | 文件自带 |
 | [`test-quote-url.mjs`](../scripts/test-quote-url.mjs) | 59 | 引用消息里的链接必须完整 —— 事故现场回归 | 文件自带 |
 | [`test-reply-wait.mjs`](../scripts/test-reply-wait.mjs) | 203 | First-reply quiet-window regressions. Real bridge handlers, fixture peers only. | 文件自带 |
@@ -344,7 +344,7 @@
 | [`unify-onebot-token.mjs`](../scripts/unify-onebot-token.mjs) | 76 | 把 SnowLuma 的 OneBot HTTP/WS accessToken 统一成同一个值，并触发配置重载 + 复测 | 文件自带 |
 | [`upgrade-dsh-017.mjs`](../scripts/upgrade-dsh-017.mjs) | 216 | !/usr/bin/env node | 文件自带 |
 | [`verify-agent-presets-017.mjs`](../scripts/verify-agent-presets-017.mjs) | 87 | 验证 DSH 0.1.7 的 agent preset 是否真的装上了（只读探测 + 断言）。 | 文件自带 |
-| [`verify-dsh-015-adaptation.mjs`](../scripts/verify-dsh-015-adaptation.mjs) | 192 | DSH 适配总验证（0.1.5 建立，0.1.7 迁移后继续沿用文件名以免打断既有调用）： | 文件自带 |
+| [`verify-dsh-015-adaptation.mjs`](../scripts/verify-dsh-015-adaptation.mjs) | 199 | DSH 适配总验证（0.1.5 建立，0.1.7 迁移后继续沿用文件名以免打断既有调用）： | 文件自带 |
 | [`verify-dsh-020.mjs`](../scripts/verify-dsh-020.mjs) | 54 | Local-only smoke checks. No prompts, QQ sends, or existing-session mutations. | 文件自带 |
 | [`verify-ids.mjs`](../scripts/verify-ids.mjs) | 59 | 核实 ownerQQ / 群号：查机器人账号、好友、群列表、指定群是否存在 | 文件自带 |
 | [`verify-onebot.mjs`](../scripts/verify-onebot.mjs) | 47 | 用官方 SDK 通过 OneBot WebSocket 验证：登录的是哪个号、群列表、能否发消息（只读调用，不发送） | 文件自带 |

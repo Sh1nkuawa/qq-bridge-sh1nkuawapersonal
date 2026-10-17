@@ -96,11 +96,17 @@ const LOCAL_EXECUTION_TOOLS = [
   // 已装但当前未进 bundles 的插件（一旦加回就是新口子）
   'dev_mode_set', 'dev_mode_status', 'dev_mode_subagent',
   // DSH 0.2.0-rc.2: checked against actual shipped registrations and patches.
-  'subagent_codex', 'subagent_claude_code',
   'spawn_teammate', 'wait_agent',
   'team_task_create', 'team_task_get', 'team_task_list', 'team_task_update',
   'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete',
   'exit_plan_mode', 'web_search', 'web_fetch',
+  // DSH 0.2.1-rc.2: exact registrations from the installed target packages.
+  // Replaces the removed subagent_codex/subagent_claude_code registrations.
+  'create_worktree', 'working_directory',
+  'terminal_open', 'terminal_read', 'terminal_send',
+  'terminal_signal', 'terminal_close', 'terminal_list',
+  'session_search', 'session_trace',
+  'session_event_read', 'session_event_search', 'session_event_trace',
   // Installed profile plugins register global tools outside the QQ MCPs too.
   'sidebar_open', 'learn_meme', 'send_meme',
 ]
