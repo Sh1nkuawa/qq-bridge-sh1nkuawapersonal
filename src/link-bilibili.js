@@ -152,7 +152,14 @@ export async function summarizeBilibili(url, {
       const text = formatVideoSummary(json.data, { descChars, url: target });
       // 把解析出来的 BV 与标题一起返回：短链里没有 BV（下游取字幕要用），
       // 标题则用于"群友只用文字提这条视频"时把它认出来（2026-10-15 实测踩过）
-      return { ok: true, text, bvid: String(json.data?.bvid ?? ''), title: String(json.data?.title ?? '') };
+      return {
+        ok: true,
+        text,
+        bvid: String(json.data?.bvid ?? ''),
+        title: String(json.data?.title ?? ''),
+        // aid 是评论接口的 oid 参数（x/v2/reply?oid=<aid>）；顺手带出来，免得下游再查一次
+        aid: String(json.data?.aid ?? '')
+      };
     } catch (error) {
       const aborted = /abort/i.test(String(error?.name ?? error?.message));
       return { ok: false, reason: aborted ? '抓 B 站元信息超时' : '抓 B 站元信息失败（网络不通）' };

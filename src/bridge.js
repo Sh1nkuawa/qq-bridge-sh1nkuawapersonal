@@ -25,6 +25,7 @@ import { DEFAULT_BACKLOG_TTL_MS, pickBacklogWake } from './wake-backlog.js';
 import { createBiliAuth } from './bili-auth.js';
 import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
+import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -47,6 +48,8 @@ const biliFetch = createBiliFetch({ log });
 // B 站字幕精编稿的提供者：由主闭包初始化时注册（要用登录态与 state/ 缓存目录），
 // 这样链接预取不必知道登录态的存在，也不用改 link-bilibili.js。
 let biliSubtitleProvider = null;
+// 取热评用的登录态（biliAuth 在闭包里，模块级的预取拿不到 ⇒ 同 biliTurnActive 的做法）
+let biliAuthRef = null;
 
 // 字幕"来得太晚"的记录：卡片到达时如果**当前回合已经在跑**，那一轮的提示早就构建好了，
 // 字幕再怎么快也补不进去 ⇒ 必须在它收尾后**再排一轮**。
@@ -181,6 +184,32 @@ function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
             log(`[link] ${note}：${url}`);
             text = text + `\n[字幕] ${note}`;
             briefInfo = { mode: 'none', chars: 0, totalChars: 0, note };
+          }
+          // ── 热评（辅助理解）────────────────────────────────────────────────
+          // 字幕告诉我们"视频讲了什么"，热评告诉我们"观众怎么看"。但评论**极易被误当成
+          // 视频内容**，所以 formatCommentsBlock 里硬性带上"观众观点、不是视频内容"的警示。
+          // 2026-10-18 实测：x/v2/reply?sort=2 在登录态 + DoH 直连下可用，**不需要 WBI 签名**。
+          const cc = linksCfg.comments ?? {};
+          if (cc.enabled !== false && r.aid && biliAuthRef) {
+            try {
+              const cm = await fetchTopComments(r.aid, {
+                bvid: r.bvid || '',
+                auth: biliAuthRef,
+                limit: Number(cc.maxItems) || 3,
+                maxCharsPer: Number(cc.maxCharsPer) || 80,
+                cacheDir: path.join(STATE_DIR, 'bili-comments'),
+                log
+              });
+              const block = cm.ok ? formatCommentsBlock(cm.items, { title: r.title || '' }) : '';
+              if (block) {
+                text = text + '\n' + block;
+                log(`[link] 已附热评 ${cm.items.length} 条（辅助理解，非视频内容）：${url}`);
+              } else if (cm.reason && cm.reason !== 'empty') {
+                log(`[link] 热评没取到（${cm.reason}）：${url}`);
+              }
+            } catch (error) {
+              log(`[link] 热评异常（${url}）：${error?.message ?? error}`);
+            }
           }
         } catch (error) {
           log(`[link] B 站字幕异常（${url}）：${error?.message ?? error}`);
@@ -12175,6 +12204,8 @@ async function main() {
   biliTurnActive = (k) => pendingWakeKeys.has(k);
   // 同上：让"字幕来得太晚"能补排一轮唤醒（不依赖 turn/end 事件）
   biliWakeProbe = (k, reason) => scheduleWakeV2(k, reason);
+  // 同上：热评要用登录态（模块级的预取拿不到闭包里的 biliAuth）
+  biliAuthRef = biliAuth;
 
   /**
    * 余额水位检查：余额低于阈值就私聊提醒 owner 去充值（**只在私聊，不在群里说钱**）。

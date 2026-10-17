@@ -1975,3 +1975,40 @@ DoH 解析与缓存命中、端点失败换下一个、非 B 站域名直通、B
 **回归**：`scripts/test-bili-online.mjs`（P1 状态与字段 / P2 端点与白名单与会话校验与 MCP 传 key /
 P3 独立 reason 与"不用重复"出口）。
 ⚠️ P2 的工具注册在 **MCP 进程**里 —— 需要**重启一次 DSH** 才会出现在模型的工具列表里。
+
+### 16.23 B 站热评辅助理解（字幕之后再给"观众怎么看"） 2026-10-18
+
+**为什么**：字幕告诉模型**视频讲了什么**，但群友真正想聊的常常是"大家怎么看/有没有意思"。
+热评能补上气氛与争议点 —— 代价很低（3 条 ≈ 300 字），但它也**最容易误导**：
+模型会把评论当成视频内容 ✗。所以注入文案**硬性**带上"观众观点、不是视频内容"的警示。
+
+**接口实测**（2026-10-18，登录态 + DoH 直连）：
+| 接口 | 结果 |
+| --- | --- |
+| `x/v2/reply?type=1&oid=<aid>&sort=2&ps=20&pn=1` | ✓ code=0（**不需要 WBI 签名**） |
+| `x/v2/reply/main?oid=…&type=1&mode=3` | ✓ code=0，同数据 |
+| `x/v2/reply/wbi/main`（不签名） | ✗ code=-403 访问权限不足 |
+
+⇒ 用**旧版** `x/v2/reply`，`sort=2`（按热度）。字段：`member.uname` / `like` / `rcount` / `ctime` / `content.message`。
+
+**实现**：`src/bili-comments.js`
+- `cleanComment`：去 `[表情]` / URL / `@某人`、压缩空白、超长截断；
+- `pickComments`：丢 <4 字、纯符号、重复的，按赞数降序取前 N（默认 3）；
+- `formatCommentsBlock`：**带警示**的注入块（观众观点 / 不是视频内容 / 细节以字幕为准）；
+- `fetchTopComments`：带缓存（`state/bili-comments/<bvid>.json`，TTL 60 分钟）与失败原因
+  （`no-aid` / `-412` / `-403` / `api-<code>` / `empty` / `exception`），从不抛异常。
+
+**接线**：`summarizeBilibili` 现在多返回 `aid`（评论接口的 oid，免得下游再查一次）；
+`bridge.js` 的预取在**字幕之后**追加热评块；登录态用模块级探针 `biliAuthRef`
+（`biliAuth` 在闭包里，与 `biliTurnActive` / `biliWakeProbe` 同一套路）。
+配置：`socialV2.links.comments = { enabled, maxItems, maxCharsPer }`（默认开、3 条、每条 ≤80 字）。
+
+**实测**（《如果给诸葛亮众多五虎上将北伐能成功吗？》）：
+```
+[评论·仅供参考] 《如果给诸葛亮众多五虎上将北伐能成功吗？》的热评 3 条：
+（以下是**观众**说的，**不是视频内容** —— 只能用来感受气氛/争议点，绝不能当成"视频里讲了什么"来回答；被追问视频细节时以字幕为准。）
+· koraのseigi：「200个关羽搁那争自己才是最强关羽咋办」 👍637
+· 进狱系-天才：「其他先不管，街亭换上述任何人去守，说不定真的就匡扶汉室了」 👍134
+· 不敢离开的人：「败得更快，几百个名将，占满了将位，底层的士兵看不到上升的空间…」 👍92
+```
+注入文本 **300 字**；回归 `scripts/test-bili-comments.mjs` 9 组。
