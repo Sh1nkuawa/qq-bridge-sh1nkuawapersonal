@@ -140,6 +140,29 @@ function pickReadySubtitle(key) {
 
 const LINK_SUMMARY_KEEP_KEYS = 50;
 
+/**
+ * 按 messageId 去重（保留第一次出现的位置；没有 messageId 的原样保留）。
+ *
+ * 为什么需要（2026-10-20 事故）：同一条群消息被网关/重连**重复投递**了 100 次，
+ * 把最近消息窗口塞满 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言一位群友 ✗。
+ * 加载状态时用它自愈；recordIncomingV2 里另有入库去重（治因）。
+ */
+function dedupeRecentByMessageId(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const seen = new Set();
+  const out = [];
+  for (const m of arr) {
+    const id = m && m.messageId != null ? String(m.messageId) : '';
+    if (id) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+
 function prefetchBilibiliLinks(key, urls, linksCfg = {}) {
   try {
     if (linksCfg.enabled === false || linksCfg.bilibili === false) return;
@@ -10498,8 +10521,8 @@ async function main() {
               ...(val.wakeConfig ?? {}),
               triggers: { ...defaultWc.triggers, ...((val.wakeConfig?.triggers) ?? {}) }
             },
-            recentMessages: Array.isArray(val.recentMessages) ? val.recentMessages : [],
-            unread: Array.isArray(val.unread) ? val.unread : [],
+            recentMessages: dedupeRecentByMessageId(Array.isArray(val.recentMessages) ? val.recentMessages : []),
+            unread: dedupeRecentByMessageId(Array.isArray(val.unread) ? val.unread : []),
             lastWakeReason: String(val.lastWakeReason ?? ''),
             lastAiReplyAt: Number(val.lastAiReplyAt) || 0,
             lastActionAt: Number(val.lastActionAt) || 0,
@@ -11734,6 +11757,19 @@ async function main() {
     st.preSleepWaitSatisfiedAt = 0; // 有新消息进来，之前的“沉睡前已等待/已观察”作废
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
+    // ⚠️ 幂等去重：同一条消息可能被网关/重连**重复投递**（2026-10-20 实测：一条消息被记了
+    // 100 遍 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言一位群友 ✗）。messageId 才是稳定标识 ——
+    // seq 是每次入库自增的，拿它去重没用。
+    // 用 typeof 保护：拍一拍那条记录路径没有 messageId 参数，不能直接引用。
+    const dedupeId = (typeof messageId !== 'undefined' && messageId != null) ? String(messageId) : '';
+    if (dedupeId) {
+      const existing = st.recentMessages.find((m) => m && String(m.messageId ?? '') === dedupeId);
+      if (existing) {
+        log(`[incoming] 忽略重复投递（messageId=${dedupeId}，已在最近消息里）`);
+        // 返回已有的那条（而不是 null）：调用方若用了返回值也不会崩；副作用不再重复触发
+        return existing;
+      }
+    }
     st.recentMessages.push(msg);
     if (st.recentMessages.length > recentLimit) st.recentMessages.splice(0, st.recentMessages.length - recentLimit);
     st.unread.push(msg);
@@ -11783,6 +11819,19 @@ async function main() {
     st.preSleepWaitSatisfiedAt = 0;
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
+    // ⚠️ 幂等去重：同一条消息可能被网关/重连**重复投递**（2026-10-20 实测：一条消息被记了
+    // 100 遍 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言一位群友 ✗）。messageId 才是稳定标识 ——
+    // seq 是每次入库自增的，拿它去重没用。
+    // 用 typeof 保护：拍一拍那条记录路径没有 messageId 参数，不能直接引用。
+    const dedupeId = (typeof messageId !== 'undefined' && messageId != null) ? String(messageId) : '';
+    if (dedupeId) {
+      const existing = st.recentMessages.find((m) => m && String(m.messageId ?? '') === dedupeId);
+      if (existing) {
+        log(`[incoming] 忽略重复投递（messageId=${dedupeId}，已在最近消息里）`);
+        // 返回已有的那条（而不是 null）：调用方若用了返回值也不会崩；副作用不再重复触发
+        return existing;
+      }
+    }
     st.recentMessages.push(msg);
     if (st.recentMessages.length > recentLimit) st.recentMessages.splice(0, st.recentMessages.length - recentLimit);
     st.unread.push(msg);

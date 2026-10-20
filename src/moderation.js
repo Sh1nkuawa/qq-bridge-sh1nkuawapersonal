@@ -290,7 +290,10 @@ export function detectRepeat(messages, options = {}) {
   let best = { hit: false };
 
   // 同文本（占位文本如 "[图片]" 不算，交给同图判定）
-  const byText = new Map(); // `${senderId}\u0000${fp}` -> messages[]
+  // ⚠️ 计数必须**按 messageId 去重**：同一条消息可能被网关/重连重复投递，
+  //    历史上就发生过"一条消息被记了 100 遍 ⇒ 判定器数到 50 次 ⇒ 误禁言一位群友" ✗
+  //   （2026-10-20 实测：reason 显示 text-repeat ×50，而 recentMessages 里全是同一个 messageId）。
+  const byText = new Map(); // `${senderId}\u0000${fp}` -> Map(messageId -> message)
   for (const m of rows) {
     const raw = String(m.plain ?? m.text ?? '');
     if (isPlaceholderText(raw)) continue;
@@ -299,28 +302,34 @@ export function detectRepeat(messages, options = {}) {
     const senderId = String(m.userId ?? '');
     if (!senderId) continue;
     const key = `${senderId}\u0000${fp}`;
-    if (!byText.has(key)) byText.set(key, []);
-    byText.get(key).push(m);
+    const bucket = byText.get(key) ?? new Map();
+    const mid = String(m.messageId ?? `seq:${m.seq}`);
+    if (!bucket.has(mid)) bucket.set(mid, m);
+    byText.set(key, bucket);
   }
-  for (const [key, list] of byText) {
+  for (const [key, bucket] of byText) {
+    const list = [...bucket.values()];
     if (list.length >= textThreshold && list.length > (best.count ?? 0)) {
       const [senderId, fp] = key.split('\u0000');
       best = { hit: true, senderId, kind: 'text', fingerprint: fp, count: list.length, threshold: textThreshold, evidence: evidenceOf(list) };
     }
   }
 
-  // 同图
+  // 同图（同样按 messageId 去重）
   const byImage = new Map();
   for (const m of rows) {
     const senderId = String(m.userId ?? '');
     if (!senderId) continue;
     for (const fp of messageMediaFingerprints(m)) {
       const key = `${senderId}\u0000${fp}`;
-      if (!byImage.has(key)) byImage.set(key, []);
-      byImage.get(key).push(m);
+      const bucket = byImage.get(key) ?? new Map();
+      const mid = String(m.messageId ?? `seq:${m.seq}`);
+      if (!bucket.has(mid)) bucket.set(mid, m);
+      byImage.set(key, bucket);
     }
   }
-  for (const [key, list] of byImage) {
+  for (const [key, bucket] of byImage) {
+    const list = [...bucket.values()];
     if (list.length >= imageThreshold && list.length > (best.count ?? 0)) {
       const [senderId, fp] = key.split('\u0000');
       best = { hit: true, senderId, kind: 'image', fingerprint: fp, count: list.length, threshold: imageThreshold, evidence: evidenceOf(list) };

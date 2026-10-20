@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **310** 个被跟踪文件（其中 308 个文本文件、合计 **68,638** 行） —— 文件自带说明 **287**、人工补写 **23**、待补 **0**。
+统计：共 **313** 个被跟踪文件（其中 311 个文本文件、合计 **68,988** 行） —— 文件自带说明 **290**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -203,6 +203,7 @@
 | [`probe-balance-tool.mjs`](../scripts/probe-balance-tool.mjs) | 63 | 用 MCP stdio 协议实测：服务器能否启动、是否列出 qq_get_balance、调用是否返回余额 | 文件自带 |
 | [`probe-ban-plumbing.mjs`](../scripts/probe-ban-plumbing.mjs) | 40 | 只读探活：只验证"禁言动作能不能被 QQ 侧正确理解"，不会禁言任何真人。 | 文件自带 |
 | [`probe-bili-brief.mjs`](../scripts/probe-bili-brief.mjs) | 42 | 真机验证字幕模块：抓取 → 分层精编 → 分页 → 缓存命中 | 文件自带 |
+| [`probe-bili-comments.mjs`](../scripts/probe-bili-comments.mjs) | 54 | 探测 B 站评论接口：哪些在"登录态 + DoH 直连"下可用 | 文件自带 |
 | [`probe-bili-direct.mjs`](../scripts/probe-bili-direct.mjs) | 38 | 决定性验证：走"B 站专用通道（DoH 直连）"，元信息 + 字幕还能不能拿到 | 文件自带 |
 | [`probe-bili-needlogin.mjs`](../scripts/probe-bili-needlogin.mjs) | 44 | 同一接口、同一视频：带登录态 vs 匿名 —— 证明"空数组 + need_login_subtitle"是匿名现象 | 文件自带 |
 | [`probe-bili-shortlink.mjs`](../scripts/probe-bili-shortlink.mjs) | 21 | 复现 + 验证：群里那条 B 站短链现在能不能抓（这是本次事故的核心） | 文件自带 |
@@ -272,6 +273,7 @@
 | [`test-audit-setup.mjs`](../scripts/test-audit-setup.mjs) | 132 | Offline integration tests. Every setup invocation receives its own repository and DSH_HOME. | 文件自带 |
 | [`test-audit.mjs`](../scripts/test-audit.mjs) | 53 | Safe audit suite: fixtures and mocks only, never production QQ/DSH. | 文件自带 |
 | [`test-bili-auth.mjs`](../scripts/test-bili-auth.mjs) | 200 | B 站登录态（cookie jar 滑动续期 + 扫码续期）的离线回归。 | 文件自带 |
+| [`test-bili-comments.mjs`](../scripts/test-bili-comments.mjs) | 92 | B 站热评（辅助理解）的离线回归：清洗 / 挑选 / 注入文案 / 接线 | 文件自带 |
 | [`test-bili-direct.mjs`](../scripts/test-bili-direct.mjs) | 102 | B 站直连通道的离线回归：域名判定 / DoH 解析与缓存 / 回落行为 / 接线守卫 | 文件自带 |
 | [`test-bili-online.mjs`](../scripts/test-bili-online.mjs) | 52 | P1/P2/P3 的源码守卫：把"在线交付 / 按需工具 / 兜底唤醒"三条路钉住 | 文件自带 |
 | [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 216 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
@@ -367,9 +369,10 @@
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
+| [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,692 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,741 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -384,7 +387,7 @@
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |
 | [`model-prices.js`](../src/model-prices.js) | 290 | DeepSeek 官方价目表与峰谷分时判定（桥接侧自行维护）。 | 文件自带 |
-| [`moderation.js`](../src/moderation.js) | 646 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
+| [`moderation.js`](../src/moderation.js) | 655 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
