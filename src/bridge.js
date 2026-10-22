@@ -27,6 +27,7 @@ import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
+import { applyMoodTurn, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
@@ -12765,7 +12766,20 @@ async function main() {
         return formatSpeechLine(agg.mode);
       } catch { return ''; }
     })();
-    const base = roleLine + tokenLine + speechLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    // 自研心情（保留鱼的挂饰 UI）：受设置页的 injectMode / 每日上限 / 可信度门槛约束，
+    // 且 event 模式下"同一件事只说一次"（写完立刻登记，见 markMoodInjected）。
+    const moodLine = (() => {
+      try {
+        const cfg = readMoodConfig();
+        const state = readMoodState();
+        const line = moodLineFor(state, cfg);
+        if (!line) return '';
+        markMoodInjected(state, line);
+        writeMoodState(state);
+        return line;
+      } catch { return ''; }
+    })();
+    const base = roleLine + tokenLine + speechLine + moodLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
@@ -12900,6 +12914,27 @@ async function main() {
   }
 
   function scheduleReplyCheckV2(key) {
+    // 自研心情：每次它真的发了话，就拿"对方最后说的 + 它回的"更新心情与七根情绪。
+    // 口径：被怼只会「难过」，总心情**不许**因为被冒犯而下降（只有心疼/担心/自己难过才降）。
+    try {
+      const stMood = getSocialV2State(key);
+      const recent = Array.isArray(stMood.recentMessages) ? stMood.recentMessages : [];
+      const lastUser = [...recent].reverse().find((m) => m && !m.isSelf);
+      const lastSelf = [...recent].reverse().find((m) => m && m.isSelf);
+      if (lastUser) {
+        const r = applyMoodTurn({
+          cfg: readMoodConfig(),
+          turn: {
+            userText: String(lastUser.plain ?? lastUser.text ?? ''),
+            replyText: String(lastSelf?.text ?? ''),
+            speechMode: lastUser.speech?.mode ?? ''
+          }
+        });
+        if (r.changed) log(`[mood] 心情 ${r.state.mood.toFixed(0)}/100（${r.reason}）`);
+      }
+    } catch (error) {
+      log(`[mood] 更新失败（${key}）：${error?.message ?? error}`);
+    }
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused || currentMode !== 'reserved2') return;
     const st = getSocialV2State(key);

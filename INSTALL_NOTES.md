@@ -1858,3 +1858,36 @@ P3 独立 reason 与"不用重复"出口）。
 插件的 `<DSH_HOME>/feiyu-mood/diag.log` 出现 `已挂心情到 session-…` ✓，随后 `state.json` 的 `timeline` 开始增长 ✓。
 
 **回归**：`scripts/test-mood-bridge.mjs` 9 组（未装/只改一个字段/幂等/换会话/非法 id/坏 JSON 不覆盖/容忍 BOM/无 BOM 输出/接线守卫）。
+
+### 16.28 自研心情引擎（保留「鱼的心情」的 UI）（2026-10-23）
+
+**为什么自研**（实测结论，不是偏好）：
+1. 插件的判断引擎在 **DSH 0.2.1** 上**静默失效** ✗ —— 它 `tick()` 里的
+   `ctx.agents.list()` / `ctx.interval` 抛错被外层 `try` 吞掉，`diag.log` 一行不出；
+   实测：`diag.log`/`state.json` 停在 01:53，而 02:02 明明跑完了一整轮 ✗。
+2. 它按 **会话 id 精确匹配**（`sid !== target → continue`，而 `DEFAULT_SESSION = ''`），
+   我们**频繁新建会话** ⇒ 绑定永远对不上 ✗（§16.27 的适配只能解决"绑定"，救不了引擎本身）。
+
+**保留 UI** ✓：引擎搬到桥接，但**数据格式完全沿用插件**
+（`<DSH_HOME>/feiyu-mood/state.json` 的字段与 7 根情绪键 `happy/calm/sweet/heartache/worry/sad/jealous`）
+⇒ 右下角挂饰、设置页、时间线**照常显示**我们写的状态 ✓。
+
+**引擎（`src/mood.js`，规则式、零模型调用、可单测）**：
+- 口径沿用作者定的三条 ✓：心情 0~100（基线/下限读设置页）✓；
+  **被怼只会「难过」，总心情绝不许因为被冒犯而下降** ✓✓；只有「对方在讲自己的难处 / 情绪很低」才允许降 ✓；
+- 规则：被夸/被谢 → 开心+甜 ✓；被叫一声 → 甜 ✓；有人报喜 → 替人开心 ✓；
+  对方诉苦/病了 → 心疼+担心（**允许降心情**）✓；被怼 → 只 sad、mood 0 ✓；玩梗 → 轻开心 ✓；
+  正经提问 → calm（被需要）✓；认真回了但对方只丢几个字 → 轻微 sad ✓；
+- 衰减：心情向基线（半衰期 = 设置页的 `decayHalfHours`）✓；七情绪向 0（90 分钟半衰期）✓；
+- 记账门槛同插件（`sigMood` / `sigDim`）✓；时间线保留 40 条 ✓；
+- 注入支持设置页三种模式（不告诉 / 只说心情 / 说那件事）✓ + 每日上限 `injectPerDay` ✓ +
+  可信度门槛 ✓ + **event 模式同一件事只说一次** ✓。
+
+**接线**：`buildWakePromptV2` 在 `speechLine` 之后注入 `moodLine` ✓；
+`scheduleReplyCheckV2` 顶部（= 它真的发了话之后）拿"对方最后说的 + 它回的"更新心情 ✓；
+并把插件自带引擎关掉（`autoJudge: false` ✓，备份 `config.json.bak-before-selfbuild` ✓）**避免双写** ✓。
+
+**踩到的坑**：`decayMoodState` 里 `Number(x) || now` 把时间戳 **0** 当成"没有" ⇒ 永不衰减 ✗ ——
+测试抓到后改成 `Number.isFinite` 判断 ✓（时间戳 0 是合法值 ✓）。
+
+**回归**：`scripts/test-mood.mjs` 15 组（口径/衰减/下限/记账门槛/schema 兼容/三种注入模式/单次/每日上限）。
