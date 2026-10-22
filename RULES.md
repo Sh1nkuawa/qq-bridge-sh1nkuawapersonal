@@ -128,11 +128,13 @@
    git branch -d upgrade/dsh-<旧版本>
    git push origin --delete upgrade/dsh-<旧版本>
    ```
-4. **日常提交都双推**（开发分支 + main 快进）：
+4. **日常提交都双推**（开发分支 + main 快进），并且**本地 `main` 也要对齐**
+   （`git push …:main` 只改远端，本地 `main` 会落后 ✗）：
    ```powershell
    git commit -F <提交信息文件>
    git push origin upgrade/dsh-<当前版本>
    git push origin upgrade/dsh-<当前版本>:main
+   git fetch origin --quiet; git branch -f main origin/main   # 本地 main 对齐
    ```
 5. **什么时候换分支**：`dsh --version` 变了就换（补丁版也算，如 `0.2.1 → 0.2.2`）；
    只是改代码 / 文档 / 插件、DSH 版本没变，**不换**。
