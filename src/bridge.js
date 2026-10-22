@@ -11891,6 +11891,28 @@ async function main() {
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
     saveSocialV2State();
+
+    // 自研心情：它刚**真的发了话** ⇒ 拿"对方最后说的 + 它说的"更新一次心情与七根情绪。
+    // ⚠️ 2026-10-23 踩过：原来挂在 scheduleReplyCheckV2 里，但群里发言走 **MCP 工具发送**
+    //    （日志"工具统一发送"）——那条路不调用它 ✗ ⇒ 钩子从没跑过
+    //    （实测：聊了两句，state.json 的 updatedAt 一直停在 01:49）。这里是必经点 ✓。
+    try {
+      const lastUser = [...st.recentMessages].reverse().find((m) => m && !m.isSelf);
+      const lastSelf = [...st.recentMessages].reverse().find((m) => m && m.isSelf);
+      if (lastUser) {
+        const r = applyMoodTurn({
+          cfg: readMoodConfig(),
+          turn: {
+            userText: String(lastUser.plain ?? lastUser.text ?? ''),
+            replyText: String(lastSelf?.text ?? ''),
+            speechMode: lastUser.speech?.mode ?? ''
+          }
+        });
+        if (r.changed) log(`[mood] 心情 ${r.state.mood.toFixed(0)}/100（${r.reason}）`);
+      }
+    } catch (error) {
+      log(`[mood] 更新失败（${key}）：${error?.message ?? error}`);
+    }
   }
 
   function readFeedbackEntries() {
@@ -12926,27 +12948,6 @@ async function main() {
   }
 
   function scheduleReplyCheckV2(key) {
-    // 自研心情：每次它真的发了话，就拿"对方最后说的 + 它回的"更新心情与七根情绪。
-    // 口径：被怼只会「难过」，总心情**不许**因为被冒犯而下降（只有心疼/担心/自己难过才降）。
-    try {
-      const stMood = getSocialV2State(key);
-      const recent = Array.isArray(stMood.recentMessages) ? stMood.recentMessages : [];
-      const lastUser = [...recent].reverse().find((m) => m && !m.isSelf);
-      const lastSelf = [...recent].reverse().find((m) => m && m.isSelf);
-      if (lastUser) {
-        const r = applyMoodTurn({
-          cfg: readMoodConfig(),
-          turn: {
-            userText: String(lastUser.plain ?? lastUser.text ?? ''),
-            replyText: String(lastSelf?.text ?? ''),
-            speechMode: lastUser.speech?.mode ?? ''
-          }
-        });
-        if (r.changed) log(`[mood] 心情 ${r.state.mood.toFixed(0)}/100（${r.reason}）`);
-      }
-    } catch (error) {
-      log(`[mood] 更新失败（${key}）：${error?.message ?? error}`);
-    }
     if (cfg.socialV2?.enabled === false) return;
     if (socialV2.paused || currentMode !== 'reserved2') return;
     const st = getSocialV2State(key);
