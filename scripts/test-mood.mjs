@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  DIM_KEYS, analyzeTurn, applyMoodTurn, decayMoodState, markMoodInjected, moodLineFor, moodPaths,
-  readMoodConfig, readMoodState, writeMoodState
+  DIM_KEYS, analyzeSilence, analyzeTurn, applyMoodTurn, applySilenceMood, blankMoodState, decayMoodState,
+  effectiveSilentHours, isSleepHours, markMoodInjected, moodLineFor, moodPaths, readMoodConfig, readMoodState,
+  writeMoodState
 } from '../src/mood.js';
 
 let n = 0;
@@ -131,6 +132,56 @@ ok('★ 注入前必须先衰减（群里安静很久后第一次唤醒，不许
   const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
   assert.match(bridge, /const before = state\.mood;[\s\S]{0,220}decayMoodState\(state, cfg\);[\s\S]{0,80}moodLineFor\(state, cfg\)/,
     '注入块必须是：读 → 衰减 → 生成注入行');
+});
+
+console.log('\n久无人理（作息窗口不算）：');
+
+ok('作息窗口：02:00 起、10:00 止（含头不含尾）', () => {
+  const at = (h, m = 0) => { const d = new Date(2026, 9, 23); d.setHours(h, m, 0, 0); return d; };
+  assert.equal(isSleepHours(at(1, 59)), false);
+  assert.equal(isSleepHours(at(2, 0)), true);
+  assert.equal(isSleepHours(at(9, 59)), true);
+  assert.equal(isSleepHours(at(10, 0)), false);
+  assert.equal(isSleepHours(at(14, 0)), false);
+});
+
+ok('★ 有效沉默要扣掉作息窗口：昨日 23:00 → 今日 11:00 = 4 小时（不是 12）', () => {
+  const now = new Date(2026, 9, 23, 11, 0, 0, 0);
+  const last = new Date(2026, 9, 22, 23, 0, 0, 0);
+  const h = effectiveSilentHours(last.getTime(), now.getTime());
+  assert.ok(Math.abs(h - 4) < 0.01, `期望 4h，实际 ${h}`);
+});
+
+ok('夜里不判"被冷落"（正常人要睡觉）', () => {
+  const last = new Date(2026, 9, 22, 23, 0, 0, 0).getTime();
+  const at3 = new Date(2026, 9, 23, 3, 0, 0, 0).getTime();
+  const r = analyzeSilence({ lastIncomingAt: last, now: at3, minSilentHours: 1 });
+  assert.equal(r.apply, false);
+  assert.equal(r.reason, 'sleep-hours');
+});
+
+ok('有效沉默不够 / 已经算过 → 不重复落寞', () => {
+  const now = new Date(2026, 9, 23, 11, 0, 0, 0).getTime();
+  const last = new Date(2026, 9, 23, 9, 30, 0, 0).getTime();   // 只隔 1.5h（且跨了 9:30-10:00 共 0.5h 作息）
+  assert.equal(analyzeSilence({ lastIncomingAt: last, now, minSilentHours: 6 }).apply, false);
+  // 条件都满足，但已经记过（lonelyAt 比 lastIncomingAt 新）
+  const longAgo = new Date(2026, 9, 22, 12, 0, 0, 0).getTime();
+  assert.equal(analyzeSilence({ lastIncomingAt: longAgo, now, minSilentHours: 6, lonelyAt: now - 1000 }).reason, 'already-counted');
+});
+
+ok('★ 落寞只降 1 点心情 + 一点难过，且同一次静默只发生一次', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'mood-silence-'));
+  const now = new Date(2026, 9, 23, 14, 0, 0, 0).getTime();
+  const lastIncomingAt = new Date(2026, 9, 22, 10, 0, 0, 0).getTime();   // 很久没说话（30h，扣作息后 ~22h）
+  const cfg = readMoodConfig({ home });
+  writeMoodState(blankMoodState({ base: 70, now }), { home });
+  const first = applySilenceMood({ home, cfg, lastIncomingAt, now });
+  assert.equal(first.changed, true);
+  assert.ok(first.state.mood < 70 && first.state.mood >= 69, `只该降 1 点，实际 ${first.state.mood}`);
+  assert.ok(first.state.dims.sad > 0, '要有一点难过');
+  const second = applySilenceMood({ home, cfg, lastIncomingAt, now: now + 1000 });
+  assert.equal(second.changed, false, '同一次静默只能算一次');
+  assert.equal(second.reason, 'already-counted');
 });
 
 console.log(`\n全部通过：${n} 项断言组`);

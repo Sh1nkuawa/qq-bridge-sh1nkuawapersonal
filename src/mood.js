@@ -26,6 +26,57 @@ export const DIM_LABELS = { happy: '开心', calm: '踏实', sweet: '甜蜜', he
 const DIM_HALF_MINUTES = 90;   // 七根情绪的半衰期（沿用插件 README 的说法）
 const TIMELINE_KEEP = 40;      // 时间线最多留 40 条（和插件设置页显示一致）
 
+// 作息窗口（owner 2026-10-23 指定）：凌晨 2 点到早上 10 点**不算"没人理"** —— 正常人要睡觉。
+// 注意：这个窗口只用于"是否感到被冷落"，**不影响心情的自然衰减**（睡眠期间照样回稳 ✓）。
+export const SLEEP_START_HOUR = 2;
+export const SLEEP_END_HOUR = 10;
+
+/** 某个时刻是否处于作息窗口（含 2:00，不含 10:00） */
+export function isSleepHours(date = new Date()) {
+  const h = new Date(date).getHours();
+  return h >= SLEEP_START_HOUR && h < SLEEP_END_HOUR;
+}
+
+/**
+ * 有效沉默时长（小时）＝ 总时长 − 与作息窗口重叠的部分。
+ * 例：昨天 23:00 → 今天 11:00 ⇒ 总 12h，其中 02:00-10:00 共 8h 不算 ⇒ **4h**。
+ * 用逐分钟太慢，这里按"逐日求区间交集"算，跨越多少天都准。
+ */
+export function effectiveSilentHours(fromMs, nowMs = Date.now(), {
+  startHour = SLEEP_START_HOUR, endHour = SLEEP_END_HOUR
+} = {}) {
+  const from = Number(fromMs);
+  const to = Number(nowMs);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  let totalMin = (to - from) / 60000;
+  let sleepMin = 0;
+  const day = new Date(from);
+  day.setHours(0, 0, 0, 0);
+  for (let d = new Date(day); d.getTime() <= to; d.setDate(d.getDate() + 1)) {
+    const s = new Date(d); s.setHours(startHour, 0, 0, 0);
+    const e = new Date(d); e.setHours(endHour, 0, 0, 0);
+    const lo = Math.max(s.getTime(), from);
+    const hi = Math.min(e.getTime(), to);
+    if (hi > lo) sleepMin += (hi - lo) / 60000;
+  }
+  return Math.max(0, (totalMin - sleepMin) / 60);
+}
+
+/**
+ * 判断"这次主动冒泡是不是该有点落寞"。
+ * 条件：① 现在不在作息窗口内；② 有效沉默 ≥ minSilentHours；
+ *       ③ 这段沉默**还没被算过**（lastIncomingAt 变了才重新算，即"每次静默最多一次"）。
+ */
+export function analyzeSilence({ lastIncomingAt = 0, now = Date.now(), lonelyAt = 0, minSilentHours = 6, sleepAware = true } = {}) {
+  if (sleepAware && isSleepHours(new Date(now))) return { apply: false, reason: 'sleep-hours', hours: 0 };
+  const hours = sleepAware
+    ? effectiveSilentHours(lastIncomingAt, now)
+    : Math.max(0, (now - Number(lastIncomingAt)) / 3600000);
+  if (!Number.isFinite(hours) || hours < minSilentHours) return { apply: false, reason: 'not-long-enough', hours };
+  if (Number(lonelyAt) >= Number(lastIncomingAt)) return { apply: false, reason: 'already-counted', hours };
+  return { apply: true, reason: `安静了 ${hours.toFixed(1)} 小时（已扣掉作息窗口）`, hours };
+}
+
 export function moodPaths({ home = os.homedir() } = {}) {
   const dir = path.join(home, '.dsh', 'feiyu-mood');
   return { dir, statePath: path.join(dir, 'state.json'), configPath: path.join(dir, 'config.json') };
@@ -158,12 +209,18 @@ export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } =
  * 把一轮结果写进 state（读 → 衰减 → 应用 → 写），并按插件的语义记时间线。
  * @returns {{state:object, changed:boolean, deltas:object, reason:string}}
  */
-export function applyMoodTurn({ home = os.homedir(), cfg, turn, now = Date.now() } = {}) {
+export function applyMoodTurn({ home = os.homedir(), cfg, turn, extra = null, now = Date.now() } = {}) {
   const conf = cfg ?? readMoodConfig({ home });
   const state = readMoodState({ home, now });
   decayMoodState(state, conf, now);
   const before = { mood: state.mood, dims: { ...state.dims } };
   const d = analyzeTurn(turn);
+  // extra：给"非对话触发"的变化用（例如久无人理的落寞），与文本规则叠加
+  if (extra) {
+    d.moodDelta += Number(extra.moodDelta) || 0;
+    for (const k of DIM_KEYS) d.dims[k] += Number(extra.dims?.[k]) || 0;
+    if (extra.reason) d.reason = [d.reason, extra.reason].filter(Boolean).join('；');
+  }
 
   state.mood = Math.min(100, Math.max(Number(conf.moodFloor) || 0, state.mood + d.moodDelta));
   for (const k of DIM_KEYS) {
@@ -196,6 +253,27 @@ export function applyMoodTurn({ home = os.homedir(), cfg, turn, now = Date.now()
 }
 
 const LABEL = (v) => (v >= 80 ? '欢喜' : v >= 62 ? '开心' : v >= 42 ? '一般' : v >= 25 ? '心疼' : '难过');
+
+/**
+ * 「久无人理」的落寞：只在**主动冒泡**时调用一次。
+ * 作息窗口（02:00-10:00）不算被冷落 —— 每人要睡觉 ✓；且**每次静默最多记一次**。
+ */
+export function applySilenceMood({ home = os.homedir(), cfg, lastIncomingAt = 0, now = Date.now(), minSilentHours = 6 } = {}) {
+  const conf = cfg ?? readMoodConfig({ home });
+  const state = readMoodState({ home, now });
+  const verdict = analyzeSilence({ lastIncomingAt, now, lonelyAt: Number(state.lonelyAt) || 0, minSilentHours });
+  if (!verdict.apply) return { changed: false, reason: verdict.reason, hours: verdict.hours, state };
+  const r = applyMoodTurn({
+    home, cfg: conf, now,
+    turn: {},
+    extra: { moodDelta: -1, dims: { sad: 1 }, reason: '很久没人说话了（这点落寞不承认）' }
+  });
+  // 记一次"这次静默已经算过"，避免每次冒泡都掉心情
+  const after = readMoodState({ home, now });
+  after.lonelyAt = now;
+  writeMoodState(after, { home });
+  return { changed: true, reason: verdict.reason, hours: verdict.hours, state: after, detail: r.reason };
+}
 
 /**
  * 生成要注入提示词的那一句（受用户的 injectMode / 每日上限约束）。

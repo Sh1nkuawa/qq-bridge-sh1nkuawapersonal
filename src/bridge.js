@@ -27,7 +27,7 @@ import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
-import { applyMoodTurn, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
+import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
@@ -12770,6 +12770,14 @@ async function main() {
     // 且 event 模式下"同一件事只说一次"（写完立刻登记，见 markMoodInjected）。
     const moodLine = (() => {
       try {
+        // 久无人理 → 轻微落寞：**只在主动冒泡**这一种唤醒里判一次，
+        // 且 02:00-10:00 不算被冷落（正常人要睡觉，见 mood.js 的 SLEEP_* / effectiveSilentHours）。
+        if (reason === 'proactiveCheck') {
+          try {
+            const sil = applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: st.lastIncomingAt });
+            if (sil.changed) log(`[mood] ${sil.reason} ⇒ 有点落寞（心情略降、不承认）`);
+          } catch { /* 落寞判定失败不影响对话 */ }
+        }
         const cfg = readMoodConfig();
         const state = readMoodState();
         // ⚠️ 先衰减再用：群里安静很久时没有回合 ⇒ 没人写文件 ⇒ 心情会"冻在最后的值"。
