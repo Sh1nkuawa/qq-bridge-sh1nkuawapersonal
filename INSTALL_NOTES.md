@@ -1830,3 +1830,31 @@ P3 独立 reason 与"不用重复"出口）。
 
 **回归**：`scripts/test-speech-mode.mjs` 15 组（强信号 / 加权 / 连续追问 / 纯梗 / 多消息合并 / 注入文案 / 信号明细）。
 **调参入口**：同文件顶部的 `SERIOUS_WORDS`、`BANTER_WORDS`、`INTERROGATIVE_RE` 与阈值 4。
+
+### 16.27 「鱼的心情」(dsh-feiyu-mood) 适配：会话 id 会变，绑定要跟过去（2026-10-23）
+
+**现象**：插件装好、设置页也出来了，但心情**永远停在基线 70**、从不判断、也从不注入 ✗。
+
+**根因**（读它的源码确认，不是猜）：
+- 它用 `cfg.targetSession` **精确匹配** DSH 的 session id：`if (sid !== target) continue`；
+- 而 `DEFAULT_SESSION = ''` ⇒ **targetSession 为空时，一个会话都不会挂** ✗（不是"全部生效"✗）；
+- 我们的桥接会在「切模式 / 切角色 / 会话重置 / 看门狗解绑卡死会话」时**新建会话** ⇒ id 一变，
+  它绑定的那个会话就不存在了 ⇒ 之后永远不判 ✗。
+
+**适配**（`src/mood-bridge.js`）：`syncMoodTargetSession(sessionId)` 把 `targetSession` 改成当前会话，
+桥接在 **`state.sessions[key] = sessionId` 之后**调用一次 ⇒ 每次新建会话都自动跟过去 ✓。
+
+**跨回合继承**：心情本身（`<DSH_HOME>/feiyu-mood/state.json`）是**全局一份、跨会话共享** ✓，
+换会话**不会**重置它 ✓ —— 所以这里只搬"绑定"，不搬数据 ✓。真正会丢的只有绑定 ✗，现已修好 ✓。
+
+**写配置的几条硬约束**（都有回归）：
+- **只改 `targetSession`**，其余设置（名字/模型/门槛/开关/基线）**一个字节都不动** ✓；
+- 文件不存在（没装插件）⇒ **静默跳过** ✓，不建目录、不写文件 ✓；
+- JSON 坏了 ⇒ **只报错、绝不覆盖** ✓（避免毁掉用户设置）；
+- 原子写（临时文件 + rename）✓，避免插件正好读到半个文件；
+- **UTF-8 无 BOM** ✓（带 BOM 会让 DSH 读 profile 时崩，插件作者专门警告过）；读的时候**容忍** BOM ✓。
+
+**验证**：重启桥接后触发一轮 → 日志出现 `[mood] 已把「鱼的心情」绑定到新会话 session-… ` ✓，
+插件的 `<DSH_HOME>/feiyu-mood/diag.log` 出现 `已挂心情到 session-…` ✓，随后 `state.json` 的 `timeline` 开始增长 ✓。
+
+**回归**：`scripts/test-mood-bridge.mjs` 9 组（未装/只改一个字段/幂等/换会话/非法 id/坏 JSON 不覆盖/容忍 BOM/无 BOM 输出/接线守卫）。

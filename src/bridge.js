@@ -26,6 +26,7 @@ import { createBiliAuth } from './bili-auth.js';
 import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
+import { syncMoodTargetSession } from './mood-bridge.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
@@ -10226,6 +10227,15 @@ async function main() {
       state.sessionPolicies[key] = policy;
       reverse.set(sessionId, key);
       saveState();
+      // 「鱼的心情」(dsh-feiyu-mood) 适配：它的 targetSession 是**精确匹配**的，
+      // 而我们每次新建会话都换 id ⇒ 不跟过去它就一个会话都不挂（心情永远不动 ✗）。
+      // 心情数据本身是全局的，只需把绑定跟过去（见 src/mood-bridge.js）。
+      try {
+        const mood = syncMoodTargetSession(sessionId, { log });
+        if (mood.ok && mood.changed) log(`[mood] 已把「鱼的心情」绑定到新会话 ${sessionId}（${key}）`);
+      } catch (error) {
+        log(`[mood] 同步目标会话失败（${key}）：${error?.message ?? error}`);
+      }
       await ensureChatModel(sessionId);
       if (epoch !== sessionEpoch || !isCurrentSession(key, sessionId)) {
         if (state.sessions[key] === sessionId) retireSession(key);
