@@ -40,9 +40,20 @@ const QUESTION_RE = /[?？]|(?:吗|呢|吧)\s*$/;
 const INTERROGATIVE_RE = /(为什么|为啥|怎么|如何|哪个|哪家|多少|多久|多远|是否|能不能|可不可以|有没有|是什么|是啥)/g;
 const PLACEHOLDER_RE = /^[\[【(（].{0,12}[\]】)）]$/;
 
+// 「只是丢了个问号」：允许前面有 @提及 / 引用段 / 空白，整条消息去掉这些之后**只有问号**
+// （2026-10-23 owner 指定：这种叫一声只丢问号的情况**不加也不减分**，
+//   否则 atSelf+3 会把它硬拉成答题态 ✗，而它其实只是"诶？在吗？"）
+const BARE_QMARK_RE = /^\s*(?:\[[^\]]*\]\s*)?(?:@\S+\s*)*[?？]+\s*$/;
+
+export function isBareQuestionMark(text) {
+  return BARE_QMARK_RE.test(String(text ?? ''));
+}
+
 /** 单个信号的分数贡献 + 便于调试的记录 */
 export function scoreSpeechIntent(msg, { now = Date.now(), ownerQQ = null, recent = [] } = {}) {
   const text = String(msg?.plain ?? msg?.text ?? '').trim();
+  // 只有问号（可带 @ / 引用段）⇒ 中性：不加也不减（owner 2026-10-23 指定）
+  if (isBareQuestionMark(text)) return { score: 0, signals: ['0 只有问号（不计分）'] };
   const signals = [];
   let score = 0;
   const add = (delta, why) => { score += delta; signals.push(`${delta > 0 ? '+' : ''}${delta} ${why}`); };
@@ -86,6 +97,11 @@ export function scoreSpeechIntent(msg, { now = Date.now(), ownerQQ = null, recen
 export function classifySpeechIntent(msg, { now = Date.now(), ownerQQ = null, recent = [] } = {}) {
   const text = String(msg?.plain ?? msg?.text ?? '').trim();
   const atSelf = !!msg?.atSelf || !!msg?.quoteTargetIsSelf;
+  // 只有问号（可带 @ / 引用段）⇒ 不加也不减分，也不走任何强信号 ⇒ 按闲聊兜底
+  //（owner 2026-10-23 指定：@bot ? 只是叫一声，别硬当"正经提问"开答 ✗）
+  if (isBareQuestionMark(text)) {
+    return { mode: SPEECH_MODE.BANTER, score: 0, reason: '只有问号：不计分，按闲聊兜底', signals: ['0 只有问号（不计分）'] };
+  }
   const { score, signals } = scoreSpeechIntent(msg, { now, ownerQQ, recent });
 
   // 强信号：点了名 + 明确在问 / 出现"正经问"这类词

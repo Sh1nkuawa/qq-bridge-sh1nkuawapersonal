@@ -41,6 +41,26 @@ ok('★ 误伤词已移除：问号 / 急 / 咋 单独出现都判闲扯', () =>
   }
 });
 
+ok('★★ @/引用它但只有一个问号 ⇒ 不加不减（中性），按闲聊兜底', () => {
+  // owner 2026-10-23 指定：这种只是"叫一声丢个问号"，不该被 atSelf+3 拉进答题态
+  const cases = [
+    ['?', { atSelf: true }],
+    ['？', { atSelf: true }],
+    ['？？？', { atSelf: true }],
+    ['@！？哦鲸鲸？！ ？', { atSelf: true }],
+    ['[引用 某人：这是啥] ？', { quoteTargetIsSelf: true }]
+  ];
+  for (const [t, over] of cases) {
+    const r = classifySpeechIntent(m(t, over), { now: NOW });
+    assert.equal(r.score, 0, `${t} 应该中性（score=0），实际 ${r.score}`);
+    assert.equal(r.mode, SPEECH_MODE.BANTER, `${t} → ${r.reason}`);
+    assert.ok(r.signals.includes('0 只有问号（不计分）'), `${t} 信号里应写明中性：${JSON.stringify(r.signals)}`);
+  }
+  // 只有问号**不是**中性豁免：带了内容就正常判
+  assert.equal(classifySpeechIntent(m('@bot 这个报错怎么解决', { atSelf: true }), { now: NOW }).mode, SPEECH_MODE.ANSWER);
+  assert.equal(classifySpeechIntent(m('@bot 你看这个', { atSelf: true }), { now: NOW }).mode, SPEECH_MODE.ANSWER);
+});
+
 ok('管理员发话 ⇒ 至少不会因为"像闲聊"被误判（点名时必答题）', () => {
   const r = classifySpeechIntent(m('@bot 帮我看下这个日志', { atSelf: true }), { now: NOW, ownerQQ: '1' });
   assert.equal(r.mode, SPEECH_MODE.ANSWER);
