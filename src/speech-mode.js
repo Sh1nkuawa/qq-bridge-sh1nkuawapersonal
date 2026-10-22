@@ -17,9 +17,10 @@
 export const SPEECH_MODE = { ANSWER: 'answer', BANTER: 'banter' };
 
 // 「正经询问」的措辞标志（这类词出现基本可以确定对方在认真问）
+// ⚠️ 2026-10-23 owner 指定移除「急」「咋」：太容易误伤（"着急/不急"、"咋样" 都是闲聊）✗
 const SERIOUS_WORDS = [
   '请问', '求助', '求问', '求推荐', '求解答', '求个', '请教', '帮忙看', '帮我看', '帮我看下',
-  '有没有人知道', '有人知道', '在线等', '急', '怎么', '咋', '为什么', '为啥', '是什么', '是啥',
+  '有没有人知道', '有人知道', '在线等', '怎么', '为什么', '为啥', '是什么', '是啥',
   '能不能', '可不可以', '怎么办', '如何', '哪个', '哪家', '多少', '是否', '正经问', '认真问',
   '确认一下', '问一下', '想问'
 ];
@@ -31,9 +32,12 @@ const BANTER_WORDS = [
 ];
 
 const EMOJI_RE = /\[[^\]]{1,12}\]|[\u{1F300}-\u{1FAFF}]/u;
+// 只用于"点名 + 提问"这种强信号，以及连续追问的判定；**不再计分**
+// （2026-10-23 owner 指定：问号太容易误伤 —— "真的假的？""卧槽？"都是闲聊 ✗）
 const QUESTION_RE = /[?？]|(?:吗|呢|吧)\s*$/;
-// 疑问词：中文里"没问号的提问"极常见（"为什么我的桥接一直重启"），只认 ?/吗/呢 会漏判
-const INTERROGATIVE_RE = /(为什么|为啥|怎么|咋|如何|哪个|哪家|多少|多久|多远|是否|能不能|可不可以|有没有|是什么|是啥)/g;
+// 疑问词：中文里"没问号的提问"极常见（"为什么我的桥接一直重启"），只认 ?/吗/呢 会漏判。
+// ⚠️ 同样移除「咋」（口语里多为闲聊 ✗）
+const INTERROGATIVE_RE = /(为什么|为啥|怎么|如何|哪个|哪家|多少|多久|多远|是否|能不能|可不可以|有没有|是什么|是啥)/g;
 const PLACEHOLDER_RE = /^[\[【(（].{0,12}[\]】)）]$/;
 
 /** 单个信号的分数贡献 + 便于调试的记录 */
@@ -46,9 +50,9 @@ export function scoreSpeechIntent(msg, { now = Date.now(), ownerQQ = null, recen
   const atSelf = !!msg?.atSelf || !!msg?.quoteTargetIsSelf;
   if (atSelf) add(3, '点名/引用我');
 
+  // ⚠️ 问号**不计分**（2026-10-23 owner 指定）：只保留给"点名 + 提问"的强信号用
   const qMark = QUESTION_RE.test(text);
   const interroCount = (text.match(INTERROGATIVE_RE) ?? []).length;
-  if (qMark) add(2, '带问号/疑问语气');
   if (interroCount) add(2 + (interroCount > 1 ? 1 : 0), `疑问词×${interroCount}`);
   const serious = SERIOUS_WORDS.filter((w) => text.includes(w));
   if (serious.length) add(Math.min(3, 2 + (serious.length > 1 ? 1 : 0)), `正经词(${serious.slice(0, 2).join('/')})`);
@@ -90,6 +94,14 @@ export function classifySpeechIntent(msg, { now = Date.now(), ownerQQ = null, re
   }
   if (/正经问|认真问|请教|求助|在线等/.test(text)) {
     return { mode: SPEECH_MODE.ANSWER, score, reason: '强信号：措辞是正经求助', signals };
+  }
+  // 连续追问（同一人 2 分钟内已有 ≥2 条提问）⇒ 认真在问的强信号（不依赖问号计分）
+  const uid = String(msg?.userId ?? '');
+  if (uid) {
+    const askBack = (Array.isArray(recent) ? recent : []).filter((m) => m && !m.isSelf
+      && String(m.userId ?? '') === uid && now - Number(m.time || 0) <= 2 * 60 * 1000
+      && QUESTION_RE.test(String(m.plain ?? m.text ?? '')));
+    if (askBack.length >= 2) return { mode: SPEECH_MODE.ANSWER, score, reason: '强信号：连续追问', signals };
   }
   // 明显闲聊：纯占位（[表情]/[图片]）、极短、或分数很低
   if (PLACEHOLDER_RE.test(text) || text.length <= 2) {

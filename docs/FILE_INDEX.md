@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **314** 个被跟踪文件（其中 312 个文本文件、合计 **68,968** 行） —— 文件自带说明 **291**、人工补写 **23**、待补 **0**。
+统计：共 **316** 个被跟踪文件（其中 314 个文本文件、合计 **69,232** 行） —— 文件自带说明 **293**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,825 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 1,828 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -327,6 +327,7 @@
 | [`test-slang-learn.mjs`](../scripts/test-slang-learn.mjs) | 65 | 黑话学习模块新增功能自检：sources 字段、深度研究 prompt、解析。 | 文件自带 |
 | [`test-snowluma-conn.mjs`](../scripts/test-snowluma-conn.mjs) | 115 | SnowLuma 账号/token 自发现自检。 | 文件自带 |
 | [`test-snowluma-liveness.mjs`](../scripts/test-snowluma-liveness.mjs) | 87 | SnowLuma 链路存活看门狗验收。 | 文件自带 |
+| [`test-speech-mode.mjs`](../scripts/test-speech-mode.mjs) | 118 | 说话姿态判定的离线回归：用真实群聊风格的话验证阈值 | 文件自带 |
 | [`test-stickers.mjs`](../scripts/test-stickers.mjs) | 158 | 表情包体系自检： | 文件自带 |
 | [`test-token-economy.mjs`](../scripts/test-token-economy.mjs) | 624 | Exercise real bridge HTTP handlers and prompt delivery with isolated files, | 文件自带 |
 | [`test-token-usage.mjs`](../scripts/test-token-usage.mjs) | 303 | Token 用量账本 + 价目表测试。 | 文件自带 |
@@ -401,6 +402,7 @@
 | [`slang-learner.js`](../src/slang-learner.js) | 373 | 群聊黑话/网络用语学习与迭代模块。 | 文件自带 |
 | [`snowluma-conn.js`](../src/snowluma-conn.js) | 223 | SnowLuma 连接自发现：解决「换 QQ 账号后 token 变了，工具就 401」的问题。 | 文件自带 |
 | [`snowluma-liveness.mjs`](../src/snowluma-liveness.mjs) | 63 | SnowLuma 链路存活判定（纯函数，便于单测）。 | 文件自带 |
+| [`speech-mode.js`](../src/speech-mode.js) | 143 | 说话姿态（speech mode）：让 bot 区分「答题态」与「闲扯态」 | 文件自带 |
 | [`state-acl.mjs`](../src/state-acl.mjs) | 140 | state/ 目录 ACL 收紧的**唯一实现**。 | 文件自带 |
 | [`sticker-lib.js`](../src/sticker-lib.js) | 295 | 表情包体系（二代仿真模式）——本地表情知识库与策略提示纯函数。 | 文件自带 |
 | [`token-ledger.js`](../src/token-ledger.js) | 938 | Token 用量账本：把 DSH 会话事件里的 provider usage 落成「按会话 × 按回合」的可查明细， | 文件自带 |

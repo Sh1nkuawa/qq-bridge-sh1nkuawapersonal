@@ -21,10 +21,23 @@ ok('★ 出现"正经问/认真问/求助/在线等" ⇒ 直接答题态', () =>
   }
 });
 
-ok('长句 + 问号 + 无梗 ⇒ 答题态（"能不能/怎么" 这类）', () => {
-  for (const t of ['这个配置能跑 deepseek 吗', '为什么我的桥接一直重启', '哪个牌子的显示器拖尾轻一点']) {
+ok('长句 + 疑问词 + 无梗 ⇒ 答题态（"能不能/怎么" 这类）', () => {
+  for (const t of ['为什么我的桥接一直重启', '哪个牌子的显示器拖尾轻一点']) {
     const r = classifySpeechIntent(m(t), { now: NOW });
     assert.equal(r.mode, SPEECH_MODE.ANSWER, `${t} → ${r.reason} score=${r.score}`);
+  }
+});
+
+ok('★ 问号不再计分（owner 2026-10-23 指定）：光有"吗/？"不会进答题态', () => {
+  // 这是按 owner 要求**故意**放宽的：宁可漏成闲聊，也不要"真的假的？"就开答
+  const r = classifySpeechIntent(m('这个配置能跑 deepseek 吗'), { now: NOW });
+  assert.equal(r.mode, SPEECH_MODE.BANTER, `问号→不计分，本句只剩长度分：${r.reason} score=${r.score}`);
+});
+
+ok('★ 误伤词已移除：问号 / 急 / 咋 单独出现都判闲扯', () => {
+  for (const t of ['真的假的？', '卧槽？', '急', '咋样', '咋整啊']) {
+    const r = classifySpeechIntent(m(t), { now: NOW });
+    assert.equal(r.mode, SPEECH_MODE.BANTER, `${t} → ${r.reason} score=${r.score}`);
   }
 });
 
