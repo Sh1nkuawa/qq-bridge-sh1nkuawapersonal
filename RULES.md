@@ -108,6 +108,37 @@
 
 打开「QQ 聊天」工作区里的会话即可直接对话（DSH 原生）。`reserved2` 不自动转发 agent 文本，但工具可以发送 QQ；`chat`、`reserved` 和 `closed-agent` 会转发映射会话的 agent 回合输出，因此在这些会话中从 DSH 界面输入内容，也可能使回复出现在 QQ。需要纯本地讨论时请使用没有 QQ 映射的 DSH 会话。
 
+## 分支与推送约定（2026-10-22）
+
+> 一句话：**分支名跟着 DSH 版本走；每次升级 DSH 就换新分支，并把旧分支推成 `main`。**
+
+1. **推送的分支必须与当前 DSH 版本对应**（取自 `dsh --version` 的主版本号）：
+   - 现在跑 DSH `0.2.1-rc.2` ⇒ 开发分支 **`upgrade/dsh-0.2.1`**；
+   - 以前跑 `0.1.7-rc.2` 时是 `upgrade/v0.1.7` —— **已退休并删除**（内容全在 `main`）。
+   - 命名格式：`upgrade/dsh-<major.minor.patch>`，**不带 `-rc.N`**（rc 与正式版共用一条分支）。
+2. **`main` 始终是"当前可跑"的稳定快照** —— 每次提交后快进同步，GitHub 首页（默认分支）看到的就是最新状态。
+3. **升级 DSH 后必须按顺序做三步**：
+   ```powershell
+   # ① 旧分支的成果先落进 main（快进；若已分叉则先 merge 再推）
+   git push origin upgrade/dsh-<旧版本>:main
+   # ② 从 main 切出对应新版本的分支
+   git checkout -b upgrade/dsh-<新版本> main
+   # ③ 推新分支、建跟踪；删除旧的本地与远端分支（内容已在 main）
+   git push -u origin upgrade/dsh-<新版本>
+   git branch -d upgrade/dsh-<旧版本>
+   git push origin --delete upgrade/dsh-<旧版本>
+   ```
+4. **日常提交都双推**（开发分支 + main 快进）：
+   ```powershell
+   git commit -F <提交信息文件>
+   git push origin upgrade/dsh-<当前版本>
+   git push origin upgrade/dsh-<当前版本>:main
+   ```
+5. **什么时候换分支**：`dsh --version` 变了就换（补丁版也算，如 `0.2.1 → 0.2.2`）；
+   只是改代码 / 文档 / 插件、DSH 版本没变，**不换**。
+6. 删除旧分支前**必须先确认它与 `main` 同点**（`git rev-parse main upgrade/dsh-<旧版本>` 输出一致），
+   否则等于丢代码 ✗。
+
 ## 事故与兜底
 
 - 群友诱导 agent 时，preset 的工具限制和目标白名单是主要硬边界。发送工具仍可能造成白名单内的误发；敏感信息正则属于启发式审计，不能识别任意秘密或保证“最多只发一条”。账号和会话隔离仍需结合实际运行模式使用。
