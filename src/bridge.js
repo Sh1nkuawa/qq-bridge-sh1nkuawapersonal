@@ -26,6 +26,7 @@ import { createBiliAuth } from './bili-auth.js';
 import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
+import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 
@@ -11754,6 +11755,21 @@ async function main() {
     // 只有「@ 机器人」的那位仍然是最后一个说话的人，这次生图请求才算他的，防止别人
     // 在 3 分钟窗口内蹭一次旧的 @ 记录（蹭的话配额会记到上一个人头上）。
     st.lastIncomingFrom = userId != null ? String(userId) : null;
+    // 说话姿态（答题态/闲扯态）：入库时判定一次并存在消息上，供本轮唤醒注入。
+    // 必须确定性判定 —— 2026-10-23 的教训：把"要不要装傻"交给模型自己决定时，
+    // 它手上有搜索工具就总会选择"答题"✗（工具可用性压过人格里的负面规则）。
+    try {
+      const speech = classifySpeechIntent(msg, {
+        ownerQQ: cfg.ownerQQ,
+        recent: (Array.isArray(st.recentMessages) ? st.recentMessages : []).slice(-20)
+      });
+      msg.speech = speech;
+      if (speech.mode === SPEECH_MODE.ANSWER) {
+        log(`[speech] ${key} 答题态（${speech.reason}；${speech.signals.slice(0, 3).join(' ')}）`);
+      }
+    } catch (error) {
+      log(`[speech] 判定异常（${key}）：${error?.message ?? error}`);
+    }
     st.preSleepWaitSatisfiedAt = 0; // 有新消息进来，之前的“沉睡前已等待/已观察”作废
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
@@ -12479,7 +12495,9 @@ async function main() {
       }
       return formatAffinityPanel(members, active, ac);
     })();
-    const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n';
+    const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。'
+      + '**你有搜索工具，但这不代表你要当客服**：知道答案也可以只回两个字，搜到东西不等于必须倒出来。'
+      + '搜只是让你"知道"，怎么说话仍听【本轮姿态】的。\n\n';
     const stickerCfg = cfg.socialV2?.sticker ?? {};
     const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
       ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
@@ -12725,7 +12743,19 @@ async function main() {
       st.retryHint = '';
       return `【上一次失败，请重发】${hint}\n\n`;
     })();
-    const base = roleLine + tokenLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    // 本轮姿态（答题态/闲扯态）：由**入库时**的确定性判定汇总而来，不交给模型自己决定。
+    // 多条未读里只要有一条正经询问 ⇒ 答题态；全是闲聊 ⇒ 闲扯态（详见 src/speech-mode.js）。
+    const speechLine = (() => {
+      try {
+        const recent = (Array.isArray(st.recentMessages) ? st.recentMessages : [])
+          .filter((m) => m && !m.isSelf && Date.now() - Number(m.time || 0) <= 10 * 60 * 1000)
+          .slice(-8);
+        if (!recent.length) return '';
+        const agg = aggregateSpeechMode(recent, { ownerQQ: cfg.ownerQQ });
+        return formatSpeechLine(agg.mode);
+      } catch { return ''; }
+    })();
+    const base = roleLine + tokenLine + speechLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
