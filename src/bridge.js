@@ -27,7 +27,7 @@ import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
-import { applyMoodTurn, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
+import { applyMoodTurn, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
 import { looksLikeUnfinished } from './v2-wait.js';
@@ -12772,10 +12772,14 @@ async function main() {
       try {
         const cfg = readMoodConfig();
         const state = readMoodState();
+        // ⚠️ 先衰减再用：群里安静很久时没有回合 ⇒ 没人写文件 ⇒ 心情会"冻在最后的值"。
+        // 读取时按 lastDecayAt 补算（心情向基线、七情绪归 0），否则长时间沉默后
+        // 第一次唤醒会按**旧的**心情说话 ✗（2026-10-23 补）。
+        const before = state.mood;
+        decayMoodState(state, cfg);
         const line = moodLineFor(state, cfg);
-        if (!line) return '';
-        markMoodInjected(state, line);
-        writeMoodState(state);
+        if (line) markMoodInjected(state, line);
+        if (line || Math.abs(state.mood - before) > 0.5) writeMoodState(state);
         return line;
       } catch { return ''; }
     })();
