@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **313** 个被跟踪文件（其中 311 个文本文件、合计 **68,988** 行） —— 文件自带说明 **290**、人工补写 **23**、待补 **0**。
+统计：共 **314** 个被跟踪文件（其中 312 个文本文件、合计 **69,137** 行） —— 文件自带说明 **291**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,13 +22,13 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,014 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,074 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
 | [`package.json`](../package.json) | 62 | 包定义与 npm 脚本入口（test:*/verify:*/probe:*/postinstall 都在这里） | 人工补写 |
 | [`README.en.md`](../README.en.md) | 149 | QQ ↔ DeepSeek Harness Bridge (qq-bridge) | 文件自带（标题） |
-| [`README.md`](../README.md) | 277 | QQ ↔ DeepSeek Harness 桥接 | 文件自带（标题） |
+| [`README.md`](../README.md) | 280 | QQ ↔ DeepSeek Harness 桥接 | 文件自带（标题） |
 | [`restart.bat`](../restart.bat) | 26 | 先杀旧守护窗口与旧桥接（按锁文件 PID + 命令行兜底），确认退出后再拉起守护窗口 | 人工补写 |
 | [`RULES.md`](../RULES.md) | 116 | QQ 桥接权限与安全规则（RULES） | 文件自带（标题） |
 | [`start.bat`](../start.bat) | 19 | 桥接守护启动器：先收紧 state/ 权限，再在 :loop 里跑 bridge.js，退出 5 秒后自动重启 | 人工补写 |
@@ -52,7 +52,7 @@
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 365 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
-| [`README.md`](../docs/README.md) | 75 | 文档索引（docs/README.md） | 文件自带（标题） |
+| [`README.md`](../docs/README.md) | 91 | 文档索引（docs/README.md） | 文件自带（标题） |
 
 ## docs/guides
 
@@ -307,6 +307,7 @@
 | [`test-meme-prompt.mjs`](../scripts/test-meme-prompt.mjs) | 47 | 只读验收：确认唤醒提示/Prompt 里真的带上了「本地表情包库」段落。 | 文件自带 |
 | [`test-meme-routes.mjs`](../scripts/test-meme-routes.mjs) | 80 | 桥接「本地表情包」路由验收（只读/只做校验路径，不会真发消息到 QQ）。 | 文件自带 |
 | [`test-memes.mjs`](../scripts/test-memes.mjs) | 293 | meme-lib 单元测试：纯函数 + 真实图库只读自检。 | 文件自带 |
+| [`test-moderation-dedupe.mjs`](../scripts/test-moderation-dedupe.mjs) | 70 | 2026-10-20 事故回归：同一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言群友 | 文件自带 |
 | [`test-moderation.mjs`](../scripts/test-moderation.mjs) | 465 | moderation.js 单元测试：检测规则 / 时长阶梯 / 豁免 / 限流 / 公告校验 / 动作白名单。 | 文件自带 |
 | [`test-mute-live.mjs`](../scripts/test-mute-live.mjs) | 50 | 真机禁言验证：对指定 QQ 禁言 N 秒，确认成功后**立即解禁**（默认 60 秒 → 验证完就解开）。 | 文件自带 |
 | [`test-mux-reconnect.mjs`](../scripts/test-mux-reconnect.mjs) | 81 | 事件流重连回归测试：DSH 重启 / WS 断开后，**已有会话必须被重新 follow**。 | 文件自带 |

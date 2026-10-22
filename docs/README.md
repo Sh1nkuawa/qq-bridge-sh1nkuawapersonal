@@ -4,9 +4,21 @@
 > 仓库目录结构与 `scripts/` 命名约定见 **[FOLDER_MAP.md](FOLDER_MAP.md)**；**逐个文件**的一句话说明见
 > **[FILE_INDEX.md](FILE_INDEX.md)**（由 `npm run docs:file-index` 生成，别手改；`npm run docs:file-index:check` 查漂移）。
 >
-> **状态标记**：✅ 仍然有效（按它做就对） · ⚠️ 部分过时（见备注） · 🗄️ 已被取代（保留作背景）
+> **状态标记（2026-10-22 复核）**：✅ 仍然有效（按它做就对） · ⚠️ 部分过时（见备注） · 🗄️ 已被取代（保留作背景）
 
 ---
+
+## 运维记录（INSTALL_NOTES）
+
+| 文档 | 一句话说明 | 状态 |
+| --- | --- | --- |
+| [../INSTALL_NOTES.md](../INSTALL_NOTES.md) | **本副本的踩坑与改动记录**（编号 §16.x 按时间追加，标题都带日期）。**按需 grep，别通读**；文首有「找东西从这里开始」 | ✅ 持续更新（最后 2026-10-22） |
+| ↳ §16.15 / §16.16 | 卡片链接预取（B 站元信息）、引用图片时该用哪个 id | ✅ |
+| ↳ §16.17 | 唤醒积压：为什么 AI 会"接几分钟前的话" | ✅ |
+| ↳ §16.18b / §16.19 / §16.20 | B 站登录态（cookie jar 滑动续期）、字幕抓取与分层精编、模块级 const 的 TDZ | ✅ |
+| ↳ **§16.21 / §16.22 / §16.23** | **B 站三件套**：DoH 直连绕过 `-412` / 字幕"在线交付"（P1 工具结果、P2 `qq_bili_subtitle`、P3 兜底唤醒）/ 热评辅助理解 | ✅ |
+| ↳ **§16.24** | **升级 DSH 0.2.1+ 必读**：`{{cwd}}` 已不被注册，preset 留着它会让每一轮都失败；preset 启动时注册，改完必须重启 DSH | ✅ 2026-10-18 |
+| ↳ **§16.25** | **误禁言事故**：一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50；已按 `messageId` 去重（判定器 + 入库 + 加载自愈） | ✅ 2026-10-20 |
 
 ## guides/ —— 面向使用者 / 运维
 
@@ -72,4 +84,8 @@
 | 动安全相关代码 / 做发布前检查 | [guides/SECURITY_BASELINE.md](guides/SECURITY_BASELINE.md) |
 | 知道某个目录/脚本是干什么的 | [FOLDER_MAP.md](FOLDER_MAP.md)（目录级 + `scripts/` 前缀约定）；**每一个文件**的用途见 [FILE_INDEX.md](FILE_INDEX.md) |
 | 权限边界与安全承诺 | [../RULES.md](../RULES.md) |
+| B 站视频说"看不了" / 报 `-412 request was banned` | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) §16.21（DoH 直连） |
+| 想让它"读懂 B 站视频内容"（字幕/热评/按时间翻页） | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) §16.19、§16.22、§16.23 |
+| 升级完 DSH 后 bot 不说话 / `unknown prompt variable` | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) **§16.24** |
+| 谁被误禁言了 / 判定数明显不对 | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) **§16.25** |
 | 这个项目要往哪走（QSH） | 上位目录的 `../../QSH-plan/`（总索引 `README.md`；另有工具面/技能/云部署/新仓库与官网四份专项） |

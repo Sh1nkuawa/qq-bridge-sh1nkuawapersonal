@@ -5,6 +5,18 @@
 
 ---
 
+## 🔎 找东西从这里开始（2026-10-22）
+
+- **要修一个具体症状** → **别通读本文**：`Select-String INSTALL_NOTES.md -Pattern '<关键词>'`。
+  每节标题都带**日期**，越靠后越新；找到后**只看那一节**。
+- **文档地图（哪些还有效）** → [`docs/README.md`](docs/README.md)（✅/⚠️/🗄️ 状态标记）。
+- **某个文件是干嘛的** → [`docs/FILE_INDEX.md`](docs/FILE_INDEX.md)（自动生成，别手改）。
+- **本文的"结论"优先于"过程"**：过程只是佐证；若结论与代码冲突，**以代码为准**，并在该节补一行更正。
+- 编号约定：`16.x` 是本副本的新增/踩坑记录，按时间追加。**16.18 撞号两次**（"DSH 0.2.0 升级记录" 与
+  "B 站登录态"），历史遗留，**不要改号**（外部可能已按号引用）。
+
+---
+
 ## 〇、合并上游 v0.1.7（本次新增，先看这段）
 
 上游 v0.1.7 是一次大改版。合并时**保留上游结构 + 重挂本副本的本地特性**，要点：
@@ -2012,3 +2024,51 @@ P3 独立 reason 与"不用重复"出口）。
 · 不敢离开的人：「败得更快，几百个名将，占满了将位，底层的士兵看不到上升的空间…」 👍92
 ```
 注入文本 **300 字**；回归 `scripts/test-bili-comments.mjs` 9 组。
+
+### 16.24 DSH 0.2.1-rc.1+ 不再注册 `{{cwd}}`：preset 里留着它会让**每一轮都失败**（2026-10-18）
+
+**症状**：升级到 0.2.1-rc.2 后 bot 在群里一个字都不发，桥接日志每一轮都是：
+```
+⚠️ agent 回合出错 [UNKNOWN]: unknown prompt variable "{{cwd}}" in section
+   "deployment:persona-suffix"; registered variables: provider, model
+```
+
+**原因**：该 section 的内容来自 preset 的 `persona.config.suffix`，而 0.2.1 起提示词变量**只注册
+`provider` / `model`**（0.2.0 时代还有 `cwd`）。原 suffix 是"Your working directory is {{cwd}}."，
+对一个**没有本地工具**的 QQ 聊天人格本来也没意义 ⇒ 换成无变量的静态句。
+
+**改哪些文件（注意"改副本没用"）**：
+- 源：`dsh/agent-presets/{qq-chat,qq-chat-v2}/agent.cordis.yml`、
+  `plugins/qq-agent-presets/presets/{qq-chat,qq-chat-v2}.patch.yml`；
+- `~/.dsh/.agent-presets/<preset>/agent.cordis.yml` 是插件**生成的副本**，改它会被启动时覆盖 ✗；
+  `~/.dsh/profiles/web/node_modules/qq-agent-presets` 是指向仓库的**链接**（改仓库即生效）。
+
+**两个必须记住的坑**：
+1. **preset 是 DSH 启动时注册进内存的** ⇒ 改完文件**必须重启 DSH** 才生效（只重启桥接没用 ✗）；
+2. 0.2.1 还改了一批工具注册名（`subagent_codex`/`subagent_claude_code` 消失，新增
+   `working_directory`/`terminal_*`/`session_*`/`create_worktree`）⇒ `qq-tool-restrict` 的
+   本地工具黑名单要同步更新，否则那些新工具会**漏进** QQ 会话。
+
+**验证**：重启后日志里 `unknown prompt variable` 计数不再增长；黑话学习会话能正常完成（真实回合跑通）；
+`/api/status` 里 `dshReady: true`。回归：`scripts/test-qq-preset-contract.mjs` 与
+`scripts/verify-dsh-015-adaptation.mjs` 的契约已改为"**值里禁止** `{{cwd}}`"。
+
+### 16.25 误禁言：同一条消息被重复投递 100 次，刷屏判定数到 50 次（2026-10-20）
+
+**症状**：一位群友只发了一句，就被禁言 3 分钟；记录写着
+`已禁言 … 3 分钟（text-repeat ×50）`，而 `recentMessages` 的 100 条里
+`messageId` 全是同一个、文本全是同一句（`seq` 各不相同）。
+
+**原因**：同一条消息被网关/重连**重复投递**，把 100 条的记忆窗口塞满 ⇒ 判定器数到 50 ⇒ 误禁言 ✗。
+`seq` 是每次入库**自增**的，拿它去重等于没去重——**`messageId` 才是稳定标识**。
+
+**修两层（缺一不可）**：
+1. `moderation.js` 的 `detectRepeat`：同文本/同图计数**先按 messageId 去重再数**（证据列表也去重）。
+   效果：**真人连发 5 条**（不同 messageId）**照样命中**，而"一条消息的 100 个副本"只算 1 次；
+2. `bridge.js`：`recordIncomingV2` 与拍一拍路径**入库前去重**（重复投递直接跳过，返回已有那条，
+   不再重复触发 affinity/未读/唤醒）；`loadSocialV2State` 用 `dedupeRecentByMessageId` **加载自愈**。
+
+**验证**：重启后窗口从 100 条塌回 1 条（0 组重复）；回归 `scripts/test-moderation-dedupe.mjs`
+（100 条重复不命中 / 真连发 5 条命中 / 同图重复不命中 / 入库与加载守卫 / 去重语义）。
+
+**顺带解释**：之前"bot 老接旧话、上下文里全是同一句"也是同一个根因（窗口被同一条消息塞满）。

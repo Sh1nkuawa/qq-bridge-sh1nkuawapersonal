@@ -14,17 +14,20 @@
 
 把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问、工具审批）会发回 QQ。
 
-> ⚠️ **当前版本 `v0.1.7`，适配 DSH 0.1.7-rc.2**（在该版本上逐项实测）。鉴权已改为用 `~/.dsh` 里持久化的
-> 浏览器会话签名密钥**离线铸造 Cookie** —— DSH 0.1.7 起进程启动 token 只存在于内存、不再落盘，
-> 旧版「从 guard 日志里读 token」的方式已失效。agent preset 亦已迁移为 DSH 0.1.7 的
-> `@deepseek-ai/dsh-agent-preset` Cordis 行。协议代次（Cookie 鉴权 / 斜杠 RPC / `/api/remote.mux` 事件流）
-> 自 DSH `0.1.2-alpha.1` 起引入，与更早的点号 endpoint 协议不兼容 —— **DSH `0.1.1-rc.2` 及更早**请改用 tag
-> [`v0.1.0`](https://github.com/Derpyu520/qq-bridge/releases/tag/v0.1.0)；**DSH 0.1.5-rc.1** 请用
-> [`v0.1.5`](https://github.com/Derpyu520/qq-bridge/releases/tag/v0.1.5)。
+> ⚠️ **本副本现状（2026-10-22）**：已升到 **DSH `0.2.1-rc.2`**（`dsh --version` 可验），
+> 离线回归 **65/65**（`node scripts/run-offline-tests.mjs`）。下文"v0.1.7 / DSH 0.1.7-rc.2"是**派生基线**、
+> 不是现状；逐项改动与踩坑见 **[INSTALL_NOTES.md](INSTALL_NOTES.md)**（按需 grep，别通读）与
+> **[docs/README.md](docs/README.md)**（带 ✅/⚠️/🗄️ 状态标记）。
 >
-> 本次更新的完整说明见 [**Release v0.1.7**](https://github.com/Derpyu520/qq-bridge/releases/tag/v0.1.7)。
+> **本副本在基线上新增的主要能力**
+> - **B 站视频"看得懂内容"**：官方 AI 字幕（长字幕分层精编）+ **热评辅助理解** + `qq_bili_subtitle`
+>   按需取/按时间翻页；代理把 B 站送出国时用 **DoH 拿真实 IP + SNI 直连**绕过 `-412`（§16.19~§16.23）。
+> - **群公告**：草案先给 owner 确认，通过后才发布（`qq_propose_announcement`）。
+> - 生图（Ark Agent Plan，失败回落 codex）、语音收发、群管理（刷屏/辱骂判定 + 干跑）、
+>   明日方舟 / 终末地日活、好感度与黑话学习等（详见 §16.5 起的各节）。
 >
-> 默认分支 `main` **就是**本版本，`git clone` 直接拿到，无需切换分支。
+> ⚠️ **升级 DSH 到 0.2.1+ 后必读 §16.24**：`{{cwd}}` 提示词变量已被移除，preset 里留着它会让
+> **每一轮都直接失败**；且 preset 是 DSH **启动时**注册进内存的，**改完必须重启 DSH** 才生效。
 
 ```
 QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──► DSH Web API (127.0.0.1:3080/api)
