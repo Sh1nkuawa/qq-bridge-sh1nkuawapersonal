@@ -99,6 +99,9 @@ export function readMoodConfig({ home = os.homedir() } = {}) {
     injectPerDay: Number(raw.injectPerDay) || 6,
     sigMood: Number(raw.sigMood) || 3,
     sigDim: Number(raw.sigDim) || 5,
+    // 设置页的「每轮判断心情」总开关：关掉 ⇒ 不再因对话/落寞改动数值
+    //（时间衰减仍会生效 —— 那是时间，不是"判断"；面板上照样能看它慢慢回稳）
+    autoJudge: raw.autoJudge !== false,
     selfName: String(raw.selfName || ''),
     ownerName: String(raw.ownerName || '')
   };
@@ -212,6 +215,12 @@ export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } =
 export function applyMoodTurn({ home = os.homedir(), cfg, turn, extra = null, now = Date.now() } = {}) {
   const conf = cfg ?? readMoodConfig({ home });
   const state = readMoodState({ home, now });
+  // 设置页关掉「每轮判断心情」⇒ 完全不因对话改数值（衰减照常，那是时间不是判断）
+  if (conf.autoJudge === false) {
+    decayMoodState(state, conf, now);
+    writeMoodState(state, { home });
+    return { state, changed: false, deltas: { moodDelta: 0, dimsDelta: {} }, reason: 'autoJudge-off' };
+  }
   decayMoodState(state, conf, now);
   const before = { mood: state.mood, dims: { ...state.dims } };
   const d = analyzeTurn(turn);
@@ -260,6 +269,7 @@ const LABEL = (v) => (v >= 80 ? '欢喜' : v >= 62 ? '开心' : v >= 42 ? '一�
  */
 export function applySilenceMood({ home = os.homedir(), cfg, lastIncomingAt = 0, now = Date.now(), minSilentHours = 6 } = {}) {
   const conf = cfg ?? readMoodConfig({ home });
+  if (conf.autoJudge === false) return { changed: false, reason: 'autoJudge-off', hours: 0 };
   const state = readMoodState({ home, now });
   const verdict = analyzeSilence({ lastIncomingAt, now, lonelyAt: Number(state.lonelyAt) || 0, minSilentHours });
   if (!verdict.apply) return { changed: false, reason: verdict.reason, hours: verdict.hours, state };
