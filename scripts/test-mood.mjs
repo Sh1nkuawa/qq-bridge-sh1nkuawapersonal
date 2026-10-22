@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  DIM_KEYS, analyzeSilence, analyzeTurn, applyMoodTurn, applySilenceMood, blankMoodState, decayMoodState,
+  DIM_KEYS, analyzeSilence, stripNegated, analyzeTurn, applyMoodTurn, applySilenceMood, blankMoodState, decayMoodState,
   effectiveSilentHours, isSleepHours, markMoodInjected, moodLineFor, moodPaths, readMoodConfig, readMoodState,
   writeMoodState
 } from '../src/mood.js';
@@ -132,6 +132,22 @@ ok('★ 注入前必须先衰减（群里安静很久后第一次唤醒，不许
   const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
   assert.match(bridge, /const before = state\.mood;[\s\S]{0,220}decayMoodState\(state, cfg\);[\s\S]{0,80}moodLineFor\(state, cfg\)/,
     '注入块必须是：读 → 衰减 → 生成注入行');
+});
+
+console.log('\n否定式（"不熬夜"不算在受苦）：');
+
+ok('★ 否定式难处词不算受苦；肯定式照算', () => {
+  for (const t of ['今天不熬夜了', '别熬夜了早点睡', '别加班了', '不难受', '我不累']) {
+    assert.equal(analyzeTurn({ userText: t }).moodDelta, 0, `「${t}」不该降心情`);
+  }
+  for (const t of ['昨天熬夜到三点', '又加班到十点', '失眠好难受', '好累啊']) {
+    assert.ok(analyzeTurn({ userText: t }).moodDelta < 0, `「${t}」该降心情`);
+  }
+});
+
+ok('stripNegated 只吃否定式，不动肯定式', () => {
+  assert.match(stripNegated('今天不熬夜了'), /已忽略/);
+  assert.equal(stripNegated('昨天熬夜到三点'), '昨天熬夜到三点');
 });
 
 console.log('\n久无人理（作息窗口不算）：');

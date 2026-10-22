@@ -189,7 +189,7 @@ const RULES = [
  * @param {{userText?:string, replyText?:string, speechMode?:'answer'|'banter'}} turn
  */
 export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } = {}) {
-  const text = String(userText ?? '');
+  const text = stripNegated(userText);   // 先去掉"不熬夜/别加班"这类否定式，避免误判成对方在受苦 ✗
   const dims = {};
   for (const k of DIM_KEYS) dims[k] = 0;
   let mood = 0;
@@ -262,6 +262,18 @@ export function applyMoodTurn({ home = os.homedir(), cfg, turn, extra = null, no
 }
 
 const LABEL = (v) => (v >= 80 ? '欢喜' : v >= 62 ? '开心' : v >= 42 ? '一般' : v >= 25 ? '心疼' : '难过');
+
+// 「难处词」全表（`worrying` 规则用；单独抽出来是为了让"否定式"也能复用同一张表）
+const HARDSHIP_WORDS = '好累|累死|撑不住|加班|熬夜|失眠|难受|头秃|病了|发烧|住院|抑郁|焦虑|崩溃|想哭|被裁|挂了';
+
+/**
+ * 去掉「否定式」的难处词：`不熬夜` / `别熬夜` / `没失眠` / `不要熬夜`… 都不该算"你在受苦" ✗
+ * （2026-10-23 实测踩到：群友说「今天不熬夜了」「别熬夜了早点睡」也会让心情 −2 ✗）
+ */
+export function stripNegated(text) {
+  const re = new RegExp(`(?:不|别|没|勿|不要|不用|不必|别再|别老|不该|不想)[\\s]?(?:${HARDSHIP_WORDS})`, 'g');
+  return String(text ?? '').replace(re, '（已忽略）');
+}
 
 /**
  * 「久无人理」的落寞：只在**主动冒泡**时调用一次。
