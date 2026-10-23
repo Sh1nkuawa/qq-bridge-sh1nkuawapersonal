@@ -49,16 +49,15 @@ assert('启动候选：首选「点启动器开始游戏」（click 标记必须
   && ef.clientCandidates[0].click === true
   && ef.clientCandidates[0].launcher === true,
   JSON.stringify(ef.clientCandidates));
-assert('点击几何参数：期望 1640x943、点 (1397,816)（客户区坐标）',
-  ef.launcherClick && ef.launcherClick.expect.width === 1640 && ef.launcherClick.expect.height === 943
-  && ef.launcherClick.point.x === 1397 && ef.launcherClick.point.y === 816,
-  JSON.stringify(ef.launcherClick));
+assert('点击首选比例 = 实测点中的 (0.854, 0.865)（2026-10-23 20:15 真机）',
+  ef.launcherClick && Math.abs(ef.launcherClick.pointRatio.x - 0.854) < 1e-6
+  && Math.abs(ef.launcherClick.pointRatio.y - 0.865) < 1e-6,
+  JSON.stringify(ef.launcherClick && ef.launcherClick.pointRatio));
+assert('有上下两档兜底比例（点空时换一档再试）',
+  Array.isArray(ef.launcherClick.fallbackRatios) && ef.launcherClick.fallbackRatios.length >= 2,
+  JSON.stringify(ef.launcherClick && ef.launcherClick.fallbackRatios));
 assert('默认**不改**窗口大小（owner 2026-10-23 要求：别动窗口）',
   ef.launcherClick.resizeIfNeeded === false, String(ef.launcherClick.resizeIfNeeded));
-assert('点击点按比例算（由 owner 的 (1397,816)/(1640,943) 折算，窗口多大都能用）',
-  Math.abs(ef.launcherClick.pointRatio.x - 1397 / 1640) < 1e-6
-  && Math.abs(ef.launcherClick.pointRatio.y - 816 / 943) < 1e-6,
-  JSON.stringify(ef.launcherClick.pointRatio));
 assert('启动候选：Endfield.exe 仍在链上兜底（老版本/启动器缺失时）',
   ef.clientCandidates[1].exe.endsWith('Endfield Game\\Endfield.exe'),
   JSON.stringify(ef.clientCandidates.map((c) => c.exe)));

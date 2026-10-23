@@ -122,18 +122,23 @@ export const DEFAULT_ENDFIELD = {
   // 启动器进程名：用来判断"启动器是不是本来就已经开着"（单实例会吞掉新参数），
   // 以及失败后把它关掉重试。
   launcherProcessNames: ['Games.exe', 'Launcher.exe'],
-  // 「点开始游戏」的几何参数：坐标以**启动器窗口客户区左上角**为原点。
-  // 尺寸与期望不符时（启动器记住的窗口大小可能不同）先把窗口调成期望尺寸再点，
-  // 这样按钮位置才和 owner 量的一致；调不动就放弃点击（宁可退回"等人点"，也不乱点）。
+  // 「点开始游戏」的几何参数：比例以**启动器窗口客户区**为基准（窗口多大都能算，且不改窗口大小）。
+  // 比例来自 owner 2026-10-23 的截图：黄色「开始游戏」按钮中心 ≈ (85.4%, 91.4%)。
+  // 之前用的 (85.2%, 86.5%) 是拿 owner 早期像素建议反推的，实测偏上约 40px、容易点空。
+  // 兜底：`fallbackRatios` 依次试（点一次→等 tryWaitSec 看游戏进程→没动就换下一档）。
   launcherClick: {
     enabled: true,
-    expect: { width: 1640, height: 943, tolerancePct: 8 },
-    point: { x: 1397, y: 816 },
-    resizeIfNeeded: false,   // 2026-10-23 owner：不要改窗口大小
-    // 点击点按**比例**算（由 owner 的 (1397,816)/(1640,943) 折算），窗口多大都能用
-    pointRatio: { x: 1397 / 1640, y: 816 / 943 },
-    settleMs: 1200,        // 置前/缩放后等界面稳住
-    windowWaitMs: 15000,   // 等启动器窗口出现
+    resizeIfNeeded: false,       // owner 2026-10-23：不要改窗口大小
+    pointRatio: { x: 0.854, y: 0.865 },   // 实测点中（2026-10-23 20:15）
+    fallbackRatios: [
+      { x: 0.854, y: 0.865 },    // owner 最初的像素建议（y 偏上那档）
+      { x: 0.854, y: 0.95 },     // 再往下一点
+    ],
+    tryWaitSec: 12,              // 每档点完等多久看游戏进程
+    moveOccluders: true,         // 点之前把压在启动器上的窗口临时最小化（点完还原）
+    settleMs: 1200,
+    windowWaitMs: 15000,
+    expect: { width: 1640, height: 943, tolerancePct: 8 },   // 仅日志参考
   },
   clientProcesses: ['Endfield.exe'],
   taskName: 'qq-bridge-endfield-daily',
@@ -643,8 +648,9 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
   const resize = click.resizeIfNeeded === true;          // 默认**不**改窗口大小（owner 2026-10-23：别动窗口）
   // 默认按**比例**点（不依赖窗口尺寸）：比例由 owner 给的 (1397,816) / (1640,943) 折算而来。
   // 这样窗口多大都能算，不需要为了点一下去改别人的窗口。
-  const ratio = click.pointRatio ?? { x: 1397 / 1640, y: 816 / 943 };
+  const ratio = opts.ratio ?? click.pointRatio ?? { x: 0.854, y: 0.914 };
   const settleMs = Number(click.settleMs ?? 1200);
+  const moveOccluders = click.moveOccluders !== false;
 
   const script = [
     // 强制 UTF-8：中文窗口标题/日志别乱码（踩过）
@@ -738,6 +744,26 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
     '    ShowWindow(root, 6 /*SW_MINIMIZE*/);',
     '    return "MINIMIZED " + sb.ToString();',
     '  }',
+    '  // 把**盖在启动器矩形上**的其它可见窗口临时最小化（不是关掉），返回 "hwnd|进程名" 列表，供点完还原。',
+    '  // 2026-10-23 实测：启动器被系统"设置"、MaaEnd 更新弹窗压住时，点击会落到那些窗口上。',
+    '  public static string MinimizeOverlapping(IntPtr self) {',
+    '    RECT me; GetWindowRect(self, out me);',
+    '    var done = new List<string>();',
+    '    EnumWindows((w, l) => {',
+    '      if (w == self || !IsWindowVisible(w)) return true;',
+    '      RECT r; GetWindowRect(w, out r);',
+    '      if (r.Right - r.Left <= 1 || r.Bottom - r.Top <= 1) return true;',
+    '      if (r.Right < me.Left || r.Left > me.Right || r.Bottom < me.Top || r.Top > me.Bottom) return true;',
+    '      int pid; GetWindowThreadProcessId(w, out pid);',
+    '      string n = "";',
+    '      try { n = System.Diagnostics.Process.GetProcessById(pid).ProcessName; } catch { return true; }',
+    '      ShowWindow(w, 6 /*SW_MINIMIZE*/);',
+    '      done.Add(w.ToInt64() + "|" + n);',
+    '      return true;',
+    '    }, IntPtr.Zero);',
+    '    return string.Join(";", done);',
+    '  }',
+    '  public static void Restore(long hwnd) { ShowWindow(new IntPtr(hwnd), 9 /*SW_RESTORE*/); }',
     '  public static string ClickClient(IntPtr h, int x, int y) {',
     '    RECT c; GetClientRect(h, out c);',
     '    int cw = c.Right - c.Left, ch = c.Bottom - c.Top;',
@@ -764,7 +790,11 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
     `$wantW = ${Number(expect.width)}; $wantH = ${Number(expect.height)};`,
     `$ratioX = ${Number(ratio.x)}; $ratioY = ${Number(ratio.y)};`,
     `$resize = ${resize ? '$true' : '$false'};`,
+    `$moveOccluders = ${moveOccluders ? '$true' : '$false'};`,
     'if ($resize) { [QbClick]::Resize($h, $wantW, $wantH); Start-Sleep -Milliseconds 400 }',
+    // 先把压在启动器上的窗口临时最小化（点完还原）：实测这些窗口会让点击落到它们身上
+    '$mins = "";',
+    'if ($moveOccluders) { $mins = [QbClick]::MinimizeOverlapping($h); if ($mins) { Write-Output ("MOVED`t" + $mins); Start-Sleep -Milliseconds 500 } }',
     '[QbClick]::Activate($h);',
     // 点击期间保持置顶：普通对话框压不住（WindowFromPoint 跨权限不可信，实测报 SELF）
     '[QbClick]::SetTopmost($h);',
@@ -779,14 +809,13 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
     'Write-Output ("POINT`tclient=" + $cw + "x" + $chh + " ratio=" + $ratioX + "," + $ratioY + " -> " + $pointX + "," + $pointY)',
     '$probe = [QbClick]::ProbeClient($h, $pointX, $pointY);',
     'Write-Output ("PROBE`t" + $probe)',
-    '$xy = (($probe -split "-> screen ")[1]);',
-    'if ($xy) { $pt = $xy.Split(","); Write-Output ("OCCLUDER`t" + [QbClick]::Occluder($h, [int]$pt[0], [int]$pt[1])) }',
-    // dryRun：只算坐标、不真的点（用来核对"点会落在哪个位置"，避免盲点）
+    // dryRun：只算坐标、不真的点
     (opts.dryRun
       ? 'Write-Output ("DRYRUN`t" + $probe)'
       : 'Write-Output ("CLICK`t" + [QbClick]::ClickClient($h, $pointX, $pointY))'),
-    // 点完立刻取消置顶，别长期霸占
+    // 点完立刻取消置顶 + 把临时最小化的窗口还原
     '[QbClick]::ClearTopmost($h);',
+    'if ($mins) { foreach ($m in ($mins -split ";" | Where-Object { $_ })) { $hw = [int64](($m -split "\\|")[0]); if ($hw -ne 0) { [QbClick]::Restore($hw) } }; Write-Output "RESTORED" }',
   ].join('\n');
 
   const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeoutMs: 60000 });
@@ -801,22 +830,22 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
   const after = parse(lineOf('AFTER')) ?? parse(lineOf('BEFORE'));
   const clickLine = lineOf('CLICK') || lineOf('DRYRUN');
   if (!after) return { ok: false, error: `读不到启动器窗口信息（输出：${out.slice(0, 200)}）` };
-  // 点击前先看"那个屏幕点上最上面的是谁"：被别的窗口挡住就不点（点了也是点到别人身上）
+  const moved = lineOf('MOVED').replace(/^MOVED\s*/, '');
   const occluder = lineOf('OCCLUDER').replace(/^OCCLUDER\s*/, '');
   if (opts.dryRun) {
     // 干跑：只回报坐标与遮挡情况，不点击、也不当失败
-    return { ok: true, dryRun: true, window: after, detail: clickLine, occluder, occluded: occluder && occluder !== 'SELF' && occluder !== 'NONE' };
+    return { ok: true, dryRun: true, window: after, detail: clickLine, occluder, moved, occluded: occluder && occluder !== 'SELF' && occluder !== 'NONE' };
   }
-  if (occluder && occluder !== 'SELF' && occluder !== 'NONE') {
-    return { ok: false, error: `点击点被别的窗口挡住（${occluder}）：先把它挪开或关掉再试`, window: after, occluder };
-  }
-  // 尺寸核对用客户区：坐标就是相对客户区的
-  const geo = checkLauncherGeometry({ windows: [{ title: after.title, width: after.clientWidth, height: after.clientHeight }] }, expect);
-  if (!geo.ok) {
-    return { ok: false, error: `尺寸不符，未点击：${geo.reason}（客户区 ${after.clientWidth}x${after.clientHeight}）`, window: after };
+  // 只有"按绝对像素点"时才需要尺寸门槛（像素位置对尺寸敏感）。
+  // 按**比例**点不依赖尺寸 —— 2026-10-23 实测：不缩放时窗口 1312x754，这个门槛把三次点击全拦下了。
+  if (click.enforceSize === true) {
+    const geo = checkLauncherGeometry({ windows: [{ title: after.title, width: after.clientWidth, height: after.clientHeight }] }, expect);
+    if (!geo.ok) {
+      return { ok: false, error: `尺寸不符，未点击：${geo.reason}（客户区 ${after.clientWidth}x${after.clientHeight}）`, window: after };
+    }
   }
   if (!clickLine.includes('CLICKED')) return { ok: false, error: `点击失败：${clickLine || '(无输出)'}`, window: after };
-  return { ok: true, window: after, detail: clickLine.replace(/^CLICK\s*/, ''), occluder };
+  return { ok: true, window: after, detail: clickLine.replace(/^CLICK\s*/, ''), occluder, moved };
 }
 
 
@@ -1075,16 +1104,30 @@ export async function runJob(cfg, args = {}, deps = {}) {
       log(`⚠️ ${Math.round(waitMs / 1000)}s 内没看到启动器窗口，跳过点击`);
       return false;
     }
-    const clicked = await clickLauncher(cfg).catch((error) => ({ ok: false, error: error?.message ?? String(error) }));
-    job.clickAttempt = { ok: clicked.ok === true, error: clicked.error ?? '', window: clicked.window ?? null, detail: clicked.detail ?? '' };
-    if (!clicked.ok) {
-      log(`⚠️ 点击「开始游戏」没成功：${clicked.error}`);
-      job.clientAttempts.push({ target: label, ok: false, pid: null, error: clicked.error ?? '' });
-      return false;
+    // 多档重试：先按截图算出的比例点（0.854, 0.914）；点完等 tryWaitSec 看游戏进程，
+    // 没动就换下一档（owner 最初的 y=0.865、再往下的 0.95）。按钮是宽胶囊（≈14% 宽、6.6% 高），
+    // 上下扫两三档足以覆盖"比例略有偏差"的情况，又不会乱点一片。
+    const ratios = [lc.pointRatio, ...(Array.isArray(lc.fallbackRatios) ? lc.fallbackRatios : [])].filter(Boolean);
+    const tryWaitSec = Number(lc.tryWaitSec ?? 12);
+    for (let i = 0; i < ratios.length; i++) {
+      const ratio = ratios[i];
+      const clicked = await clickLauncher(cfg, { ratio }).catch((error) => ({ ok: false, error: error?.message ?? String(error) }));
+      job.clickAttempt = { ok: clicked.ok === true, error: clicked.error ?? '', window: clicked.window ?? null, detail: clicked.detail ?? '', ratio };
+      if (!clicked.ok) {
+        log(`⚠️ 点击「开始游戏」没成功（第 ${i + 1}/${ratios.length} 档 ${ratio.x.toFixed(3)},${ratio.y.toFixed(3)}）：${clicked.error}`);
+        job.clientAttempts.push({ target: `${label}（第${i + 1}档）`, ok: false, pid: null, error: clicked.error ?? '' });
+        continue;
+      }
+      log(`🖱️ 已点击「开始游戏」（${clicked.detail ?? ''}；窗口 ${clicked.window?.title ?? '?'} 客户区 ${clicked.window?.clientWidth}x${clicked.window?.clientHeight}；第 ${i + 1}/${ratios.length} 档 ${ratio.x.toFixed(3)},${ratio.y.toFixed(3)}）`);
+      job.clientAttempts.push({ target: `${label}（第${i + 1}档）`, ok: true, pid: null, error: '' });
+      // 等一眼：游戏起来就收工，没起来换下一档
+      if (await waitForGame(tryWaitSec)) {
+        job.clientLaunchedBy = `${label}（第${i + 1}档点中）`;
+        return true;
+      }
+      if (i + 1 < ratios.length) log(`⚠️ 这一档点了没反应（${tryWaitSec}s 内没有游戏进程），换下一档比例再试`);
     }
-    log(`🖱️ 已点击「开始游戏」（${clicked.detail ?? ''}；窗口 ${clicked.window?.title ?? '?'} 客户区 ${clicked.window?.clientWidth}x${clicked.window?.clientHeight}）`);
-    job.clientAttempts.push({ target: label, ok: true, pid: null, error: '' });
-    return true;
+    return false;
   };
 
   /** 按候选链启动客户端，直到"游戏进程真的出现"。成功返回 true。 */
