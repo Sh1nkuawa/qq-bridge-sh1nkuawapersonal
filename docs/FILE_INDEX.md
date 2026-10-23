@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **323** 个被跟踪文件（其中 321 个文本文件、合计 **71,472** 行） —— 文件自带说明 **300**、人工补写 **23**、待补 **0**。
+统计：共 **324** 个被跟踪文件（其中 322 个文本文件、合计 **71,634** 行） —— 文件自带说明 **301**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,175 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,212 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -413,6 +413,7 @@
 | [`state-acl.mjs`](../src/state-acl.mjs) | 140 | state/ 目录 ACL 收紧的**唯一实现**。 | 文件自带 |
 | [`sticker-lib.js`](../src/sticker-lib.js) | 295 | 表情包体系（二代仿真模式）——本地表情知识库与策略提示纯函数。 | 文件自带 |
 | [`token-ledger.js`](../src/token-ledger.js) | 938 | Token 用量账本：把 DSH 会话事件里的 provider usage 落成「按会话 × 按回合」的可查明细， | 文件自带 |
+| [`tts.js`](../src/tts.js) | 125 | 日文 TTS：把文本合成为语音文件，放进语音库目录（现有 qq_send_voice 直接可发）。 | 文件自带 |
 | [`turn-retry.mjs`](../src/turn-retry.mjs) | 45 | 回合级错误的重试策略（纯函数，便于单测）。 | 文件自带 |
 | [`v2-wait.js`](../src/v2-wait.js) | 27 | 二代仿真模式：等待/结束回合相关的轻量判断工具。 | 文件自带 |
 | [`voice-core.js`](../src/voice-core.js) | 501 | 语音发送的共享内核：独立工具（上级 voice-tool/ 的 voice-cli.mjs / voice-gui.mjs）与桥接都用同一套规则。 | 文件自带 |

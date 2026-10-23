@@ -11,11 +11,20 @@
 //   · 出错**明确返回 error**（上层原样告诉用户"这次没法发语音"）✓。
 
 import crypto from 'node:crypto';
+import { createTtsService } from './tts-service.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const DEFAULT_API = 'http://127.0.0.1:9880/tts';
 const MAX_TEXT_CHARS = 200;
+
+// 语音服务（GPT-SoVITS API）按需拉起 + 空闲自动关闭（默认 30 分钟）
+let service = null;
+function getService() {
+  if (!service) service = createTtsService({ log: (m) => console.log(m) });
+  return service;
+}
+
 
 /** 是否像日文（至少一个假名） */
 export function looksJapanese(text) {
@@ -97,14 +106,18 @@ export async function synthesizeJapanese(text, { voiceDir = 'audio', cfg = {} } 
   if (!looksJapanese(clean)) return { ok: false, error: '只接受日文（文本里至少要有假名）；请让 AI 写日文再发' };
 
   const conf = { ...loadTtsConfig(), ...cfg };
+  // 需要时才拉起（空闲 30 分钟会自动关，见 tts-service.js）
+  const ensured = await getService().ensureRunning();
+  if (!ensured.ok) return { ok: false, error: ensured.error || '语音服务没能启动' };
   const dir = path.join(voiceDir, 'tts');
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `ja-${ttsCacheKey(clean)}.wav`);
-  if (fs.existsSync(file) && fs.statSync(file).size > 1000) return { ok: true, file, cached: true };
+  if (fs.existsSync(file) && fs.statSync(file).size > 1000) { getService().touch(); return { ok: true, file, cached: true }; }
 
   try {
     const buf = await synthGptSoVits(clean, conf);
     fs.writeFileSync(file, buf);
+    getService().touch();
     return { ok: true, file, cached: false, bytes: buf.length };
   } catch (error) {
     return { ok: false, error: String(error?.message ?? error) };
