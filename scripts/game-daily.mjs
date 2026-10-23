@@ -129,7 +129,9 @@ export const DEFAULT_ENDFIELD = {
     enabled: true,
     expect: { width: 1640, height: 943, tolerancePct: 8 },
     point: { x: 1397, y: 816 },
-    resizeIfNeeded: true,
+    resizeIfNeeded: false,   // 2026-10-23 owner：不要改窗口大小
+    // 点击点按**比例**算（由 owner 的 (1397,816)/(1640,943) 折算），窗口多大都能用
+    pointRatio: { x: 1397 / 1640, y: 816 / 943 },
     settleMs: 1200,        // 置前/缩放后等界面稳住
     windowWaitMs: 15000,   // 等启动器窗口出现
   },
@@ -638,7 +640,10 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
   const click = cfg.launcherClick ?? {};
   const point = click.point ?? { x: 1397, y: 816 };
   const expect = click.expect ?? { width: 1640, height: 943, tolerancePct: 8 };
-  const resize = click.resizeIfNeeded !== false;
+  const resize = click.resizeIfNeeded === true;          // 默认**不**改窗口大小（owner 2026-10-23：别动窗口）
+  // 默认按**比例**点（不依赖窗口尺寸）：比例由 owner 给的 (1397,816) / (1640,943) 折算而来。
+  // 这样窗口多大都能算，不需要为了点一下去改别人的窗口。
+  const ratio = click.pointRatio ?? { x: 1397 / 1640, y: 816 / 943 };
   const settleMs = Number(click.settleMs ?? 1200);
 
   const script = [
@@ -757,15 +762,21 @@ export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
     'if ($h -eq [IntPtr]::Zero) { Write-Output "NO_WINDOW"; exit 0 }',
     'Write-Output ("BEFORE`t" + [QbClick]::Info($h))',
     `$wantW = ${Number(expect.width)}; $wantH = ${Number(expect.height)};`,
-    `$pointX = ${Number(point.x)}; $pointY = ${Number(point.y)};`,
+    `$ratioX = ${Number(ratio.x)}; $ratioY = ${Number(ratio.y)};`,
     `$resize = ${resize ? '$true' : '$false'};`,
-    '$r = New-Object Object;',
     'if ($resize) { [QbClick]::Resize($h, $wantW, $wantH); Start-Sleep -Milliseconds 400 }',
     '[QbClick]::Activate($h);',
     // 点击期间保持置顶：普通对话框压不住（WindowFromPoint 跨权限不可信，实测报 SELF）
     '[QbClick]::SetTopmost($h);',
     `Start-Sleep -Milliseconds ${settleMs};`,
-    'Write-Output ("AFTER`t" + [QbClick]::Info($h))',
+    '$info = [QbClick]::Info($h);',
+    'Write-Output ("AFTER`t" + $info)',
+    // 按**比例**算像素：窗口多大都能用，不需要为了点一下去改窗口大小（owner 2026-10-23 要求）
+    '$f = $info.Split("`t");',
+    '$cw = [int]$f[3]; $chh = [int]$f[4];',
+    '$pointX = [int][math]::Round($cw * $ratioX);',
+    '$pointY = [int][math]::Round($chh * $ratioY);',
+    'Write-Output ("POINT`tclient=" + $cw + "x" + $chh + " ratio=" + $ratioX + "," + $ratioY + " -> " + $pointX + "," + $pointY)',
     '$probe = [QbClick]::ProbeClient($h, $pointX, $pointY);',
     'Write-Output ("PROBE`t" + $probe)',
     '$xy = (($probe -split "-> screen ")[1]);',
