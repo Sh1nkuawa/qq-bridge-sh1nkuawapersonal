@@ -878,7 +878,11 @@ server.tool(
   async ({ key, token, text, ja, label }) => {
     try {
       // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
-      const syn = await agentApi('/api/tts/synthesize', {
+      // ⚠️ /api/tts/synthesize 在**操作者通道**（只认 ?token=<控制台令牌>），
+      // 只带 x-agent-token 会被"该接口仅控制台可用"拦掉 ✗（2026-10-24 踩到，截图里就是这条）
+      const consoleTok = readConsoleToken();
+      const synUrl = '/api/tts/synthesize' + (consoleTok ? '?token=' + encodeURIComponent(consoleTok) : '');
+      const syn = await agentApi(synUrl, {
         method: 'POST',
         body: JSON.stringify({ text: ja, key }),
         headers: { 'x-agent-token': token },
