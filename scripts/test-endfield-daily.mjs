@@ -39,16 +39,22 @@ assert('30 分钟兜底', ef.timeoutSec === 1800);
 assert('完成文案判据里有"任务已全部完成"', ef.completionPatterns.includes('任务已全部完成'), ef.completionPatterns.join('/'));
 assert('成功计数认 Succeeded 与 Completed', ef.successPatterns.join(',') === 'Tasker\\.Task\\.Succeeded,Tasker\\.Task\\.Completed', ef.successPatterns.join(','));
 assert('日志监听目录指向 MAAEND\\debug', ef.maaLogDirs.join(',') === 'G:\\MAAEND\\debug', ef.maaLogDirs.join(','));
-// 2026-10-23 起：终末地更新后，游戏侧会校验"是不是启动器拉起来的"（启动器每次拉起会写
-// U8Data\config\Launcher.meta 票据，且**不给游戏传任何命令行参数**）。直接跑 Endfield.exe
-// 会被拒（启动器里就有 "The game was not launched from the TapTap launcher"），
-// 所以候选链改成**启动器优先**——就是桌面「明日方舟：终末地」快捷方式同款命令；
-// 直接跑 exe 只作为老版本兜底。
-assert('启动候选：启动器优先（官方快捷方式同款 --game=Endfield --reason=4）',
+// 2026-10-23 真机实测后的定案：
+//   · 直启 Endfield.exe 会被"启动票据"校验拒绝（弹窗「游戏启动失败」）；
+//   · Launcher.exe --game/--reason **不触发启动**（冷/热各试一次都只开界面）；
+//   · 启动器 UI 不暴露 UIA（Qt/CefView，0 个后代元素）⇒ 只能**按坐标点「开始游戏」**。
+// 所以首选候选是"点启动器"，Endfield.exe 只留作老版本兜底。
+assert('启动候选：首选「点启动器开始游戏」（click 标记必须活过归一化）',
   ef.clientCandidates[0].exe.endsWith('Launcher.exe')
-  && ef.clientCandidates[0].args.join(' ') === '--game=Endfield --reason=4'
+  && ef.clientCandidates[0].click === true
   && ef.clientCandidates[0].launcher === true,
   JSON.stringify(ef.clientCandidates));
+assert('点击几何参数：期望 1640x943、点 (1397,816)（客户区坐标）',
+  ef.launcherClick && ef.launcherClick.expect.width === 1640 && ef.launcherClick.expect.height === 943
+  && ef.launcherClick.point.x === 1397 && ef.launcherClick.point.y === 816,
+  JSON.stringify(ef.launcherClick));
+assert('尺寸不符时先尝试把窗口调成期望尺寸（否则宁可放弃点击）',
+  ef.launcherClick.resizeIfNeeded === true, String(ef.launcherClick.resizeIfNeeded));
 assert('启动候选：Endfield.exe 仍在链上兜底（老版本/启动器缺失时）',
   ef.clientCandidates[1].exe.endsWith('Endfield Game\\Endfield.exe'),
   JSON.stringify(ef.clientCandidates.map((c) => c.exe)));

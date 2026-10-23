@@ -113,12 +113,26 @@ export const DEFAULT_ENDFIELD = {
     { path: ['settings', 'autoRunOnLaunch'], value: true, label: 'autoRunOnLaunch=true' }
   ],
   clientCandidates: [
-    { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: ['--game=Endfield', '--reason=4'], launcher: true },
+    // 首选：**点启动器上的「开始游戏」**（游戏侧校验启动票据，只有启动器拉起才算数；
+    // 而 Launcher.exe 的 --game/--reason 参数实测不触发启动，见 INSTALL_NOTES 16.33）
+    { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: [], launcher: true, click: true },
+    // 兜底：老版本能直启（当前版本会被拒，waitGameWindow 会识别「游戏启动失败」弹窗并快速失败）
     { exe: 'G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe', args: [] }
   ],
   // 启动器进程名：用来判断"启动器是不是本来就已经开着"（单实例会吞掉新参数），
   // 以及失败后把它关掉重试。
   launcherProcessNames: ['Games.exe', 'Launcher.exe'],
+  // 「点开始游戏」的几何参数：坐标以**启动器窗口客户区左上角**为原点。
+  // 尺寸与期望不符时（启动器记住的窗口大小可能不同）先把窗口调成期望尺寸再点，
+  // 这样按钮位置才和 owner 量的一致；调不动就放弃点击（宁可退回"等人点"，也不乱点）。
+  launcherClick: {
+    enabled: true,
+    expect: { width: 1640, height: 943, tolerancePct: 8 },
+    point: { x: 1397, y: 816 },
+    resizeIfNeeded: true,
+    settleMs: 1200,        // 置前/缩放后等界面稳住
+    windowWaitMs: 15000,   // 等启动器窗口出现
+  },
   clientProcesses: ['Endfield.exe'],
   taskName: 'qq-bridge-endfield-daily',
   stateFile: 'state/endfield-daily.json',
@@ -181,7 +195,10 @@ export function mergeConfig(raw, args = {}, repoRoot = REPO_ROOT, profileName = 
       exe: String(c?.exe ?? ''),
       args: Array.isArray(c?.args) ? c.args.map(String) : [],
       // 这个候选是"启动器"而不是游戏本体：需要处理单实例吞参数、失败后关掉重试
-      launcher: c?.launcher === true || /Launcher\.exe$/i.test(String(c?.exe ?? ''))
+      launcher: c?.launcher === true || /Launcher\.exe$/i.test(String(c?.exe ?? '')),
+      // 「点启动器上的开始游戏」候选：**必须原样保留这个标记**，否则归一化会把它当成
+      // 普通的"启动 exe"，那种候选永远拉不起游戏（2026-10-23 踩过：click 被归一化吃掉）
+      click: c?.click === true
     }))
     .filter((c) => c.exe !== '');
   src.launcherProcessNames = (Array.isArray(src.launcherProcessNames) && src.launcherProcessNames.length
@@ -582,6 +599,217 @@ export function isBrokenGameWindow(info) {
 }
 
 /**
+ * 点击几何判据（纯函数，便于单测）：窗口尺寸是否与期望相符。
+ *
+ * 为什么必须先核对尺寸再点：坐标是 owner 量出来的「点在哪」。启动器记住的窗口大小可能不同
+ * （2026-10-23 实测就出现过 1312x754），尺寸不对时同一个像素点会落到**别的按钮**上
+ * （更新/公告/购买…）。宁可放弃点击退回"等人点"，也不乱点。
+ */
+export function checkLauncherGeometry(info, expect = {}) {
+  // 允许传整份配置（{expect:{…}}）或直接传期望对象（{width,height,tolerancePct}）
+  const e = expect?.expect ?? expect ?? {};
+  const tolerancePct = Number(e.tolerancePct ?? 8);
+  const wantW = Number(e.width);
+  const wantH = Number(e.height);
+  const win = largestWindow(info);
+  if (!win) return { ok: false, reason: '没找到启动器窗口' };
+  const w = Number(win.width);
+  const h = Number(win.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return { ok: false, reason: `读不到窗口尺寸`, window: win };
+  const tol = Math.max(1, tolerancePct) / 100;
+  const dw = Math.abs(w - wantW) / wantW;
+  const dh = Math.abs(h - wantH) / wantH;
+  if (dw <= tol && dh <= tol) return { ok: true, window: win, expected: { width: wantW, height: wantH } };
+  return {
+    ok: false,
+    window: win,
+    reason: `窗口尺寸 ${w}x${h} 与期望 ${wantW}x${wantH} 相差超过 ${tolerancePct}%（±${Math.round(dw * 100)}% / ±${Math.round(dh * 100)}%）`,
+  };
+}
+
+/**
+ * 在启动器上点「开始游戏」：置前 →（必要时调整窗口尺寸）→ 按客户区坐标点击。
+ *
+ * 坐标以**客户区左上角**为原点；点击前会把窗口激活并做尺寸校验（见 checkLauncherGeometry）。
+ * 只做"点一下"，是否真的把游戏拉起来由调用方用 waitForGame 判定。
+ */
+export async function defaultClickLauncherWindow(cfg = {}, opts = {}) {
+  const names = (cfg.launcherProcessNames ?? ['Games.exe', 'Launcher.exe']).map((n) => String(n).replace(/\.exe$/i, ''));
+  const click = cfg.launcherClick ?? {};
+  const point = click.point ?? { x: 1397, y: 816 };
+  const expect = click.expect ?? { width: 1640, height: 943, tolerancePct: 8 };
+  const resize = click.resizeIfNeeded !== false;
+  const settleMs = Number(click.settleMs ?? 1200);
+
+  const script = [
+    // 强制 UTF-8：中文窗口标题/日志别乱码（踩过）
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$OutputEncoding = [System.Text.Encoding]::UTF8',
+    'Add-Type @"',
+    'using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;',
+    'public class QbClick {',
+    '  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);',
+    '  delegate bool EnumProc(IntPtr h, IntPtr l);',
+    '  [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);',
+    '  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern int GetWindowThreadProcessId(IntPtr h, out int pid);',
+    '  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);',
+    '  [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h, out RECT r);',
+    '  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h, ref POINT p);',
+    '  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);',
+    '  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);',
+    '  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);',
+    '  [DllImport("user32.dll")] static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);',
+    '  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);',
+    '  [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);',
+    '  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }',
+    '  public struct POINT { public int X; public int Y; }',
+    `  static readonly HashSet<string> Want = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ${names.map((n) => `"${n}"`).join(', ')} };`,
+    '  public static IntPtr Find() {',
+    '    IntPtr res = IntPtr.Zero;',
+    '    EnumWindows((h, l) => {',
+    '      if (!IsWindowVisible(h)) return true;',
+    '      var sb = new StringBuilder(256); GetWindowText(h, sb, 256);',
+    '      if (sb.Length == 0) return true;',
+    '      int pid; GetWindowThreadProcessId(h, out pid);',
+    '      string pname = "";',
+    '      try { pname = System.Diagnostics.Process.GetProcessById(pid).ProcessName; } catch { return true; }',
+    '      if (!Want.Contains(pname)) return true;',
+    '      res = h; return false;',
+    '    }, IntPtr.Zero);',
+    '    return res;',
+    '  }',
+    '  public static string Info(IntPtr h) {',
+    '    RECT r; GetWindowRect(h, out r);',
+    '    RECT c; GetClientRect(h, out c);',
+    '    var sb = new StringBuilder(256); GetWindowText(h, sb, 256);',
+    '    return sb.ToString() + "\\t" + (r.Right - r.Left) + "\\t" + (r.Bottom - r.Top)',
+    '      + "\\t" + (c.Right - c.Left) + "\\t" + (c.Bottom - c.Top) + "\\t" + (IsIconic(h) ? "1" : "0");',
+    '  }',
+    '  public static void Activate(IntPtr h) { if (IsIconic(h)) ShowWindow(h, 9); ShowWindow(h, 5); SetForegroundWindow(h); }',
+    '  // 真正把窗口抬到最前：SetForegroundWindow 常被系统静默拒绝（后台进程抢前台受限），',
+    '  // 实测 2026-10-23：MaEnd 的"发现新版本"对话框压在启动器上面，点击落到了 MaaEnd 上。',
+    '  // 做法：先 HWND_TOPMOST 再 HWND_NOTOPMOST —— 抬到最前但不长期霸占置顶。',
+    '  public static void Raise(IntPtr h) {',
+    '    SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040 /*NOSIZE|NOMOVE|SHOWWINDOW*/);',
+    '    SetWindowPos(h, new IntPtr(-2) /*HWND_NOTOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);',
+    '  }',
+    '  // 点击期间**保持置顶**：普通对话框（比如 MaaEnd 的更新弹窗）就压不住了。',
+    '  // 实测坑：WindowFromPoint 在跨完整性级别时不可靠（截图里明明被盖住，它却报 SELF），',
+    '  // 所以不靠它判断，改用"置顶 + 点完就取消"这种确定性手段。',
+    '  public static void SetTopmost(IntPtr h) {',
+    '    SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);',
+    '  }',
+    '  public static void ClearTopmost(IntPtr h) {',
+    '    SetWindowPos(h, new IntPtr(-2) /*HWND_NOTOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);',
+    '  }',
+    '  // 屏幕坐标处**最上面**那个窗口是不是目标窗口（含其子窗口）？不是就说明被别的窗口挡住了。',
+    '  public static string Occluder(IntPtr h, int screenX, int screenY) {',
+    '    var p = new POINT { X = screenX, Y = screenY };',
+    '    IntPtr under = WindowFromPoint(p);',
+    '    if (under == IntPtr.Zero) return "NONE";',
+    '    IntPtr root = GetAncestor(under, 2 /*GA_ROOT*/);',
+    '    if (root == h) return "SELF";',
+    '    var sb = new StringBuilder(256); GetWindowText(root, sb, 256);',
+    '    int pid; GetWindowThreadProcessId(root, out pid);',
+    '    string n = "";',
+    '    try { n = System.Diagnostics.Process.GetProcessById(pid).ProcessName; } catch { }',
+    '    return "OTHER " + n + ":" + sb.ToString();',
+    '  }',
+    '  public static void Resize(IntPtr h, int w, int ht) {',
+    '    RECT r; GetWindowRect(h, out r);',
+    '    SetWindowPos(h, IntPtr.Zero, r.Left, r.Top, w, ht, 0x0004 /*SWP_NOZORDER*/);',
+    '  }',
+    '  // 把挡在点击点上的窗口最小化（不是关掉，随时能还原），让点击能落到启动器上。',
+    '  public static string MinimizeOccluder(IntPtr h, int screenX, int screenY) {',
+    '    var p = new POINT { X = screenX, Y = screenY };',
+    '    IntPtr under = WindowFromPoint(p);',
+    '    if (under == IntPtr.Zero) return "NONE";',
+    '    IntPtr root = GetAncestor(under, 2);',
+    '    if (root == h) return "SELF";',
+    '    var sb = new StringBuilder(256); GetWindowText(root, sb, 256);',
+    '    ShowWindow(root, 6 /*SW_MINIMIZE*/);',
+    '    return "MINIMIZED " + sb.ToString();',
+    '  }',
+    '  public static string ClickClient(IntPtr h, int x, int y) {',
+    '    RECT c; GetClientRect(h, out c);',
+    '    int cw = c.Right - c.Left, ch = c.Bottom - c.Top;',
+    '    if (x < 0 || y < 0 || x >= cw || y >= ch) return "OUT_OF_CLIENT " + x + "," + y + " client=" + cw + "x" + ch;',
+    '    var p = new POINT { X = x, Y = y };',
+    '    if (!ClientToScreen(h, ref p)) return "CLIENT_TO_SCREEN_FAILED";',
+    '    SetCursorPos(p.X, p.Y);',
+    '    mouse_event(0x0002 /*LEFTDOWN*/, 0, 0, 0, IntPtr.Zero);',
+    '    mouse_event(0x0004 /*LEFTUP*/, 0, 0, 0, IntPtr.Zero);',
+    '    return "CLICKED " + p.X + "," + p.Y + " (client " + x + "," + y + " of " + cw + "x" + ch + ")";',
+    '  }',
+    '  public static string ProbeClient(IntPtr h, int x, int y) {',
+    '    RECT c; GetClientRect(h, out c);',
+    '    int cw = c.Right - c.Left, ch = c.Bottom - c.Top;',
+    '    var p = new POINT { X = x, Y = y };',
+    '    if (!ClientToScreen(h, ref p)) return "CLIENT_TO_SCREEN_FAILED";',
+    '    return "DRYRUN client=" + x + "," + y + " of " + cw + "x" + ch + " -> screen " + p.X + "," + p.Y;',
+    '  }',
+    '}',
+    '"@',
+    '$h = [QbClick]::Find();',
+    'if ($h -eq [IntPtr]::Zero) { Write-Output "NO_WINDOW"; exit 0 }',
+    'Write-Output ("BEFORE`t" + [QbClick]::Info($h))',
+    `$wantW = ${Number(expect.width)}; $wantH = ${Number(expect.height)};`,
+    `$pointX = ${Number(point.x)}; $pointY = ${Number(point.y)};`,
+    `$resize = ${resize ? '$true' : '$false'};`,
+    '$r = New-Object Object;',
+    'if ($resize) { [QbClick]::Resize($h, $wantW, $wantH); Start-Sleep -Milliseconds 400 }',
+    '[QbClick]::Activate($h);',
+    // 点击期间保持置顶：普通对话框压不住（WindowFromPoint 跨权限不可信，实测报 SELF）
+    '[QbClick]::SetTopmost($h);',
+    `Start-Sleep -Milliseconds ${settleMs};`,
+    'Write-Output ("AFTER`t" + [QbClick]::Info($h))',
+    '$probe = [QbClick]::ProbeClient($h, $pointX, $pointY);',
+    'Write-Output ("PROBE`t" + $probe)',
+    '$xy = (($probe -split "-> screen ")[1]);',
+    'if ($xy) { $pt = $xy.Split(","); Write-Output ("OCCLUDER`t" + [QbClick]::Occluder($h, [int]$pt[0], [int]$pt[1])) }',
+    // dryRun：只算坐标、不真的点（用来核对"点会落在哪个位置"，避免盲点）
+    (opts.dryRun
+      ? 'Write-Output ("DRYRUN`t" + $probe)'
+      : 'Write-Output ("CLICK`t" + [QbClick]::ClickClient($h, $pointX, $pointY))'),
+    // 点完立刻取消置顶，别长期霸占
+    '[QbClick]::ClearTopmost($h);',
+  ].join('\n');
+
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeoutMs: 60000 });
+  const out = String(r.stdout ?? '');
+  const lineOf = (tag) => out.split(/\r?\n/).find((l) => l.startsWith(tag)) ?? '';
+  if (out.includes('NO_WINDOW')) return { ok: false, error: '没找到启动器窗口（先把启动器拉起来再点）' };
+  const parse = (line) => {
+    const p = line.split('\t');
+    if (p.length < 6) return null;
+    return { title: p[1], width: Number(p[2]), height: Number(p[3]), clientWidth: Number(p[4]), clientHeight: Number(p[5]), minimized: p[6] === '1' };
+  };
+  const after = parse(lineOf('AFTER')) ?? parse(lineOf('BEFORE'));
+  const clickLine = lineOf('CLICK') || lineOf('DRYRUN');
+  if (!after) return { ok: false, error: `读不到启动器窗口信息（输出：${out.slice(0, 200)}）` };
+  // 点击前先看"那个屏幕点上最上面的是谁"：被别的窗口挡住就不点（点了也是点到别人身上）
+  const occluder = lineOf('OCCLUDER').replace(/^OCCLUDER\s*/, '');
+  if (opts.dryRun) {
+    // 干跑：只回报坐标与遮挡情况，不点击、也不当失败
+    return { ok: true, dryRun: true, window: after, detail: clickLine, occluder, occluded: occluder && occluder !== 'SELF' && occluder !== 'NONE' };
+  }
+  if (occluder && occluder !== 'SELF' && occluder !== 'NONE') {
+    return { ok: false, error: `点击点被别的窗口挡住（${occluder}）：先把它挪开或关掉再试`, window: after, occluder };
+  }
+  // 尺寸核对用客户区：坐标就是相对客户区的
+  const geo = checkLauncherGeometry({ windows: [{ title: after.title, width: after.clientWidth, height: after.clientHeight }] }, expect);
+  if (!geo.ok) {
+    return { ok: false, error: `尺寸不符，未点击：${geo.reason}（客户区 ${after.clientWidth}x${after.clientHeight}）`, window: after };
+  }
+  if (!clickLine.includes('CLICKED')) return { ok: false, error: `点击失败：${clickLine || '(无输出)'}`, window: after };
+  return { ok: true, window: after, detail: clickLine.replace(/^CLICK\s*/, ''), occluder };
+}
+
+
+/**
  * MAA 这次用哪种方式连游戏（决定要不要等 ADB）：
  *   ConnectSettings.Config == "PC" → Win32 截图/点击（官方 PC 端），**不需要 ADB**
  *   其它 → 按 ADB 处理（模拟器那种）
@@ -674,6 +902,7 @@ export async function runJob(cfg, args = {}, deps = {}) {
     listProcesses = defaultListProcesses,
     windowReady = defaultWindowReady,
     windowInfo = defaultWindowInfo,
+    clickLauncher = defaultClickLauncherWindow,
     maaConnectMode = defaultMaaConnectMode,
     logFiles = resolveWatchFiles,
     expectedTaskCount = defaultExpectedTaskCount,
@@ -790,10 +1019,88 @@ export async function runJob(cfg, args = {}, deps = {}) {
     return isGameRunning(procs, names);
   };
 
+  /**
+   * 「点启动器上的开始游戏」这条候选：先确保启动器窗口在，再按几何参数点一下。
+   * 返回 true 表示**点下去了**（是否真把游戏拉起来由后面的 waitForGame 判定）。
+   */
+  const clickLauncherCandidate = async (candidate) => {
+    const lc = cfg.launcherClick ?? {};
+    if (lc.enabled === false) { log('⚠️ launcherClick.enabled=false：跳过点击'); return false; }
+    const label = `点启动器开始游戏（客户区 ${lc.point?.x ?? '?'},${lc.point?.y ?? '?'}）`;
+    const names = cfg.launcherProcessNames ?? [];
+    const hasWindow = async () => {
+      const info = await windowInfo(names).catch(() => null);
+      return info && (info.windows ?? []).length ? info : null;
+    };
+
+    // 关键区分：**"启动器进程在"不等于"有窗口"**。
+    // 2026-10-23 实测踩过：一个没有窗口的僵尸 Launcher.exe（非提权启动、卡在等待）让脚本以为
+    // "启动器已在运行"，于是跳过启动、干等 15s 窗口不存在、整条点击路径失效。
+    let info = await hasWindow();
+    if (!info) {
+      const procRunning = await launcherRunning();
+      if (procRunning) {
+        log('⚠️ 启动器进程在、但没有窗口（僵尸进程）：关掉它重开一个');
+        const closed = await killByName(names).catch(() => ({ killed: [], failed: [] }));
+        if (closed?.killed?.length) log(`   已关闭：${closed.killed.join('、')}`);
+        await sleep(1500);
+      }
+      const started = await startClient(candidate);
+      job.clientAttempts.push({ target: `${path.basename(candidate.exe)}（仅启动界面）`, ok: started.ok, pid: started.pid ?? null, error: started.error ?? '' });
+      log(started.ok ? `先拉起启动器界面（PID ${started.pid ?? '?'}）` : `⚠️ 拉起启动器失败：${started.error}`);
+    } else {
+      log(`启动器窗口已在（${info.windows[0].title} ${info.windows[0].width}x${info.windows[0].height}），直接点「开始游戏」`);
+    }
+
+    // 等启动器窗口出现
+    const w0 = now();
+    const waitMs = Number(lc.windowWaitMs ?? 15000);
+    while (now() - w0 < waitMs) {
+      info = await hasWindow();
+      if (info) break;
+      await sleep(1000);
+    }
+    if (!info) {
+      log(`⚠️ ${Math.round(waitMs / 1000)}s 内没看到启动器窗口，跳过点击`);
+      return false;
+    }
+    const clicked = await clickLauncher(cfg).catch((error) => ({ ok: false, error: error?.message ?? String(error) }));
+    job.clickAttempt = { ok: clicked.ok === true, error: clicked.error ?? '', window: clicked.window ?? null, detail: clicked.detail ?? '' };
+    if (!clicked.ok) {
+      log(`⚠️ 点击「开始游戏」没成功：${clicked.error}`);
+      job.clientAttempts.push({ target: label, ok: false, pid: null, error: clicked.error ?? '' });
+      return false;
+    }
+    log(`🖱️ 已点击「开始游戏」（${clicked.detail ?? ''}；窗口 ${clicked.window?.title ?? '?'} 客户区 ${clicked.window?.clientWidth}x${clicked.window?.clientHeight}）`);
+    job.clientAttempts.push({ target: label, ok: true, pid: null, error: '' });
+    return true;
+  };
+
   /** 按候选链启动客户端，直到"游戏进程真的出现"。成功返回 true。 */
   const tryLaunchCandidates = async () => {
+    // 启动前先清掉**残留的 MaaEnd**：它是我们自己的工具，本轮稍后会重新起；
+    // 而它若停着，往往还带一个"发现新版本/更新完成"对话框，会压住启动器窗口 ——
+    // 2026-10-23 实测：点「开始游戏」的坐标正好落在 MaaEnd 的更新弹窗上，游戏因此没起来。
+    const toolNames = (cfg.toolProcessNames ?? []).map((n) => (/\.exe$/i.test(n) ? n : `${n}.exe`));
+    if (toolNames.length && (await listProcesses().catch(() => [])).some((p) => isGameRunning([p], toolNames))) {
+      log(`先关掉残留的 ${toolNames.join('/')}（它可能带着更新弹窗，会挡住启动器）`);
+      const r = await killByName(toolNames).catch(() => ({ killed: [], failed: [] }));
+      if (r?.killed?.length) log(`   已关闭：${r.killed.join('、')}`);
+      await sleep(1200);
+    }
     for (const candidate of cfg.clientCandidates) {
       const label = `${path.basename(candidate.exe)}${candidate.args?.length ? ' ' + candidate.args.join(' ') : ''}`;
+      // ① 「点开始游戏」候选：不是"启动一个 exe"，而是先确保启动器窗口在、再点按钮
+      if (candidate.click) {
+        if (!(await clickLauncherCandidate(candidate))) continue;
+        log(`等游戏进程出现（最多 ${cfg.clientBootSec}s）`);
+        if (await waitForGame(cfg.clientBootSec)) {
+          job.clientLaunchedBy = `${label}（点开始游戏）`;
+          return true;
+        }
+        log(`⚠️ 点了「开始游戏」，但 ${cfg.clientBootSec}s 内没看到游戏进程：换下一个候选`);
+        continue;
+      }
       const started = await startClient(candidate);
       job.clientAttempts.push({ target: label, ok: started.ok, pid: started.pid ?? null, error: started.error ?? '' });
       if (!started.ok) {
