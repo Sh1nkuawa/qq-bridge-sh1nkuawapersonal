@@ -877,7 +877,7 @@ server.tool(
       // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
       const syn = await agentApi('/api/tts/synthesize', {
         method: 'POST',
-        body: JSON.stringify({ text: ja }),
+        body: JSON.stringify({ text: ja, key }),
         headers: { 'x-agent-token': token },
         timeoutMs: 300000
       });

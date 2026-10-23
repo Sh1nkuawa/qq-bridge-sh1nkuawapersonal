@@ -6649,6 +6649,18 @@ async function main() {
         if (req.method === 'POST' && url.pathname === '/api/tts/synthesize') {
           const body = await readBody();
           const text = String(body.text ?? body.ja ?? '').trim();
+          // ⚠️ 先检查总闸与配额：qq_speak 的顺序是"合成→发中文→发语音"，
+          // 如果等第③步才拦，群里会留下"只有文字没有语音"的半截消息 ✗（2026-10-24 修）
+          const voiceCfgNow = voiceCfg();
+          if (voiceCfgNow.enabled === false) {
+            sendJson({ ok: false, error: '语音总闸关着（socialV2.voice.enabled=false），本次不发语音，也不发中文' }, 403);
+            return;
+          }
+          const keyForBudget = String(body.key ?? '').trim();
+          if (keyForBudget) {
+            try { voiceBudgetCheck(keyForBudget, voiceCfgNow); }
+            catch (error) { sendJson({ ok: false, error: `语音配额已用完：${error?.message ?? error}` }, 429); return; }
+          }
           const result = await synthesizeJapanese(text, { voiceDir: path.join(ROOT, 'audio') });
           if (!result.ok) { sendJson({ ok: false, error: result.error }, 400); return; }
           sendJson({ ok: true, file: path.basename(result.file), path: result.file, cached: !!result.cached, bytes: result.bytes ?? null });
