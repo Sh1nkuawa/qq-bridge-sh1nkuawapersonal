@@ -880,18 +880,22 @@ server.tool(
       // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
       // ⚠️ /api/tts/synthesize 在**操作者通道**（只认 ?token=<控制台令牌>），
       // 只带 x-agent-token 会被"该接口仅控制台可用"拦掉 ✗（2026-10-24 踩到，截图里就是这条）
+      // ⚠️ 合成接口是**纯控制台端点**，必须按控制台调用发：
+      //   · 不带 x-agent-token（否则被 bridge.js:4505 的 AI 白名单拦成"仅控制台可用"）
+      //   · 也不带 x-agent-call:1（agentApi 会自动加，桥接据此要求有效 session token
+      //     ⇒ 报"未授权：智能体调用必须携带有效的会话令牌"）
+      //   所以这里自己 fetch，只带 x-console-token + ?token=
       const consoleTok = readConsoleToken();
-      const synUrl = '/api/tts/synthesize' + (consoleTok ? '?token=' + encodeURIComponent(consoleTok) : '');
-      // ⚠️ 关键：这里**不能**带 x-agent-token 头 ✗。
-      // bridge.js:4505 有一个 AI 白名单：只要请求带 x-agent-token，不在
-      // /api/status|/api/socialV2/|/api/send/|/api/images/|… 之列就一律 403「该接口仅控制台可用」。
-      // /api/tts/synthesize 是纯控制台端点（只做合成、没有任何管理能力），
-      // 所以这里按"控制台调用"来发：只带 ?token=<控制台令牌>，不带 agent 头 ✓。
-      const syn = await agentApi(synUrl, {
+      const synUrl = `${agentApiBase()}/api/tts/synthesize${consoleTok ? '?token=' + encodeURIComponent(consoleTok) : ''}`;
+      const synRes = await fetch(synUrl, {
         method: 'POST',
+        headers: { 'content-type': 'application/json; charset=utf-8', ...(consoleTok ? { 'x-console-token': consoleTok } : {}) },
         body: JSON.stringify({ text: ja, key }),
-        timeoutMs: 300000
+        signal: AbortSignal.timeout(300000)
       });
+      let syn = null;
+      try { syn = await synRes.json(); } catch { syn = null; }
+      if (!synRes.ok && !syn) throw new Error(`合成接口 HTTP ${synRes.status}`);
       if (!syn?.ok || !syn?.file) {
         return { content: [{ type: 'text', text: `语音合成失败（本次不下发任何消息）：${syn?.error ?? '未知原因'}` }], isError: true };
       }
