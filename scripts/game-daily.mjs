@@ -490,6 +490,98 @@ export async function defaultWindowReady(processNames = ['Arknights']) {
 }
 
 /**
+ * 游戏进程的**所有**可见窗口的「长相」：标题 + 尺寸（只读）。
+ *
+ * 为什么要"所有"：终末地直启被拒时，进程里除了主窗口还有一个 `245x178` 的「游戏启动失败」
+ * 弹窗（2026-10-23 实测）。只看第一个/最大的窗口会漏掉它，把失败当成功。
+ *
+ * 实现用 EnumWindows 而不是 `Get-Process … MainWindowHandle`：后者在**跨完整性级别**时会返回 0
+ * （提权跑的游戏 vs 普通权限的调用方），EnumWindows + GetWindowRect 两边都能用。
+ */
+export async function defaultWindowInfo(processNames = ['Arknights']) {
+  const names = processNames.map((n) => String(n).replace(/\.exe$/i, ''));
+  const script = [
+    // 必须强制 UTF-8 输出：PowerShell 默认按控制台代码页(GBK)输出，中文窗口标题到 Node 这边会变成乱码，
+    // 于是「游戏启动失败」这种判据永远匹配不上（2026-10-23 实测踩到，标题解码成 "??Ϸ????ʧ??"）。
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$OutputEncoding = [System.Text.Encoding]::UTF8',
+    'Add-Type @"',
+    'using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;',
+    'public class QbWin {',
+    '  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);',
+    '  delegate bool EnumProc(IntPtr h, IntPtr l);',
+    '  [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);',
+    '  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern int GetWindowThreadProcessId(IntPtr h, out int pid);',
+    '  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);',
+    '  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }',
+    `  static readonly HashSet<string> Want = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ${names.map((n) => `"${n}"`).join(', ')} };`,
+    '  public static List<string> FindAll() {',
+    '    var found = new List<string>();',
+    '    EnumWindows((h, l) => {',
+    '      if (!IsWindowVisible(h)) return true;',
+    '      var sb = new StringBuilder(256); GetWindowText(h, sb, 256);',
+    '      if (sb.Length == 0) return true;',
+    '      int pid; GetWindowThreadProcessId(h, out pid);',
+    '      string pname = "";',
+    '      try { pname = System.Diagnostics.Process.GetProcessById(pid).ProcessName; } catch { return true; }',
+    '      if (!Want.Contains(pname)) return true;',
+    '      RECT r; GetWindowRect(h, out r);',
+    '      found.Add(sb.ToString() + "\\t" + (r.Right - r.Left) + "\\t" + (r.Bottom - r.Top));',
+    '      return true;',
+    '    }, IntPtr.Zero);',
+    '    return found;',
+    '  }',
+    '}',
+    '"@',
+    '$all = [QbWin]::FindAll();',
+    'if ($all.Count -gt 0) { $all | ForEach-Object { Write-Output $_ } }',
+  ].join('\n');
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeoutMs: 25000 });
+  const lines = (r.stdout || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const windows = lines.map((line) => {
+    const [title, w, h] = line.split('\t');
+    const width = Number(w);
+    const height = Number(h);
+    return { title: String(title ?? ''), width: Number.isFinite(width) ? width : NaN, height: Number.isFinite(height) ? height : NaN };
+  });
+  if (!windows.length) return null;
+  return { windows };
+}
+
+/** 窗口集合里最大的那个（判"有没有真游戏窗口"用）。 */
+export function largestWindow(info) {
+  const list = Array.isArray(info?.windows) ? info.windows : [];
+  if (!list.length) return null;
+  return list.reduce((a, b) => ((b.width * b.height) > (a.width * a.height) ? b : a));
+}
+
+/**
+ * 这组窗口里有没有"游戏启动失败"弹窗（而不是游戏本体）？（纯函数，便于单测）
+ *
+ * 为什么必须判：2026-10-23 终末地更新后，直接跑 `Endfield.exe` 会被启动器校验拒绝
+ * （游戏侧校验 `U8Data\config\Launcher.meta` 票据），弹出一个 245x178 的「游戏启动失败」小窗。
+ * 旧逻辑只看「进程在 + 有窗口」，于是把失败弹窗当成"游戏起来了" —— 接着起 MAA、
+ * 白等到 30 分钟兜底才收尾（2026-10-23 19:21 实测踩到）。
+ *
+ * 判据：
+ *   1) 任意窗口标题含「启动失败/无法启动/failed to launch/error」→ 失败弹窗（强信号）；
+ *   2) 或者所有窗口都小得离谱（最大那个 < 400x300）→ 根本没有真游戏窗口。
+ */
+export function isBrokenGameWindow(info) {
+  const list = Array.isArray(info?.windows) ? info.windows : [];
+  if (!list.length) return false;
+  for (const w of list) {
+    if (/启动失败|启动不了|无法启动|启动异常|failed to launch|launch fail(ed)?|error/i.test(String(w.title ?? ''))) return true;
+  }
+  const big = largestWindow(info);
+  if (big && Number.isFinite(big.width) && Number.isFinite(big.height) && big.width > 0 && big.height > 0) {
+    if (big.width < 400 || big.height < 300) return true;
+  }
+  return false;
+}
+
+/**
  * MAA 这次用哪种方式连游戏（决定要不要等 ADB）：
  *   ConnectSettings.Config == "PC" → Win32 截图/点击（官方 PC 端），**不需要 ADB**
  *   其它 → 按 ADB 处理（模拟器那种）
@@ -581,6 +673,7 @@ export async function runJob(cfg, args = {}, deps = {}) {
     sendHotkey = defaultSendHotkey,
     listProcesses = defaultListProcesses,
     windowReady = defaultWindowReady,
+    windowInfo = defaultWindowInfo,
     maaConnectMode = defaultMaaConnectMode,
     logFiles = resolveWatchFiles,
     expectedTaskCount = defaultExpectedTaskCount,
@@ -667,7 +760,13 @@ export async function runJob(cfg, args = {}, deps = {}) {
     return (procs ?? []).some((p) => String(p).replace(/\.exe$/i, '').toLowerCase() === want);
   });
 
-  /** 等游戏本体进程出现（最多 sec 秒）；成功时把 job 的成功字段一并写好。 */
+  /**
+   * 等游戏本体进程出现（最多 sec 秒）；成功时把 job 的成功字段一并写好。
+   *
+   * 注意：这里**只判进程**。区分"真游戏窗口 / 启动失败弹窗"放在后面的 `waitGameWindow`：
+   * 那个函数本来就要等窗口出现，而终末地的「游戏启动失败」弹窗大约 15s 才出来 ——
+   * 在 waitForGame 里轮询窗口既抓不准、又会把每个候选的耗时拖长（测试里 clientBootSec=1 会被拖挂）。
+   */
   const waitForGame = async (sec) => {
     const t0 = now();
     while (now() - t0 < sec * 1000) {
@@ -733,11 +832,30 @@ export async function runJob(cfg, args = {}, deps = {}) {
 
   /** 等游戏窗口真的出现（Win32 截图需要窗口：有进程 ≠ 有窗口）。 */
   const waitGameWindow = async () => {
-    if (await windowReady(cfg.clientProcesses).catch(() => true)) return true;
+    const brokenInfo = async () => windowInfo(cfg.clientProcesses).catch(() => null);
+    const describe = (info) => (info?.windows ?? []).map((w) => `${w.title} ${w.width}x${w.height}`).join(' / ');
+
+    if (await windowReady(cfg.clientProcesses).catch(() => true)) {
+      // 有窗口也要看"是不是失败弹窗"：终末地直启被拒时，那个 245x178 的「游戏启动失败」
+      // 也会让 windowReady 返回 true（2026-10-23 实测：脚本因此白等 30 分钟）。
+      const info = await brokenInfo();
+      if (isBrokenGameWindow(info)) {
+        log(`⚠️ 检测到的"窗口"其实是启动失败弹窗（${describe(info)}）：判定这个候选启动失败`);
+        await killByName(cfg.clientProcesses).catch(() => ({ killed: [], failed: [] }));
+        return false;
+      }
+      return true;
+    }
     const w0 = now();
     log(`游戏进程在，但窗口还没出来：最多再等 ${cfg.windowWaitSec}s（Win32 截图需要窗口）`);
     while (now() - w0 < cfg.windowWaitSec * 1000) {
       await sleep(2000);
+      const info = await brokenInfo();
+      if (isBrokenGameWindow(info)) {
+        log(`⚠️ 出现的是启动失败弹窗（${describe(info)}）：这不是游戏窗口，判定这个候选启动失败`);
+        await killByName(cfg.clientProcesses).catch(() => ({ killed: [], failed: [] }));
+        return false;
+      }
       if (await windowReady(cfg.clientProcesses).catch(() => true)) {
         log(`✅ 游戏窗口已出现（用时 ${Math.round((now() - w0) / 1000)}s）`);
         return true;
@@ -757,7 +875,12 @@ export async function runJob(cfg, args = {}, deps = {}) {
   } else if (cfg.startClient) {
     gameUp = await tryLaunchCandidates();
     if (!gameUp) {
-      log(`⚠️ 候选都没能拉起游戏：若启动器已打开，请手动点「开始游戏」；我再等 ${Math.round(cfg.manualWaitSec / 60)} 分钟`);
+      // 2026-10-23 起终末地的现实：游戏侧校验"是否由启动器拉起"（一次性票据 Launcher.meta），
+      // 直启会被弹「游戏启动失败」，而启动器的 --game/--reason 参数**并不能**触发启动。
+      // 所以这里如实说"要人去启动器点一下"，然后按 manualWaitSec 等他点。
+      log(`⚠️ 候选都没能拉起游戏。注意：终末地现在**必须由启动器拉起**（游戏侧校验启动票据），`
+        + `而启动器的 --game/--reason 参数实测不触发启动 → 请你在启动器里点「开始游戏」，`
+        + `我最多再等 ${Math.round(cfg.manualWaitSec / 60)} 分钟（你一点，我就接着跑）`);
       const t1 = now();
       while (now() - t1 < cfg.manualWaitSec * 1000) {
         await sleep(5000);

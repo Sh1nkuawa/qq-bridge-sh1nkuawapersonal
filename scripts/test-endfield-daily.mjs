@@ -144,6 +144,8 @@ const taskEvent = (when, verdict, id, entry = 'VisitFriendsMain') =>
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => { adbCalls += 1; return { ok: false, devices: [], raw: '' }; },
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -177,6 +179,8 @@ const taskEvent = (when, verdict, id, entry = 'VisitFriendsMain') =>
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -203,6 +207,8 @@ const taskEvent = (when, verdict, id, entry = 'VisitFriendsMain') =>
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -236,6 +242,8 @@ const taskEvent = (when, verdict, id, entry = 'VisitFriendsMain') =>
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     listProcesses: async () => ['MaaEnd'],
@@ -253,8 +261,7 @@ assert('Endfield 才算游戏在跑', isGameRunning(['Endfield'], ef.clientProce
 assert('方舟同理（PlatformProcess 不算）', isGameRunning(['PlatformProcess'], ark.clientProcesses) === false && isGameRunning(['Arknights'], ark.clientProcesses) === true);
 
 // 场景 E：进程匹配但**窗口一直不出来** → 按误判处理，改用候选链启动
-{
-  const { cfg } = mkCfg();
+{  const { cfg } = mkCfg();
   const clk = clock();
   const logs = collector();
   let clientStarts = 0;
@@ -280,6 +287,42 @@ assert('方舟同理（PlatformProcess 不算）', isGameRunning(['PlatformProce
   assert('自愈后确实把 MAAEND 起来了', toolUp === true && logs.lines.some((l) => l.includes('改用候选链启动游戏')), logs.lines.filter((l) => l.includes('误判') || l.includes('候补')).join(' | '));
 }
 
+// 场景 G（2026-10-23 实测事故）：终末地更新后直启被启动器校验拒绝 —— 进程在，
+// 但窗口是 245x178 的「游戏启动失败」弹窗。旧逻辑把弹窗当游戏窗口 ⇒ 判成功 ⇒ 起 MAA 白等 30 分钟。
+{
+  const { cfg } = mkCfg();
+  const clk = clock();
+  const logs = collector();
+  const killed = [];
+  let alive = true;                     // 模拟：进程一直在，直到被我们杀掉
+  const job = await runJob(cfg, {}, {
+    isElevated: async () => true,
+    exists: () => true,
+    windowReady: async () => true,      // 有"窗口"（弹窗也算窗口）
+    windowInfo: async () => ({
+      windows: [
+        { title: 'Endfield', width: 1550, height: 902 },
+        { title: '游戏启动失败', width: 245, height: 178 },
+      ],
+    }),
+    adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
+    portOwner: async () => '',
+    listProcesses: async () => (alive ? ['Endfield'] : []),
+    startClient: async () => ({ ok: true, pid: 55 }),
+    startMaa: async () => ({ ok: true, pid: 66, deElevated: true }),
+    prepareMaa: async () => ({ ok: true, changed: false, items: [] }),
+    killByName: async (names) => { killed.push(...names); if (names.some((n) => /Endfield/i.test(n))) alive = false; return { killed: names, failed: [] }; },
+    statSize: (p) => fs.statSync(p).size,
+    log: logs,
+    now: clk.now,
+    sleep: async (ms) => clk.advance(ms),
+  });
+  assert('「游戏启动失败」弹窗被判出来（日志明说）',
+    logs.lines.some((l) => l.includes('启动失败弹窗')), logs.lines.filter((l) => l.includes('弹窗')).join(' | '));
+  assert('那个"假成功"的游戏进程被关掉', killed.some((n) => /Endfield/i.test(n)), killed.join(','));
+  assert('最终不判成功', job.ok === false, `${job.ok} ${job.reason}`);
+}
+
 // 场景 F：工具"瞬时看不到"（Get-Process 偶发失败）**不能**判退出 —— 2026-09-29 23:00 事故回归
 {
   const { cfg, maaLog } = mkCfg();
@@ -292,6 +335,8 @@ assert('方舟同理（PlatformProcess 不算）', isGameRunning(['PlatformProce
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -333,6 +378,8 @@ assert('读不到就是 0', submittedTaskCount('随便一行').count === 0);
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -373,6 +420,8 @@ assert('轮转旧日志里的"全部完成"不算（时间过滤）', oldDone.al
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
@@ -429,6 +478,8 @@ assert('轮转旧日志里的"全部完成"不算（时间过滤）', oldDone.al
     isElevated: async () => true,
     exists: () => true,
     windowReady: async () => true,
+
+    windowInfo: async () => null,
     adbConnect: async () => ({ ok: true, devices: [], raw: '' }),
     portOwner: async () => '',
     startClient: async () => ({ ok: true, pid: 11 }),
