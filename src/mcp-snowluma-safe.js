@@ -207,6 +207,7 @@ const TOOL_CONFIG_FLAGS = {
   qq_slang_query: 'slangQuery',
   qq_slang_submit: 'slangSubmit',
   qq_send_voice: 'sendVoice',
+  qq_speak: 'speak',
   qq_list_voices: 'sendVoice',
   // 下面这些曾经漏登记。漏一个不是"多注册一个工具"那么轻：桥接那边按 `v2ToolEnabled(flag)`
   // 在**调用期**一律 403，而这里不登记就等于"控制台显示已关闭、模型每次请求仍收到它的完整
@@ -841,6 +842,75 @@ server.tool(
       return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `发送失败：${error?.message ?? error}` }], isError: true };
+    }
+  }
+);
+
+// ── qq_speak：用「二阶堂真红」音色说一句日文（顺序固定：生成 → 中文 → 语音）──────────
+// owner 2026-10-24 要求：
+//   1) 先把中文打出来（让群友立刻看到说什么），再发语音（合成要 5~7 秒）；
+//   2) **不做降级**：TTS API 没起 / 出错 ⇒ 整条都不发，明确返回错误（绝不换别的声线）。
+server.tool(
+  'qq_speak',
+  `用「二阶堂真红」的音色说一句日文（GPT-SoVITS v2Pro 本地模型）。
+
+【必须遵守的顺序】内部会按「生成语音 → 发送中文 → 发送语音」执行，你不用自己拆两步：
+你只要把中文正文和要读的日文一起传进来即可。
+
+【参数】
+- text：要发到群里的**中文**正文（你正常说话的内容）
+- ja：要**读出来**的**日文**台词（只接受日文，至少要有假名；中文/英文会被拒绝）
+  · 这是"用她的声音说日语"，不是"用日语念中文"——所以 ja 必须是日语。
+  · 例子：「おはよう。ちゃんと寝た？」「もう、こんな時間まで起きてるなんて。ばか。」
+- label：可选，给语音的一句备注（给控制台看）
+
+【失败处理】合成失败会返回错误、且**不会**发任何消息 ⇒ 你就正常用文本回一句即可，不要重试语音。`,
+  {
+    key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+    token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
+    text: z.string().describe('要发到群里的中文正文'),
+    ja: z.string().describe('要读出来的日文台词（只接受日文，至少要有假名）'),
+    label: z.string().optional().describe('语音备注（给控制台）')
+  },
+  async ({ key, token, text, ja, label }) => {
+    try {
+      // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
+      const syn = await agentApi('/api/tts/synthesize', {
+        method: 'POST',
+        body: JSON.stringify({ text: ja }),
+        headers: { 'x-agent-token': token },
+        timeoutMs: 300000
+      });
+      if (!syn?.ok || !syn?.file) {
+        return { content: [{ type: 'text', text: `语音合成失败（本次不下发任何消息）：${syn?.error ?? '未知原因'}` }], isError: true };
+      }
+      // 2) 发中文
+      const sent = await agentApi('/api/socialV2/send-message', {
+        method: 'POST',
+        body: JSON.stringify({ key, messages: [text], replyToMessageId: null, atUserId: null, token }),
+        headers: { 'x-agent-token': token },
+        timeoutMs: 300000
+      });
+      // 3) 再发语音
+      const voice = await agentApi('/api/socialV2/send-voice', {
+        method: 'POST',
+        body: JSON.stringify({ key, voice: String(syn.file), label: label || '', verify: true, readback: false, token }),
+        headers: { 'x-agent-token': token },
+        timeoutMs: 300000
+      });
+      return {
+        content: [{
+          type: 'text',
+          text: serializeModelData({
+            ok: true,
+            synth: { file: syn.file, cached: !!syn.cached, bytes: syn.bytes ?? null },
+            text: sent,
+            voice
+          })
+        }]
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `qq_speak 失败：${error?.message ?? error}` }], isError: true };
     }
   }
 );

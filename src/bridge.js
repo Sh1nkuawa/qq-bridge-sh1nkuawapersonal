@@ -28,6 +28,7 @@ import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
 import { decideRename } from './impersonator-guard.js';
+import { synthesizeJapanese } from './tts.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -6643,6 +6644,17 @@ async function main() {
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
         // 所以不套「会话/模式」闸门，但白名单 + 语音限流 + 文件名审计一个都不少。
+        // 日文 TTS：只合成、不发送（给 MCP 的 qq_speak 工具编排：
+        // 生成语音 → 发中文 → 发语音；合成失败就整条不发）
+        if (req.method === 'POST' && url.pathname === '/api/tts/synthesize') {
+          const body = await readBody();
+          const text = String(body.text ?? body.ja ?? '').trim();
+          const result = await synthesizeJapanese(text, { voiceDir: path.join(ROOT, 'audio') });
+          if (!result.ok) { sendJson({ ok: false, error: result.error }, 400); return; }
+          sendJson({ ok: true, file: path.basename(result.file), path: result.file, cached: !!result.cached, bytes: result.bytes ?? null });
+          return;
+        }
+
         if (req.method === 'POST' && (url.pathname === '/api/voice/send' || url.pathname === '/api/send/voice')) {
           const body = await readBody();
           const agentToken = String(req.headers['x-agent-token'] ?? '').trim();

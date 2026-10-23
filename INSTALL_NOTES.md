@@ -2140,3 +2140,36 @@ owner 要求「不要改窗口大小、自己决定点击位置」，并指出�
 若 SnowLuma 不支持该 API，会打 `[rename] 冒名守卫异常：…` ✓（不会静默 ✗）。
 
 **回归**：`scripts/test-impersonator-guard.mjs` 9 组（归一化 / 只认组合 / 生成名片 / 三类护栏 / 上限 / 自定义前缀）。
+
+### 16.34 二阶堂真红日文语音（GPT-SoVITS v2Pro 本地）+ `qq_speak` 工具（2026-10-24）
+
+**目标**：让 bot 用「二阶堂真红」（FAVORITE《五彩斑斓的世界》）的音色说**日语**。owner 明确：**只做日文，不做降级**。
+
+**模型来源**：[specetator/shinku-gpt-sovits-workflow](https://github.com/specetator/shinku-gpt-sovits-workflow)
+—— 别人**训练好的** v2Pro 权重（不用自己训练，8 秒参考音频只是"音色提示"）：
+`shinku_v2pro-e15.ckpt`(148MB) + `shinku_v2pro_e8_s384.pth`(129MB) + 参考 wav/txt + `tts_infer_shinku.yaml`。
+
+**安装位置**：`D:\AI\gsv\GPT-SoVITS-v2pro-20250604\`（官方 v2pro 整合包，解压后 13.5GB）
+- 三件套放 `GPT_weights_v2/`、`SoVITS_weights_v2/`、`GPT_SoVITS/configs/`；
+- 启停：`D:\AI\gsv\start-tts.bat` / `stop-tts.bat`（**纯 ASCII、无 BOM**；带 BOM 的 bat 会被 cmd 读成乱码 ✗）；
+- API：`POST http://127.0.0.1:9880/tts`，`device: cuda` / `is_half: true` / RTX 4060 实测可用。
+
+**踩过的坑**：
+1. `git lfs pull` 拉不下大权重 ✗（浅克隆 + 那个死代理）⇒ 用 `media.githubusercontent.com` **直链**；
+2. `bsdtar` 解 7z 极慢 ✗（0.22GB/6min）⇒ 换 **7-Zip 独立版 `7zr.exe`**；`-o` 必须跟绝对路径且**不能有空格**；
+3. **bat 编码** ✗：UTF-8 带 BOM 或 UTF-16 会让 `chcp`→`01`、`cd`→`\AI\gsv` ⇒ **纯 ASCII 无 BOM**。
+
+**代码**：
+- `src/tts.js`：`synthesizeJapanese(text)` —— **只走 GPT-SoVITS**（owner 要求 ✅ **不降级**）；
+  文本必须含假名（中文/英文直接 400）；按文本哈希缓存到 `audio/tts/ja-<hash>.wav`；
+  输出落在语音库内 ⇒ 天然满足"AI 只能发语音库文件"的安全边界；
+- 桥接端点 `POST /api/tts/synthesize`（操作者令牌）：只合成、不发送，返回 `{ok,file,bytes,cached}`；
+- MCP 工具 `qq_speak(key, token, text, ja, label?)`：**顺序固定** ——
+  **① 合成语音 → ② 发中文正文 → ③ 发语音**；合成失败 ⇒ **整条都不发**并返回错误（绝不换声线）。
+
+**为什么这个顺序**：合成要 5~7 秒，先发中文能让群友立刻看到内容；先合成保证"要么完整，要么不发"。
+
+**空闲负担（实测，API 挂着不合成时）**：CPU **0%** ✓、内存 ~1.7GB ✓、**显存 ~4.2/8.2GB（51%）** ✗、GPU 保持 P0 / 15W / 55℃ ✗ ——
+真正的代价只有**显存**；不用语音时建议 `stop-tts.bat`，要用再 `start-tts.bat`（加载约 40 秒）。
+
+**注意**：`qq_speak` 要**重启 DSH** 后才会出现在工具列表（MCP 工具在 DSH 启动时注册）。
