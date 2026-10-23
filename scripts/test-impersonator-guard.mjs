@@ -1,5 +1,6 @@
 // 冒名守卫的离线回归：只认"像 bot 名"的组合、正确生成新名片、护栏齐全
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   DEFAULT_PREFIX, decideRename, looksLikeBotName, normalizeName, pickDisguiseCard, tailOfName
 } from '../src/impersonator-guard.js';
@@ -71,6 +72,20 @@ ok('★ 每小时上限（默认 5）', () => {
 ok('自定义前缀/标记也能用（给以后调参）', () => {
   const r = decideRename({ ...base, card: '鲸鲸鲸', prefix: '假·' });
   assert.equal(r.newCard, '假·鲸鲸鲸');
+});
+
+
+console.log('\n接线位置（踩过两次坑）：');
+
+ok('★ 钩子必须在 appendSocialV2Message 里，且只用 key 判断（kind 不存在 ⇒ ReferenceError）', () => {
+  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
+  const iMsg = bridge.indexOf('function appendSocialV2Message(');
+  const iPoke = bridge.indexOf('function appendSocialV2Poke(');
+  assert.ok(iMsg > 0 && iPoke > iMsg, '找不到两个入库函数');
+  const iHook = bridge.indexOf('void guardImpersonatorRename(key, msg)', iMsg);
+  assert.ok(iHook > iMsg && iHook < iPoke, '钩子必须在消息入库函数里（上次落到拍一拍里 ✗）');
+  assert.ok(!bridge.includes("if (kind === 'group') void guardImpersonatorRename"), '不许用 kind 判断（那个函数里没有它 ✗）');
+  assert.match(bridge, /String\(key\)\.startsWith\('group:'\)\) void guardImpersonatorRename/, '要用 key 判断群');
 });
 
 console.log(`\n全部通过：${n} 项断言组`);

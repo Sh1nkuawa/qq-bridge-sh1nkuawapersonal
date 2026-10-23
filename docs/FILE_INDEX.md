@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **321** 个被跟踪文件（其中 319 个文本文件、合计 **71,174** 行） —— 文件自带说明 **298**、人工补写 **23**、待补 **0**。
+统计：共 **323** 个被跟踪文件（其中 321 个文本文件、合计 **71,357** 行） —— 文件自带说明 **300**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -296,6 +296,7 @@
 | [`test-image-backend.mjs`](../scripts/test-image-backend.mjs) | 178 | Agent Plan 生图后端：纯函数 + 请求构造 + 错误路径的离线回归（不联网） | 文件自带 |
 | [`test-image-skill.mjs`](../scripts/test-image-skill.mjs) | 96 | 生图技能「入库」验收： | 文件自带 |
 | [`test-image-state.mjs`](../scripts/test-image-state.mjs) | 58 | 生图状态口径验收（只读 + 单元）：失败后模型不能再被"没有状态"误导着说"正在画"。 | 文件自带 |
+| [`test-impersonator-guard.mjs`](../scripts/test-impersonator-guard.mjs) | 91 | 冒名守卫的离线回归：只认"像 bot 名"的组合、正确生成新名片、护栏齐全 | 文件自带 |
 | [`test-link-bilibili.mjs`](../scripts/test-link-bilibili.mjs) | 100 | B 站元信息摘要的离线回归（纯函数 + 不触网的早退路径）。 | 文件自带 |
 | [`test-link-window.mjs`](../scripts/test-link-window.mjs) | 42 | 链接窗口必须读 v2 存储 —— 事故回归 | 文件自带 |
 | [`test-mcp-agent-token.mjs`](../scripts/test-mcp-agent-token.mjs) | 74 | 回归：MCP 里每个「智能体调用」都必须带 x-agent-token 头。 | 文件自带 |
@@ -377,13 +378,14 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,862 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,866 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
+| [`impersonator-guard.js`](../src/impersonator-guard.js) | 88 | 冒名守卫：群友把昵称/群名片改成"像 bot 的名字"时，自动给他改成「冒名·X」。 | 文件自带 |
 | [`link-bilibili.js`](../src/link-bilibili.js) | 176 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |

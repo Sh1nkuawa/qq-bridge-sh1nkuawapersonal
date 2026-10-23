@@ -11785,7 +11785,7 @@ async function main() {
     // 冒名守卫：昵称/群名片"像 bot 名"就改成「冒名·X」
     //（2026-10-23 踩过：这条一开始被插进了 appendSocialV2Poke 里 ✗ ——
     //  unread.push 那个锚点在拍一拍函数里也有一份，先匹配到了它 ⇒ 消息来时不触发）
-    if (kind === 'group') void guardImpersonatorRename(key, msg).catch((error) => log(`[rename] 冒名守卫异常：${error?.message ?? error}`));
+    if (String(key).startsWith('group:')) void guardImpersonatorRename(key, msg).catch((error) => log(`[rename] 冒名守卫异常：${error?.message ?? error}`));
     st.preSleepWaitSatisfiedAt = 0; // 有新消息进来，之前的“沉睡前已等待/已观察”作废
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
@@ -11870,7 +11870,7 @@ async function main() {
     if (st.unread.length > unreadLimit) st.unread.splice(0, st.unread.length - unreadLimit);
     saveSocialV2State();
     // 冒名守卫：昵称/群名片"像 bot 名"就改成「冒名·X」（见 src/impersonator-guard.js）
-    if (kind === 'group') void guardImpersonatorRename(key, msg).catch((error) => log(`[rename] 冒名守卫异常：${error?.message ?? error}`));
+    if (String(key).startsWith('group:')) void guardImpersonatorRename(key, msg).catch((error) => log(`[rename] 冒名守卫异常：${error?.message ?? error}`));
     return msg;
   }
 
