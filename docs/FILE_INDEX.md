@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,930** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
+统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,937** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -76,7 +76,7 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`agent.cordis.yml`](../dsh/agent-presets/qq-chat-v2/agent.cordis.yml) | 234 | The `qq-chat-v2` agent preset: 二代仿真模式（reserved2）专用。 | 文件自带 |
+| [`agent.cordis.yml`](../dsh/agent-presets/qq-chat-v2/agent.cordis.yml) | 241 | The `qq-chat-v2` agent preset: 二代仿真模式（reserved2）专用。 | 文件自带 |
 | [`preset.yml`](../dsh/agent-presets/qq-chat-v2/preset.yml) | 3 | name: QQ 聊天角色（二代仿真） | 文件自带 |
 | [`qq-tool-restrict.mjs`](../dsh/agent-presets/qq-chat-v2/qq-tool-restrict.mjs) | 7 | re-export 壳：qq-tool-restrict 的权威实现只有一份，在 | 文件自带 |
 
