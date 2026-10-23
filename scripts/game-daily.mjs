@@ -158,6 +158,8 @@ export function mergeConfig(raw, args = {}, repoRoot = REPO_ROOT, profileName = 
     src[key] = Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_ARKNIGHTS[key];
   }
   src.closeClient = src.closeClient !== false;
+  // 走启动器拉起游戏时，收尾是否连启动器一起关（默认关：否则第二天会撞上单实例吞参数）
+  src.closeLauncher = src.closeLauncher !== false;
   src.closeMaa = src.closeMaa !== false;
   src.startClient = src.startClient !== false;
   src.maaStartGame = src.maaStartGame === true;
@@ -952,6 +954,13 @@ export async function runJob(cfg, args = {}, deps = {}) {
     job.clientKilled = r.killed;
     job.closedClient = r.killed.length > 0;
     log(job.closedClient ? `已关闭客户端：${r.killed.join('、')}` : '客户端本来就没在跑（或关闭失败）');
+    // 走启动器拉起时，启动器 UI 会一直挂着。留着它影响不大，但**第二天又会撞上"单实例吞参数"**
+    // 那条兜底路径（多等一轮 45s）。既然这轮是我们把它拉起来的，就顺手关干净。
+    if (cfg.closeLauncher && (cfg.launcherProcessNames ?? []).length) {
+      const lr = await killByName(cfg.launcherProcessNames).catch(() => ({ killed: [], failed: [] }));
+      job.launcherKilled = lr.killed;
+      if (lr.killed.length) log(`已关闭启动器：${lr.killed.join('、')}`);
+    }
   }
 
   // 失败报告里补一句"客户端到底起来没有"，否则群里只看到一句莫名其妙的 MAA 报错

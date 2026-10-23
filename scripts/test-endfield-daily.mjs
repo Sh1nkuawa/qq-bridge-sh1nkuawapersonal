@@ -55,6 +55,8 @@ assert('启动候选：Endfield.exe 仍在链上兜底（老版本/启动器缺�
 assert('标记了启动器进程名（用于识别"启动器本来开着"→单实例吞参数的场景）',
   ef.launcherProcessNames.includes('Games.exe') && ef.launcherProcessNames.includes('Launcher.exe'),
   JSON.stringify(ef.launcherProcessNames));
+assert('closeLauncher 默认开启（收尾连启动器一起关，避免第二天又撞单实例兜底）',
+  ef.closeLauncher === true, String(ef.closeLauncher));
 
 // 方舟档案没被改坏（回归）
 const ark = mergeConfig(null, {}, REPO_ROOT, 'arknights');
