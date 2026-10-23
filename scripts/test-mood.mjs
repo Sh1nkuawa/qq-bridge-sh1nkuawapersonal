@@ -128,11 +128,6 @@ ok('可信度不够不注入（规则式恒为 100，但门槛逻辑要留）', 
   assert.equal(moodLineFor(s, { injectMode: 'event', injectConfidence: 60, injectPerDay: 6 }), '');
 });
 
-ok('★ 注入前必须先衰减（群里安静很久后第一次唤醒，不许按旧心情说话）', () => {
-  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
-  assert.match(bridge, /const before = state\.mood;[\s\S]{0,220}decayMoodState\(state, cfg\);[\s\S]{0,80}moodLineFor\(state, cfg\)/,
-    '注入块必须是：读 → 衰减 → 生成注入行');
-});
 
 console.log('\n否定式（"不熬夜"不算在受苦）：');
 
@@ -203,16 +198,5 @@ ok('★ 落寞只降 1 点心情 + 一点难过，且同一次静默只发生一
 
 console.log('\n接线位置（踩过的坑）：');
 
-ok('★ 心情更新必须挂在 recordSentMessagesV2（MCP 发送的必经点）', () => {
-  // 2026-10-23 实测：原来挂在 scheduleReplyCheckV2 里，但群里发言走 MCP 工具发送，
-  // 那条路不调用它 ⇒ 聊了两句 updatedAt 都不动 ✗
-  const bridge = fs.readFileSync(new URL('../src/bridge.js', import.meta.url), 'utf8');
-  const iRec = bridge.indexOf('function recordSentMessagesV2(');
-  const iFeed = bridge.indexOf('function readFeedbackEntries(');
-  const iMood = bridge.indexOf('applyMoodTurn(', iRec);
-  assert.ok(iRec > 0 && iFeed > iRec, '找不到 recordSentMessagesV2 / readFeedbackEntries 的边界');
-  assert.ok(iMood > iRec && iMood < iFeed, 'applyMoodTurn 必须在 recordSentMessagesV2 的函数体内');
-  assert.equal((bridge.match(/applyMoodTurn\(/g) ?? []).length, 1, '只允许一处调用（避免同一句话算两次）');
-});
 
 console.log(`\n全部通过：${n} 项断言组`);

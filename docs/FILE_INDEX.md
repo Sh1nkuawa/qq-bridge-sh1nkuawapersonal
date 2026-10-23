@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,949** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
+统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,905** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -312,7 +312,7 @@
 | [`test-moderation-dedupe.mjs`](../scripts/test-moderation-dedupe.mjs) | 70 | 2026-10-20 事故回归：同一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言群友 | 文件自带 |
 | [`test-moderation.mjs`](../scripts/test-moderation.mjs) | 469 | moderation.js 单元测试：检测规则 / 时长阶梯 / 豁免 / 限流 / 公告校验 / 动作白名单。 | 文件自带 |
 | [`test-mood-bridge.mjs`](../scripts/test-mood-bridge.mjs) | 121 | mood-bridge（鱼的心情适配）的离线回归：只改 targetSession、不碰别的、坏文件不覆盖 | 文件自带 |
-| [`test-mood.mjs`](../scripts/test-mood.mjs) | 218 | 自研心情引擎的离线回归：口径正确（心情不许因为被怼而下降）、衰减、记账门槛、注入模式 | 文件自带 |
+| [`test-mood.mjs`](../scripts/test-mood.mjs) | 202 | 自研心情引擎的离线回归：口径正确（心情不许因为被怼而下降）、衰减、记账门槛、注入模式 | 文件自带 |
 | [`test-mute-live.mjs`](../scripts/test-mute-live.mjs) | 50 | 真机禁言验证：对指定 QQ 禁言 N 秒，确认成功后**立即解禁**（默认 60 秒 → 验证完就解开）。 | 文件自带 |
 | [`test-mux-reconnect.mjs`](../scripts/test-mux-reconnect.mjs) | 81 | 事件流重连回归测试：DSH 重启 / WS 断开后，**已有会话必须被重新 follow**。 | 文件自带 |
 | [`test-onebot-connection.mjs`](../scripts/test-onebot-connection.mjs) | 53 | 一次性连接测试：用 @snowluma/sdk 连接 SnowLuma 的 OneBot WebSocket 网关， | 文件自带 |
@@ -379,7 +379,7 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,893 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,881 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -390,7 +390,7 @@
 | [`link-bilibili.js`](../src/link-bilibili.js) | 176 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
-| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,738 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
+| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,722 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`mcp-web-search-safe.js`](../src/mcp-web-search-safe.js) | 539 | 安全版 Web Search / Fetch MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |

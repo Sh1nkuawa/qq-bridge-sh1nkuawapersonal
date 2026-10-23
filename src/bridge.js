@@ -11981,27 +11981,6 @@ async function main() {
     st.preSleepWaitAccumMs = 0;
     saveSocialV2State();
 
-    // 自研心情：它刚**真的发了话** ⇒ 拿"对方最后说的 + 它说的"更新一次心情与七根情绪。
-    // ⚠️ 2026-10-23 踩过：原来挂在 scheduleReplyCheckV2 里，但群里发言走 **MCP 工具发送**
-    //    （日志"工具统一发送"）——那条路不调用它 ✗ ⇒ 钩子从没跑过
-    //    （实测：聊了两句，state.json 的 updatedAt 一直停在 01:49）。这里是必经点 ✓。
-    try {
-      const lastUser = [...st.recentMessages].reverse().find((m) => m && !m.isSelf);
-      const lastSelf = [...st.recentMessages].reverse().find((m) => m && m.isSelf);
-      if (lastUser) {
-        const r = applyMoodTurn({
-          cfg: readMoodConfig(),
-          turn: {
-            userText: String(lastUser.plain ?? lastUser.text ?? ''),
-            replyText: String(lastSelf?.text ?? ''),
-            speechMode: lastUser.speech?.mode ?? ''
-          }
-        });
-        if (r.changed) log(`[mood] 心情 ${r.state.mood.toFixed(0)}/100（${r.reason}）`);
-      }
-    } catch (error) {
-      log(`[mood] 更新失败（${key}）：${error?.message ?? error}`);
-    }
   }
 
   function readFeedbackEntries() {
@@ -12580,6 +12559,12 @@ async function main() {
   }
 
   function buildWakePromptV2(key, reason) {
+    // owner 2026-10-24：每轮的心情判断交给插件（LLM），这里只保留**静默落寞**这一条
+    // —— 6 小时没人在说话才会有一点（02:00-10:00 不算，正常人要睡觉），且每次静默只算一次。
+    if (reason === 'proactiveCheck') {
+      try { applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: getSocialV2State(key).lastIncomingAt }); }
+      catch (error) { log(`[mood] 静默判定失败：${error?.message ?? error}`); }
+    }
     const roleState = readRoleState();
     const roleLine = roleState.role ? `【当前角色】${roleState.role}（完整角色卡请调用 qq_get_prompt 查看）\n\n` : '';
     const st = getSocialV2State(key);
@@ -12877,35 +12862,10 @@ async function main() {
         return formatSpeechLine(agg.mode);
       } catch { return ''; }
     })();
-    // 自研心情（保留鱼的挂饰 UI）：受设置页的 injectMode / 每日上限 / 可信度门槛约束，
-    // 且 event 模式下"同一件事只说一次"（写完立刻登记，见 markMoodInjected）。
     // 「你自己的声音」：不告诉它是"谁的音色"，只说这是它的嗓子；情绪明显时才偶尔开口。
-    const voiceOwnLine = '【你的嗓子】你是有声音的——偶尔可以用 \`qq_speak\` 用**自己的声音**说一句日语（你的声音只会说日语）。\n'
+    const voiceOwnLine = '【你的嗓子】你是有声音的——偶尔可以用 `qq_speak` 用**自己的声音**说一句日语（你的声音只会说日语）。\n'
       + '什么时候用：情绪明显的时候（深夜劝人睡、被夸到不好意思、对方很难过、被点名说句话）。其余正常打字，不要每句都配语音。\n\n';
-    const moodLine = (() => {
-      try {
-        // 久无人理 → 轻微落寞：**只在主动冒泡**这一种唤醒里判一次，
-        // 且 02:00-10:00 不算被冷落（正常人要睡觉，见 mood.js 的 SLEEP_* / effectiveSilentHours）。
-        if (reason === 'proactiveCheck') {
-          try {
-            const sil = applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: st.lastIncomingAt });
-            if (sil.changed) log(`[mood] ${sil.reason} ⇒ 有点落寞（心情略降、不承认）`);
-          } catch { /* 落寞判定失败不影响对话 */ }
-        }
-        const cfg = readMoodConfig();
-        const state = readMoodState();
-        // ⚠️ 先衰减再用：群里安静很久时没有回合 ⇒ 没人写文件 ⇒ 心情会"冻在最后的值"。
-        // 读取时按 lastDecayAt 补算（心情向基线、七情绪归 0），否则长时间沉默后
-        // 第一次唤醒会按**旧的**心情说话 ✗（2026-10-23 补）。
-        const before = state.mood;
-        decayMoodState(state, cfg);
-        const line = moodLineFor(state, cfg);
-        if (line) markMoodInjected(state, line);
-        if (line || Math.abs(state.mood - before) > 0.5) writeMoodState(state);
-        return line;
-      } catch { return ''; }
-    })();
-    const base = roleLine + tokenLine + speechLine + voiceOwnLine + moodLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    const base = roleLine + tokenLine + speechLine + voiceOwnLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
