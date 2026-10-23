@@ -880,50 +880,22 @@ server.tool(
       // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
       // ⚠️ /api/tts/synthesize 在**操作者通道**（只认 ?token=<控制台令牌>），
       // 只带 x-agent-token 会被"该接口仅控制台可用"拦掉 ✗（2026-10-24 踩到，截图里就是这条）
-      // ⚠️ 合成接口是**纯控制台端点**，必须按控制台调用发：
-      //   · 不带 x-agent-token（否则被 bridge.js:4505 的 AI 白名单拦成"仅控制台可用"）
-      //   · 也不带 x-agent-call:1（agentApi 会自动加，桥接据此要求有效 session token
-      //     ⇒ 报"未授权：智能体调用必须携带有效的会话令牌"）
-      //   所以这里自己 fetch，只带 x-console-token + ?token=
+      // 一条龙都在桥接里做（合成→发中文→发语音），这里只发一个**纯控制台**请求：
+      // 不带 x-agent-token（会被 bridge.js:4505 的 AI 白名单拦成"仅控制台可用"）
+      // 也不带 x-agent-call:1（agentApi 会自动加，桥接据此要求有效 session token）
       const consoleTok = readConsoleToken();
-      const synUrl = `${agentApiBase()}/api/tts/synthesize${consoleTok ? '?token=' + encodeURIComponent(consoleTok) : ''}`;
-      const synRes = await fetch(synUrl, {
+      const url = `${agentApiBase()}/api/tts/speak${consoleTok ? '?token=' + encodeURIComponent(consoleTok) : ''}`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json; charset=utf-8', ...(consoleTok ? { 'x-console-token': consoleTok } : {}) },
-        body: JSON.stringify({ text: ja, key }),
-        signal: AbortSignal.timeout(300000)
+        body: JSON.stringify({ key, text, ja }),
+        signal: AbortSignal.timeout(600000)
       });
-      let syn = null;
-      try { syn = await synRes.json(); } catch { syn = null; }
-      if (!synRes.ok && !syn) throw new Error(`合成接口 HTTP ${synRes.status}`);
-      if (!syn?.ok || !syn?.file) {
-        return { content: [{ type: 'text', text: `语音合成失败（本次不下发任何消息）：${syn?.error ?? '未知原因'}` }], isError: true };
-      }
-      // 2) 发中文
-      const sent = await agentApi('/api/socialV2/send-message', {
-        method: 'POST',
-        body: JSON.stringify({ key, messages: [text], replyToMessageId: null, atUserId: null, token }),
-        headers: { 'x-agent-token': token },
-        timeoutMs: 300000
-      });
-      // 3) 再发语音
-      const voice = await agentApi('/api/socialV2/send-voice', {
-        method: 'POST',
-        body: JSON.stringify({ key, voice: String(syn.file), label: label || '', verify: true, readback: false, token }),
-        headers: { 'x-agent-token': token },
-        timeoutMs: 300000
-      });
-      return {
-        content: [{
-          type: 'text',
-          text: serializeModelData({
-            ok: true,
-            synth: { file: syn.file, cached: !!syn.cached, bytes: syn.bytes ?? null },
-            text: sent,
-            voice
-          })
-        }]
-      };
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+      if (!data) return { content: [{ type: 'text', text: `qq_speak 失败：桥接 HTTP ${res.status}` }], isError: true };
+      if (!data.ok) return { content: [{ type: 'text', text: `qq_speak 失败：${data.error ?? '未知原因'}` }], isError: true };
+      return { content: [{ type: 'text', text: serializeModelData(data) }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `qq_speak 失败：${error?.message ?? error}` }], isError: true };
     }

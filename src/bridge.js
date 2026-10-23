@@ -6644,6 +6644,34 @@ async function main() {
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
         // 所以不套「会话/模式」闸门，但白名单 + 语音限流 + 文件名审计一个都不少。
+        // 日文 TTS 一条龙：合成 → 发中文 → 发语音（**内部**调用，不受 tools.sendVoice 工具开关影响）
+        // 为什么要在桥接里做：qq_speak 第③步若走 /api/socialV2/send-voice，会被 tools.sendVoice=false 挡掉 ✗；
+        // 而 owner 想关掉"音效语音"工具、只保留"它自己的声音" ⇒ 只能在这里内部发。
+        if (req.method === 'POST' && url.pathname === '/api/tts/speak') {
+          const body = await readBody();
+          const key = String(body.key ?? '').trim();
+          const text = String(body.text ?? '').trim();
+          const ja = String(body.ja ?? '').trim();
+          const parsed = parseTargetKey(key);
+          if (!parsed || !text || !ja) { sendJson({ ok: false, error: 'key/text/ja 都是必填' }, 400); return; }
+          if (!modeAllowed(key, parsed.kind, Number(parsed.id), cfg, currentMode)) { sendJson({ ok: false, error: `目标 ${key} 不在白名单内` }, 403); return; }
+          const vcNow = voiceCfg();
+          if (vcNow.enabled === false) { sendJson({ ok: false, error: '语音总闸关着（socialV2.voice.enabled=false），本次一条都不发' }, 403); return; }
+          try { voiceBudgetCheck(key, vcNow); } catch (error) { sendJson({ ok: false, error: `语音配额已用完：${error?.message ?? error}` }, 429); return; }
+          // ① 先合成（失败就整条不发）
+          const syn = await synthesizeJapanese(ja, { voiceDir: path.join(ROOT, 'audio') });
+          if (!syn.ok) { sendJson({ ok: false, error: `语音合成失败（本次没发任何消息）：${syn.error}` }, 400); return; }
+          // ② 发中文
+          let textSent = false;
+          try { await sendMessagesV2(key, [text], []); textSent = true; }
+          catch (error) { sendJson({ ok: false, error: `文字发送失败：${error?.message ?? error}`, file: path.basename(syn.file) }, 502); return; }
+          // ③ 发语音
+          try { await sendVoiceV2(key, syn.file, { audit: true }); }
+          catch (error) { sendJson({ ok: false, error: `语音发送失败（文字已发出）：${error?.message ?? error}`, textSent: true, file: path.basename(syn.file) }, 502); return; }
+          sendJson({ ok: true, textSent: true, voiceSent: true, file: path.basename(syn.file), cached: !!syn.cached });
+          return;
+        }
+
         // 日文 TTS：只合成、不发送（给 MCP 的 qq_speak 工具编排：
         // 生成语音 → 发中文 → 发语音；合成失败就整条不发）
         if (req.method === 'POST' && url.pathname === '/api/tts/synthesize') {
