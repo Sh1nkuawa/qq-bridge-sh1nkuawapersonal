@@ -40,8 +40,12 @@
    - ✅ `mcp__web-search-safe__web_fetch` 已做 SSRF 加固：仅 http/https、禁止 localhost/私有 IP/链路本地/CGNAT/带凭据 URL、DNS 解析结果全量校验、每跳重定向重新校验、响应体限量读取。
 4. **发送强制白名单**：所有发送类工具（`qq_send_group_message` / `qq_send_private_message` / `qq_send_message` / `qq_send_burst` / `qq_reply` / `qq_send_poke` / `qq_send_sticker` / `qq_send_meme` / `qq_send_voice` 等）的目标必须命中 `config.json` 的 `allow.groups` / `allow.private`，否则拒绝执行。
    - **语音额外收紧**：`qq_send_voice` 只能发**语音库**（`socialV2.voice.dir`，默认 `qq-bridge/audio/`）里的文件，不能发任意本地路径、URL 或 base64（防 prompt injection 拿本机文件当语音外发）；另有独立的时长/体积/频率上限（`socialV2.voice.*`），额度与文本发送分开计数。详见 [docs/guides/VOICE.md](docs/guides/VOICE.md)。
-4.1 **群管理动作白名单（硬边界，2026-09-28 新增）**：桥接只允许两个群管理动作——`set_group_ban`（禁言，时长强制 clamp 60~600 秒）与 `_send_group_notice`（发布群公告）；唯一出口是 `src/moderation.js` 的 `assertAllowedAction()`。
-   - **明确禁止**（既不封装，也有单测扫描源码防止被误加）：踢人 `set_group_kick` / `set_group_kick_members`、全员禁言、设/撤管理员、改群名片/群名/群头像、退群、**群相册全部动作**、**群文件全部动作**、删除群公告 `_del_group_notice`。
+4.1 **群管理动作白名单（硬边界，2026-09-28 新增；2026-10-23 扩到三个）**：桥接只允许三个群管理动作——
+   `set_group_ban`（禁言，时长强制 clamp 60~600 秒）、`_send_group_notice`（发布群公告），
+   以及 **`set_group_card`（改群名片）—— 唯一用途是"冒名守卫"**：群友把昵称改成"像 bot 名"时，
+   自动改成「冒名·X」。只认"哦鲸/鲸鲸/哦鲸鲸"这类组合（**不认单独的 哦 / 鲸**，会误伤 哦豁/鲸落），
+   且**不改群主/管理员/bot 自己**、已改过的不再改、每小时最多 5 次。唯一出口仍是 `src/moderation.js` 的 `assertAllowedAction()`。
+   - **明确禁止**（既不封装，也有单测扫描源码防止被误加）：踢人 `set_group_kick` / `set_group_kick_members`、全员禁言、设/撤管理员、改**群名/群头像**（群名片见 4.1 的限定用途）、退群、**群相册全部动作**、**群文件全部动作**、删除群公告 `_del_group_notice`。
    - 模型侧**没有**直接禁言的工具：`qq_request_mute` 只是"提议"，桥接会重新核验证据（同一人同内容重复 ≥N、或针对机器人的辱骂 ≥N），证据不足直接拒绝；`qq_propose_announcement` 必须 owner 确认后才发布。
    - 豁免：owner / 群主 / 群管理员 / 机器人自己 / 配置白名单永不被禁言；另有每人冷却、每小时与每天上限。
    - 默认 `dryRun: true`（干跑）：只记录 + 私聊通知 owner，不真的禁言。

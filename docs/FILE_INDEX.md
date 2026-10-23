@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **321** 个被跟踪文件（其中 319 个文本文件、合计 **71,098** 行） —— 文件自带说明 **298**、人工补写 **23**、待补 **0**。
+统计：共 **321** 个被跟踪文件（其中 319 个文本文件、合计 **71,174** 行） —— 文件自带说明 **298**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,108 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,142 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -30,7 +30,7 @@
 | [`README.en.md`](../README.en.md) | 149 | QQ ↔ DeepSeek Harness Bridge (qq-bridge) | 文件自带（标题） |
 | [`README.md`](../README.md) | 280 | QQ ↔ DeepSeek Harness 桥接 | 文件自带（标题） |
 | [`restart.bat`](../restart.bat) | 26 | 先杀旧守护窗口与旧桥接（按锁文件 PID + 命令行兜底），确认退出后再拉起守护窗口 | 人工补写 |
-| [`RULES.md`](../RULES.md) | 159 | QQ 桥接权限与安全规则（RULES） | 文件自带（标题） |
+| [`RULES.md`](../RULES.md) | 163 | QQ 桥接权限与安全规则（RULES） | 文件自带（标题） |
 | [`start.bat`](../start.bat) | 19 | 桥接守护启动器：先收紧 state/ 权限，再在 :loop 里跑 bridge.js，退出 5 秒后自动重启 | 人工补写 |
 | [`watchdog.cmd`](../watchdog.cmd) | 24 | 外部看门狗启动器（双击即用；必须住在桥接进程外，见 FOLDER_MAP / INSTALL_NOTES 16.4） | 人工补写 |
 
@@ -309,7 +309,7 @@
 | [`test-meme-routes.mjs`](../scripts/test-meme-routes.mjs) | 80 | 桥接「本地表情包」路由验收（只读/只做校验路径，不会真发消息到 QQ）。 | 文件自带 |
 | [`test-memes.mjs`](../scripts/test-memes.mjs) | 293 | meme-lib 单元测试：纯函数 + 真实图库只读自检。 | 文件自带 |
 | [`test-moderation-dedupe.mjs`](../scripts/test-moderation-dedupe.mjs) | 70 | 2026-10-20 事故回归：同一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言群友 | 文件自带 |
-| [`test-moderation.mjs`](../scripts/test-moderation.mjs) | 465 | moderation.js 单元测试：检测规则 / 时长阶梯 / 豁免 / 限流 / 公告校验 / 动作白名单。 | 文件自带 |
+| [`test-moderation.mjs`](../scripts/test-moderation.mjs) | 469 | moderation.js 单元测试：检测规则 / 时长阶梯 / 豁免 / 限流 / 公告校验 / 动作白名单。 | 文件自带 |
 | [`test-mood-bridge.mjs`](../scripts/test-mood-bridge.mjs) | 121 | mood-bridge（鱼的心情适配）的离线回归：只改 targetSession、不碰别的、坏文件不覆盖 | 文件自带 |
 | [`test-mood.mjs`](../scripts/test-mood.mjs) | 218 | 自研心情引擎的离线回归：口径正确（心情不许因为被怼而下降）、衰减、记账门槛、注入模式 | 文件自带 |
 | [`test-mute-live.mjs`](../scripts/test-mute-live.mjs) | 50 | 真机禁言验证：对指定 QQ 禁言 N 秒，确认成功后**立即解禁**（默认 60 秒 → 验证完就解开）。 | 文件自带 |
@@ -377,7 +377,7 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,829 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,862 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -392,7 +392,7 @@
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |
 | [`model-prices.js`](../src/model-prices.js) | 290 | DeepSeek 官方价目表与峰谷分时判定（桥接侧自行维护）。 | 文件自带 |
-| [`moderation.js`](../src/moderation.js) | 655 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
+| [`moderation.js`](../src/moderation.js) | 656 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
 | [`mood-bridge.js`](../src/mood-bridge.js) | 73 | 「鱼的心情」(dsh-feiyu-mood) 的本地适配：把它的目标会话跟我们的会话 id 同步。 | 文件自带 |
 | [`mood.js`](../src/mood.js) | 349 | 自研「心情」引擎（2026-10-23）：替代 dsh-feiyu-mood 的判断部分，**保留它的 UI**。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |

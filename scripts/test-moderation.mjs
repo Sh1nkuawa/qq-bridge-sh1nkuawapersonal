@@ -93,8 +93,12 @@ ok('允许的两个动作', () => {
   assert.equal(assertAllowedAction(ADMIN_ACTIONS.noticePublish), '_send_group_notice');
   assert.equal(assertAllowedAction(ADMIN_ACTIONS.noticeList), '_get_group_notice');
 });
+ok('set_group_card 现在允许（唯一用途：冒名守卫）', () => {
+  // 2026-10-23: set_group_card 移出禁止表 —— 只给 impersonator-guard 用（把冒用 bot 名的人改成「冒名·X」）
+  assert.equal(assertAllowedAction('set_group_card'), 'set_group_card');
+});
 ok('踢人 / 全员禁言 / 设管理员 / 退群 一律拒绝', () => {
-  for (const a of ['set_group_kick', 'set_group_kick_members', 'set_group_whole_ban', 'set_group_admin', 'set_group_leave', 'set_group_card', 'set_group_name', '_del_group_notice']) {
+  for (const a of ['set_group_kick', 'set_group_kick_members', 'set_group_whole_ban', 'set_group_admin', 'set_group_leave', 'set_group_name', '_del_group_notice']) {
     assert.throws(() => assertAllowedAction(a), /不在白名单内/, `${a} 必须被拒绝`);
   }
 });

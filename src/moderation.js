@@ -20,7 +20,9 @@ export const ADMIN_ACTIONS = Object.freeze({
   mute: 'set_group_ban',            // 禁言（duration=0 解禁，仅 owner 手动）
   noticePublish: '_send_group_notice',
   noticeList: '_get_group_notice',
-  memberInfo: 'get_group_member_info'
+  memberInfo: 'get_group_member_info',
+  // 改群名片（**唯一用途**：把冒用 bot 名字的群友改成「冒名·X」，见 impersonator-guard.js）
+  renameCard: 'set_group_card'
 });
 
 /** 明确禁止的动作：不封装、不调用；单测会扫描源码确保它们不出现。 */
@@ -30,7 +32,6 @@ export const FORBIDDEN_ACTIONS = Object.freeze([
   'set_group_whole_ban',
   'set_group_admin',
   'set_group_leave',
-  'set_group_card',
   'set_group_name',
   'set_group_portrait',
   'set_group_anonymous',

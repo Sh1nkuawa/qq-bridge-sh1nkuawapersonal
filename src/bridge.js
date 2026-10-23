@@ -27,6 +27,7 @@ import { createBiliFetch } from './bili-direct.js';
 import { buildSubtitleBrief, fetchSubtitle, pageSubtitle } from './bili-subtitle.js';
 import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
+import { decideRename } from './impersonator-guard.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -11864,7 +11865,39 @@ async function main() {
     st.unread.push(msg);
     if (st.unread.length > unreadLimit) st.unread.splice(0, st.unread.length - unreadLimit);
     saveSocialV2State();
+    // 冒名守卫：昵称/群名片"像 bot 名"就改成「冒名·X」（见 src/impersonator-guard.js）
+    if (kind === 'group') void guardImpersonatorRename(key, msg).catch((error) => log(`[rename] 冒名守卫异常：${error?.message ?? error}`));
     return msg;
+  }
+
+  // 冒名守卫：把"改了昵称来装 bot"的群友改成「冒名·X」。
+  // 只认"像 bot 名"的组合（哦鲸/鲸鲸/哦鲸鲸），**不认单独的 哦 / 鲸**（会误伤 哦豁/鲸落）；
+  // 不改群主/管理员/bot 自己；已改过的不再改；每小时最多 5 次。
+  const renameDone = new Map();       // key → Set(userId|归一化名片)
+  const renameRecent = new Map();     // key → [时间戳]
+  async function guardImpersonatorRename(key, msg) {
+    const done = (() => { if (!renameDone.has(key)) renameDone.set(key, new Set()); return renameDone.get(key); })();
+    const recent = (() => { if (!renameRecent.has(key)) renameRecent.set(key, []); return renameRecent.get(key); })();
+    const card = String(msg?.sender ?? '');
+    const userId = String(msg?.userId ?? '');
+    if (!card || !userId) return;
+    const first = decideRename({ card, isSelf: false, isOwner: !!msg?.isOwner, userId, done, recentRenameAt: recent });
+    if (!first.rename) return;
+    // 只在真的要改时，才去查这个人是不是管理员（省一次 API 调用）
+    let isAdmin = false;
+    try {
+      const res = await bot.request(ADMIN_ACTIONS.memberInfo, { group_id: Number(String(key).replace('group:', '')), user_id: Number(userId), no_cache: true });
+      const role = String(res?.data?.role ?? res?.role ?? '');
+      isAdmin = role === 'admin' || role === 'owner';
+    } catch { /* 查不到就按非管理员处理（decideRename 那边还有群主标记兜底） */ }
+    const verdict = decideRename({ card, isSelf: false, isOwner: !!msg?.isOwner, isAdmin, userId, done, recentRenameAt: recent });
+    if (!verdict.rename) return;
+    const action = assertAllowedAction(ADMIN_ACTIONS.renameCard);
+    await bot.request(action, { group_id: Number(String(key).replace('group:', '')), user_id: Number(userId), card: verdict.newCard });
+    done.add(verdict.key);
+    recent.push(Date.now());
+    if (recent.length > 50) recent.splice(0, recent.length - 50);
+    log(`[rename] 冒名守卫：${msg?.sender ?? userId} 的昵称像 bot 名 ⇒ 已改成「${verdict.newCard}」（${verdict.reason}）`);
   }
 
   function recordSentMessagesV2(key, messages) {
