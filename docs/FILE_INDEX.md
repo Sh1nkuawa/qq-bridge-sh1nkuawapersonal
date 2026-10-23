@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,937** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
+统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,949** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -103,7 +103,7 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`qq-chat-v2.patch.yml`](../plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml) | 68 | 本文件由 scripts/build-agent-preset-patches.mjs 生成，请勿手工编辑。 | 文件自带 |
+| [`qq-chat-v2.patch.yml`](../plugins/qq-agent-presets/presets/qq-chat-v2.patch.yml) | 78 | 本文件由 scripts/build-agent-preset-patches.mjs 生成，请勿手工编辑。 | 文件自带 |
 | [`qq-chat.patch.yml`](../plugins/qq-agent-presets/presets/qq-chat.patch.yml) | 54 | 本文件由 scripts/build-agent-preset-patches.mjs 生成，请勿手工编辑。 | 文件自带 |
 
 ## plugins/qq-mode-console
@@ -322,7 +322,7 @@
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
 | [`test-qq-model-view.mjs`](../scripts/test-qq-model-view.mjs) | 273 | 端到端用例：确认模型侧看到的 QQ 工具清单/会话视图符合预期（在 npm run test:token 里） | 人工补写 |
-| [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 195 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
+| [`test-qq-preset-contract.mjs`](../scripts/test-qq-preset-contract.mjs) | 197 | reserved2 提示词与插件边界的静态契约；不调用模型，不向 QQ 发送消息。 | 文件自带 |
 | [`test-quote-ref.mjs`](../scripts/test-quote-ref.mjs) | 79 | 引用消息"身份证"的离线回归（纯函数 + 源码接线守卫）。 | 文件自带 |
 | [`test-quote-url.mjs`](../scripts/test-quote-url.mjs) | 59 | 引用消息里的链接必须完整 —— 事故现场回归 | 文件自带 |
 | [`test-reply-wait.mjs`](../scripts/test-reply-wait.mjs) | 203 | First-reply quiet-window regressions. Real bridge handlers, fixture peers only. | 文件自带 |

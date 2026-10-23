@@ -79,7 +79,9 @@ test('social autonomy and visual, forwarding, sticker and web capabilities remai
     'qq_set_sticker_remark', '只有管理端明确开启后才能用',
     'qq_list_voices', 'qq_send_voice', 'verified=true 才代表这条语音确实落地',
     // 2026-09-29：语音开关打开后，第 16 条从「默认没开、别重试」改成「什么时候该发 + 频率上限」。
-    '发语音（管理员已开启）', '音效/梗段', '一天最多 3 条', '绝不连发', '不要假装发了语音',
+    '发语音（管理员已开启）', '音效/梗段', '绝不连发', '不要假装发了语音',
+      // 2026-10-24：owner 明确去掉「一天最多 3 条」；改为「自己的声音 + 情绪明显才用」
+      '你自己的声音', 'qq_speak', '情绪明显',
     'mcp__web-search-safe__web_search', 'mcp__web-search-safe__web_fetch',
   ]) assert.ok(prefix.includes(text), `missing capability or voice rule: ${text}`);
 });
