@@ -2000,3 +2000,40 @@ P3 独立 reason 与"不用重复"出口）。
 | 钩子没跑（本次 bug） | **什么都不动** ✗ —— 判据是 `updatedAt` 是否跟着更新 |
 
 **回归**：`scripts/test-mood.mjs` 增至 24 组（新增"钩子必须在 recordSentMessagesV2"的位置守卫）。
+
+### 16.33 终末地更新后「必须由启动器打开」—— 改走官方启动器命令（2026-10-23）
+
+owner 问「现在终末地程序必须由启动器打开，能不能解决」。查下来的结论：**不能绕过，但能自动化**。
+
+**证据（怎么确认的）**
+- 写完 `scripts/probe-endfield-launch.mjs` 观察了一次真实启动，抓到：
+  `Endfield.exe`（PID 38672）的**命令行是空的**，父进程是 `Games.exe`（启动器 UI）；
+  启动瞬间唯一被改写的文件是 `U8Data\config\Launcher.meta`（76 字节）。
+- `Launcher.meta` 内容是 base64（解出来 56 字节随机量，不是时间戳/明文）——它是启动器
+  每次拉起时写入的一次性票据。启动器二进制里也有对应文案：
+  `"The game was not launched from the TapTap launcher. Please open the game from the launcher"`、
+  `"Platform version mismatch. Please update the TapTap launcher or the game to the latest version"`。
+- 也就是说：**游戏侧校验"是否由启动器拉起"**，且不靠命令行参数，靠票据文件。
+  伪造票据 = 逆启动器签名，既不可靠也不该做。
+
+**做法：让自动化自己去驱动启动器**
+- 桌面「明日方舟：终末地」快捷方式本身就是 `Launcher.exe --game=Endfield --reason=4`
+  —— 这是官方支持的入口，直接拿来用。
+- `DEFAULT_ENDFIELD.clientCandidates` 改成**启动器优先**：
+  1) `Launcher.exe --game=Endfield --reason=4`（官方快捷方式同款，标记 `launcher: true`）
+  2) `Endfield Game\Endfield.exe`（老版本/启动器缺失时兜底）
+- **单实例陷阱**（实测遇到的）：启动器已经开着时，再跑一次 `Launcher.exe` 会被单实例交接
+  吞掉参数（不报错，但游戏不会起）。所以 `tryLaunchCandidates` 对 `launcher` 候选加了一条：
+  等待 `clientBootSec` 仍没看到游戏进程、且启动器还在跑 ⇒ **关掉启动器（Games.exe/Launcher.exe）
+  后用同样的命令重试一次**（`launcherProcessNames` 可配）。日活任务本身是提权跑的，杀得掉。
+- 其它平台/版本不受影响：方舟档案仍是 `Arknights.exe` 直启优先（实测能直启）。
+
+**验证状态**
+- 单元：`test-endfield-daily.mjs` 断言改成"启动器优先 + 兜底 + 标记进程名"，全通过；
+  `test-arknights-daily.mjs` 回归通过；离线总入口 67/68（唯一失败是既有的 `test-dsh-auth` 间歇 401）。
+- 真机：尚未跑完整一次（需要启动器关闭 + 提权任务），跑法：
+  关掉启动器 → `schtasks /Run /TN qq-bridge-endfield-daily` → 看
+  `state/endfield-daily.log` 里有没有「已启动 Launcher.exe --game=Endfield --reason=4 …✅ 检测到游戏进程」；
+  若日志出现「关掉启动器后重试一次」并且之后成功，说明单实例兜底也生效了。
+
+**顺带**：`probe-endfield-launch.mjs` 留作以后启动器改版时的复检工具（它只读，不启动游戏）。

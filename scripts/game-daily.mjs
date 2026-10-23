@@ -113,9 +113,12 @@ export const DEFAULT_ENDFIELD = {
     { path: ['settings', 'autoRunOnLaunch'], value: true, label: 'autoRunOnLaunch=true' }
   ],
   clientCandidates: [
-    { exe: 'G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe', args: [] },
-    { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: ['--game=Endfield', '--reason=4'] }
+    { exe: 'G:\\Hypergryph Launcher\\Launcher.exe', args: ['--game=Endfield', '--reason=4'], launcher: true },
+    { exe: 'G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe', args: [] }
   ],
+  // 启动器进程名：用来判断"启动器是不是本来就已经开着"（单实例会吞掉新参数），
+  // 以及失败后把它关掉重试。
+  launcherProcessNames: ['Games.exe', 'Launcher.exe'],
   clientProcesses: ['Endfield.exe'],
   taskName: 'qq-bridge-endfield-daily',
   stateFile: 'state/endfield-daily.json',
@@ -172,8 +175,16 @@ export function mergeConfig(raw, args = {}, repoRoot = REPO_ROOT, profileName = 
     ? src.clientCandidates
     : (src.clientExe ? [{ exe: src.clientExe, args: src.clientArgs ?? [] }] : []);
   src.clientCandidates = (rawCandidates.length ? rawCandidates : DEFAULT_ARKNIGHTS.clientCandidates)
-    .map((c) => ({ exe: String(c?.exe ?? ''), args: Array.isArray(c?.args) ? c.args.map(String) : [] }))
+    .map((c) => ({
+      exe: String(c?.exe ?? ''),
+      args: Array.isArray(c?.args) ? c.args.map(String) : [],
+      // 这个候选是"启动器"而不是游戏本体：需要处理单实例吞参数、失败后关掉重试
+      launcher: c?.launcher === true || /Launcher\.exe$/i.test(String(c?.exe ?? ''))
+    }))
     .filter((c) => c.exe !== '');
+  src.launcherProcessNames = (Array.isArray(src.launcherProcessNames) && src.launcherProcessNames.length
+    ? src.launcherProcessNames
+    : (src.clientCandidates.some((c) => c.launcher) ? ['Games.exe', 'Launcher.exe'] : [])).map(String);
   for (const key of ['stateFile', 'logFile', 'lockFile', 'requestFile']) {
     if (!path.isAbsolute(src[key])) src[key] = path.join(repoRoot, src[key]);
   }
@@ -654,6 +665,30 @@ export async function runJob(cfg, args = {}, deps = {}) {
     return (procs ?? []).some((p) => String(p).replace(/\.exe$/i, '').toLowerCase() === want);
   });
 
+  /** 等游戏本体进程出现（最多 sec 秒）；成功时把 job 的成功字段一并写好。 */
+  const waitForGame = async (sec) => {
+    const t0 = now();
+    while (now() - t0 < sec * 1000) {
+      await sleep(3000);
+      if (isGameRunning(await listProcesses().catch(() => []), cfg.clientProcesses)) {
+        // 成功也要**明确打一行**（2026-09-29 22:0x 教训：只在失败时说话，owner 会以为检查失败）
+        job.startedClient = true;
+        job.clientBootMs = now() - t0;
+        log(`✅ 检测到游戏进程：${cfg.clientProcesses.join(' / ')}（用时 ${Math.round(job.clientBootMs / 1000)}s）`);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /** 启动器是不是正在运行（Games.exe / Launcher.exe）。 */
+  const launcherRunning = async () => {
+    const names = cfg.launcherProcessNames ?? [];
+    if (!names.length) return false;
+    const procs = await listProcesses().catch(() => []);
+    return isGameRunning(procs, names);
+  };
+
   /** 按候选链启动客户端，直到"游戏进程真的出现"。成功返回 true。 */
   const tryLaunchCandidates = async () => {
     for (const candidate of cfg.clientCandidates) {
@@ -665,16 +700,28 @@ export async function runJob(cfg, args = {}, deps = {}) {
         continue;
       }
       log(`已启动 ${label}（PID ${started.pid ?? '?'}）：等游戏进程出现（最多 ${cfg.clientBootSec}s）`);
-      const t0 = now();
-      while (now() - t0 < cfg.clientBootSec * 1000) {
-        await sleep(3000);
-        if (isGameRunning(await listProcesses().catch(() => []), cfg.clientProcesses)) {
-          // 成功也要**明确打一行**（2026-09-29 22:0x 教训：只在失败时说话，owner 会以为检查失败）
-          job.startedClient = true;
-          job.clientLaunchedBy = label;
-          job.clientBootMs = now() - t0;
-          log(`✅ 检测到游戏进程：${cfg.clientProcesses.join(' / ')}（用时 ${Math.round(job.clientBootMs / 1000)}s）`);
-          return true;
+      if (await waitForGame(cfg.clientBootSec)) {
+        job.clientLaunchedBy = label;
+        return true;
+      }
+      // 启动器候选的特殊情况：启动器**本来就已经开着**时，新起的 Launcher.exe 会被单实例
+      // 交接吞掉（参数不会被执行），游戏自然起不来。这时把启动器关掉，用同样的命令重试一次。
+      // 2026-10-23 终末地更新后游戏侧会校验"是否由启动器拉起"，所以这条路径是主路径。
+      if (candidate.launcher && (await launcherRunning())) {
+        log(`⚠️ ${label} 没把游戏拉起来，且启动器还在运行（单实例会吞掉参数）：关掉启动器后重试一次`);
+        const closed = await killByName(cfg.launcherProcessNames ?? []).catch(() => ({ killed: [], failed: [] }));
+        if (closed?.killed?.length) log(`   已关闭启动器：${closed.killed.join('、')}`);
+        await sleep(2000);
+        const retry = await startClient(candidate);
+        job.clientAttempts.push({ target: `${label}（关掉启动器后重试）`, ok: retry.ok, pid: retry.pid ?? null, error: retry.error ?? '' });
+        if (retry.ok) {
+          log(`已重新启动 ${label}（PID ${retry.pid ?? '?'}）：再等游戏进程 ${cfg.clientBootSec}s`);
+          if (await waitForGame(cfg.clientBootSec)) {
+            job.clientLaunchedBy = `${label}（关掉启动器后重试成功）`;
+            return true;
+          }
+        } else {
+          log(`⚠️ 重试启动 ${label} 失败：${retry.error}`);
         }
       }
       log(`⚠️ ${label} 起来了，但 ${cfg.clientBootSec}s 内没看到游戏进程（可能只是启动了启动器），换下一个候选`);

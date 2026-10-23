@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **320** 个被跟踪文件（其中 318 个文本文件、合计 **70,261** 行） —— 文件自带说明 **297**、人工补写 **23**、待补 **0**。
+统计：共 **321** 个被跟踪文件（其中 319 个文本文件、合计 **70,474** 行） —— 文件自带说明 **298**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 468 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,002 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,039 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -48,7 +48,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 185 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 186 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -180,7 +180,7 @@
 | [`fix-stuck-session.mjs`](../scripts/fix-stuck-session.mjs) | 41 | 看桥接的挂起队列 / 处理情况，必要时重置卡住的会话 | 文件自带 |
 | [`forge-dsh-cookie.mjs`](../scripts/forge-dsh-cookie.mjs) | 86 | 用 DSH 持久 secret 自签浏览器会话 cookie，并写入桥接配置（免 launch token） | 文件自带 |
 | [`game-daily-setup.ps1`](../scripts/game-daily-setup.ps1) | 102 | 游戏日活：**一次性**提权安装（必须用管理员身份运行本脚本） | 文件自带 |
-| [`game-daily.mjs`](../scripts/game-daily.mjs) | 969 | !/usr/bin/env node | 文件自带 |
+| [`game-daily.mjs`](../scripts/game-daily.mjs) | 1,016 | !/usr/bin/env node | 文件自带 |
 | [`gen-file-index.mjs`](../scripts/gen-file-index.mjs) | 205 | gen-file-index.mjs —— 生成 docs/FILE_INDEX.md：**每个被跟踪文件干什么**，一句话。 | 文件自带 |
 | [`gen-image-worker.mjs`](../scripts/gen-image-worker.mjs) | 419 | !/usr/bin/env node | 文件自带 |
 | [`get-agent-token.mjs`](../scripts/get-agent-token.mjs) | 28 | 取当前会话的 agent token（仅用于本地验证限制逻辑） | 文件自带 |
@@ -217,6 +217,7 @@
 | [`probe-current-notice.mjs`](../scripts/probe-current-notice.mjs) | 22 | 看一眼群里当前公告正文（走桥接控制台 API，只读）。 | 文件自带 |
 | [`probe-doc-coverage.mjs`](../scripts/probe-doc-coverage.mjs) | 47 | 探针：现有文档对"每个文件的作用"覆盖到什么程度？ | 文件自带 |
 | [`probe-dsh-token.mjs`](../scripts/probe-dsh-token.mjs) | 45 | 验证 DSH launch token：GET /?token=XXX 看是否返回 set-cookie | 文件自带 |
+| [`probe-endfield-launch.mjs`](../scripts/probe-endfield-launch.mjs) | 113 | probe-endfield-launch.mjs —— 抓一次「终末地到底是怎么被拉起来的」（只读观察，不启动游戏） | 文件自带 |
 | [`probe-engines.mjs`](../scripts/probe-engines.mjs) | 28 | 直接探测各搜索引擎的可用性（不经 MCP） | 文件自带 |
 | [`probe-events.mjs`](../scripts/probe-events.mjs) | 100 | 端到端验证：remote.mux 事件流 + turn 收集 + 工具调用事件形状。 | 文件自带 |
 | [`probe-foldermap-facts.mjs`](../scripts/probe-foldermap-facts.mjs) | 90 | probe-foldermap-facts.mjs —— docs/FOLDER_MAP.md 的**人读版**事实核对表（只读）。 | 文件自带 |
@@ -285,7 +286,7 @@
 | [`test-dsh-auth.mjs`](../scripts/test-dsh-auth.mjs) | 136 | DSH 鉴权适配回归测试（0.1.7 起）。 | 文件自带 |
 | [`test-dsh-v2-wait.mjs`](../scripts/test-dsh-v2-wait.mjs) | 97 | 二代等待逻辑的「实时」端到端测试：真建一个 qq-chat-v2 会话并向 DSH 提问， | 文件自带 |
 | [`test-encoding.mjs`](../scripts/test-encoding.mjs) | 54 | 启动器与编码自检： | 文件自带 |
-| [`test-endfield-daily.mjs`](../scripts/test-endfield-daily.mjs) | 434 | 终末地档案（MAAEND/MXU）的离线回归：档案默认值、声明式补丁、多日志监听、计数式完成判据。 | 文件自带 |
+| [`test-endfield-daily.mjs`](../scripts/test-endfield-daily.mjs) | 449 | 终末地档案（MAAEND/MXU）的离线回归：档案默认值、声明式补丁、多日志监听、计数式完成判据。 | 文件自带 |
 | [`test-face-media.mjs`](../scripts/test-face-media.mjs) | 73 | QQ 内置表情（face）取图回落：faceImageUrlCandidates 的单元测试 + bridge 接线检查 | 文件自带 |
 | [`test-feed.mjs`](../scripts/test-feed.mjs) | 166 | 投喂模块单测：node scripts/test-feed.mjs（不联网，网络部分用假 fetch） | 文件自带 |
 | [`test-foldermap-facts.mjs`](../scripts/test-foldermap-facts.mjs) | 137 | 防漂移：docs/FOLDER_MAP.md 的**结构类事实**必须与仓库/工作区现状一致。 | 文件自带 |

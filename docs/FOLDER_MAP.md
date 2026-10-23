@@ -83,6 +83,7 @@ D:\dsh/                       ← 工作区根（不是仓库根）
 | `check-announcement-draft.mjs` | 提交群公告前的**本地预检**：过一遍 `validateAnnouncement`（字数 ≤600 / UTF-8 ≤1400 字节 / 禁链接 / 禁 @全体 / 禁本机路径特征），并打印**与现行公告的逐行差异**。用途：避免草稿被 QQ 服务端或桥接直接拒（实测 603 字被拒）。用法 `node scripts/check-announcement-draft.mjs <草稿文件>` | 保留（公告流程） |
 | `probe-current-notice.mjs` | 只读查看**群里当前公告正文**与是否还有待审草稿（走桥接控制台 `/api/socialV2/admin-status`，需 `state/console-token`）。用途：确认上一版公告是否已被替换、机器人是不是管理员、草稿有没有卡住 | 保留（公告流程） |
 | `gen-file-index.mjs` | **生成 [FILE_INDEX.md](FILE_INDEX.md)**：逐文件一句话（优先取文件自身的开头注释，其次内置 OVERLAY 表，两者都没有就如实写「待补」，不猜）。`--check` 比对漂移（退出 1，可挂回归）、`--stdout` 只打印。npm：`docs:file-index` / `docs:file-index:check`。**FILE_INDEX.md 是生成物，别手改** | 保留（文档基建） |
+| `probe-endfield-launch.mjs` | 抓一次「终末地到底是怎么被拉起来的」（只读，不启动游戏）：记录 `Endfield.exe` 的完整命令行 / 父进程 / 启动瞬间被新增改动的文件。2026-10-23 就是靠它抓到 `U8Data\config\Launcher.meta` 这张启动器票据，从而确认「直启被拒」是启动器侧的校验、不是参数问题。启动器改版后先跑它再改 `game-daily` | 保留（游戏日活排障） |
 | `probe-doc-coverage.mjs` | 诊断：统计各目录「有多少文件在文档里被点名」，用来量化文档腐化程度（当初就是靠它发现 272 个文件里只有 62 个在 FOLDER_MAP 里点名、132 个在任何文档里都找不到）。只读 | 保留（文档体检） |
 | `test-foldermap-facts.mjs` | **防本文漂移的回归**：断言 `dsh/` `plugins/` `docs/` 的子目录与 docs/ 根级 md 都被本文点到、§1 目录树里每一项在磁盘上真实存在、`voice-tool` 不存在时本文必须写"本机未安装"、**正文不许再手抄行数/文件总数**（出现即失败），并顺带跑一次 `gen-file-index --check`。自动被 `run-offline-tests.mjs` 收录 | 保留（改目录/文档后必跑） |
 | `probe-foldermap-facts.mjs` | 上面那个测试的**人读版**：把同样的核对项打印成一张对照表（文档写什么 / 实际多少），用于手工体检或写报告。只读 | 保留（文档体检） |

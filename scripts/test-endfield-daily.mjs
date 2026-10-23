@@ -39,7 +39,22 @@ assert('30 分钟兜底', ef.timeoutSec === 1800);
 assert('完成文案判据里有"任务已全部完成"', ef.completionPatterns.includes('任务已全部完成'), ef.completionPatterns.join('/'));
 assert('成功计数认 Succeeded 与 Completed', ef.successPatterns.join(',') === 'Tasker\\.Task\\.Succeeded,Tasker\\.Task\\.Completed', ef.successPatterns.join(','));
 assert('日志监听目录指向 MAAEND\\debug', ef.maaLogDirs.join(',') === 'G:\\MAAEND\\debug', ef.maaLogDirs.join(','));
-assert('启动候选：Endfield.exe 优先、启动器兜底', ef.clientCandidates[0].exe.endsWith('Endfield Game\\Endfield.exe') && ef.clientCandidates[1].args.join(' ') === '--game=Endfield --reason=4', JSON.stringify(ef.clientCandidates.map((c) => c.exe)));
+// 2026-10-23 起：终末地更新后，游戏侧会校验"是不是启动器拉起来的"（启动器每次拉起会写
+// U8Data\config\Launcher.meta 票据，且**不给游戏传任何命令行参数**）。直接跑 Endfield.exe
+// 会被拒（启动器里就有 "The game was not launched from the TapTap launcher"），
+// 所以候选链改成**启动器优先**——就是桌面「明日方舟：终末地」快捷方式同款命令；
+// 直接跑 exe 只作为老版本兜底。
+assert('启动候选：启动器优先（官方快捷方式同款 --game=Endfield --reason=4）',
+  ef.clientCandidates[0].exe.endsWith('Launcher.exe')
+  && ef.clientCandidates[0].args.join(' ') === '--game=Endfield --reason=4'
+  && ef.clientCandidates[0].launcher === true,
+  JSON.stringify(ef.clientCandidates));
+assert('启动候选：Endfield.exe 仍在链上兜底（老版本/启动器缺失时）',
+  ef.clientCandidates[1].exe.endsWith('Endfield Game\\Endfield.exe'),
+  JSON.stringify(ef.clientCandidates.map((c) => c.exe)));
+assert('标记了启动器进程名（用于识别"启动器本来开着"→单实例吞参数的场景）',
+  ef.launcherProcessNames.includes('Games.exe') && ef.launcherProcessNames.includes('Launcher.exe'),
+  JSON.stringify(ef.launcherProcessNames));
 
 // 方舟档案没被改坏（回归）
 const ark = mergeConfig(null, {}, REPO_ROOT, 'arknights');
