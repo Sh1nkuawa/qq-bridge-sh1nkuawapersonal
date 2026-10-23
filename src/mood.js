@@ -107,6 +107,21 @@ export function readMoodConfig({ home = os.homedir() } = {}) {
   };
 }
 
+/**
+ * 往插件自己的 diag.log 写一行 —— 这是"为什么没记账"的正式位置（用户已经习惯看这里）。
+ * 10 分钟节流，别刷爆。
+ */
+let __lastDiagAt = 0;
+export function moodDiag(line) {
+  try {
+    if (Date.now() - __lastDiagAt < 10 * 60 * 1000) return;
+    __lastDiagAt = Date.now();
+    const { dir } = moodPaths({});
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'diag.log'), `${new Date().toISOString()}  [自研引擎] ${line}\n`, 'utf8');
+  } catch { /* 诊断失败不影响主流程 */ }
+}
+
 export function blankMoodState({ base = 70, now = Date.now() } = {}) {
   const dims = {};
   for (const k of DIM_KEYS) dims[k] = 0;
@@ -217,6 +232,7 @@ export function applyMoodTurn({ home = os.homedir(), cfg, turn, extra = null, no
   const state = readMoodState({ home, now });
   // 设置页关掉「每轮判断心情」⇒ 完全不因对话改数值（衰减照常，那是时间不是判断）
   if (conf.autoJudge === false) {
+    moodDiag('设置页关掉了「每轮判断心情」(autoJudge=false) ⇒ 本轮不更新数值（这就是没有波动的原因）');
     decayMoodState(state, conf, now);
     writeMoodState(state, { home });
     return { state, changed: false, deltas: { moodDelta: 0, dimsDelta: {} }, reason: 'autoJudge-off' };
