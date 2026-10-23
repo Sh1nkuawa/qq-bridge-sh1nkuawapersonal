@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DEFAULT_API = 'http://127.0.0.1:9880/tts';
-const MAX_TEXT_CHARS = 200;
+const MAX_TEXT_CHARS = 100;   // owner 2026-10-24：200 → 100
 
 // 语音服务（GPT-SoVITS API）按需拉起 + 空闲自动关闭（默认 30 分钟）
 let service = null;

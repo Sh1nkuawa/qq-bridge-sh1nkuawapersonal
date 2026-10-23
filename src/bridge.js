@@ -12851,6 +12851,9 @@ async function main() {
     })();
     // 自研心情（保留鱼的挂饰 UI）：受设置页的 injectMode / 每日上限 / 可信度门槛约束，
     // 且 event 模式下"同一件事只说一次"（写完立刻登记，见 markMoodInjected）。
+    // 「你自己的声音」：不告诉它是"谁的音色"，只说这是它的嗓子；情绪明显时才偶尔开口。
+    const voiceOwnLine = '【你的嗓子】你是有声音的——偶尔可以用 \`qq_speak\` 用**自己的声音**说一句日语（你的声音只会说日语）。\n'
+      + '什么时候用：情绪明显的时候（深夜劝人睡、被夸到不好意思、对方很难过、被点名说句话）。其余正常打字，不要每句都配语音。\n\n';
     const moodLine = (() => {
       try {
         // 久无人理 → 轻微落寞：**只在主动冒泡**这一种唤醒里判一次，
@@ -12874,7 +12877,7 @@ async function main() {
         return line;
       } catch { return ''; }
     })();
-    const base = roleLine + tokenLine + speechLine + moodLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    const base = roleLine + tokenLine + speechLine + voiceOwnLine + moodLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }

@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **324** 个被跟踪文件（其中 322 个文本文件、合计 **71,634** 行） —— 文件自带说明 **301**、人工补写 **23**、待补 **0**。
+统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,930** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -335,6 +335,7 @@
 | [`test-stickers.mjs`](../scripts/test-stickers.mjs) | 158 | 表情包体系自检： | 文件自带 |
 | [`test-token-economy.mjs`](../scripts/test-token-economy.mjs) | 624 | Exercise real bridge HTTP handlers and prompt delivery with isolated files, | 文件自带 |
 | [`test-token-usage.mjs`](../scripts/test-token-usage.mjs) | 303 | Token 用量账本 + 价目表测试。 | 文件自带 |
+| [`test-tts-service.mjs`](../scripts/test-tts-service.mjs) | 120 | tts-service 的离线回归：按需拉起、并发只拉一次、空闲 30 分钟自动关 | 文件自带 |
 | [`test-turn-retry.mjs`](../scripts/test-turn-retry.mjs) | 102 | 回合级重试策略单测：工具参数写成非法 JSON（MALFORMED_RESPONSE）时该不该自动重发。 | 文件自带 |
 | [`test-v2-wait.mjs`](../scripts/test-v2-wait.mjs) | 92 | 二代“对面没说完 / 结束前等待”逻辑测试。 | 文件自带 |
 | [`test-vision-media.mjs`](../scripts/test-vision-media.mjs) | 82 | 视觉/图片链路自检脚本： | 文件自带 |
@@ -378,7 +379,7 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,878 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,893 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -389,7 +390,7 @@
 | [`link-bilibili.js`](../src/link-bilibili.js) | 176 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
-| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,735 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
+| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,738 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`mcp-web-search-safe.js`](../src/mcp-web-search-safe.js) | 539 | 安全版 Web Search / Fetch MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |
@@ -413,6 +414,7 @@
 | [`state-acl.mjs`](../src/state-acl.mjs) | 140 | state/ 目录 ACL 收紧的**唯一实现**。 | 文件自带 |
 | [`sticker-lib.js`](../src/sticker-lib.js) | 295 | 表情包体系（二代仿真模式）——本地表情知识库与策略提示纯函数。 | 文件自带 |
 | [`token-ledger.js`](../src/token-ledger.js) | 938 | Token 用量账本：把 DSH 会话事件里的 provider usage 落成「按会话 × 按回合」的可查明细， | 文件自带 |
+| [`tts-service.js`](../src/tts-service.js) | 158 | 语音服务（GPT-SoVITS API）的按需生命周期管理。 | 文件自带 |
 | [`tts.js`](../src/tts.js) | 125 | 日文 TTS：把文本合成为语音文件，放进语音库目录（现有 qq_send_voice 直接可发）。 | 文件自带 |
 | [`turn-retry.mjs`](../src/turn-retry.mjs) | 45 | 回合级错误的重试策略（纯函数，便于单测）。 | 文件自带 |
 | [`v2-wait.js`](../src/v2-wait.js) | 27 | 二代仿真模式：等待/结束回合相关的轻量判断工具。 | 文件自带 |
