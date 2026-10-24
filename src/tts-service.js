@@ -62,7 +62,16 @@ export function createTtsService({
   sleeper = sleep
 } = {}) {
   const cfg = loadServiceConfig({ stateDir });
-  let lastUsedAt = 0;
+  const stateFile = path.join(stateDir, 'tts-service.json');
+  // ⚠️ 2026-10-24 踩过：lastUsedAt 原来只在内存里 ⇒ 桥接一重启就归零
+  // ⇒ checkIdle 认为"从没用过" ⇒ 空闲自动关**永远不会触发** ✗（日志实测 0 条）。
+  // 所以持久化：重启后接着算。
+  let lastUsedAt = (() => {
+    try {
+      const raw = JSON.parse(fs.readFileSync(stateFile, 'utf8').replace(/^\uFEFF/, ''));
+      return Number(raw?.lastUsedAt) || 0;
+    } catch { return 0; }
+  })();
   let childPid = null;
   let idleTimer = null;
   let starting = null;
@@ -92,6 +101,7 @@ export function createTtsService({
 
   function touch() {
     lastUsedAt = now();
+    try { fs.writeFileSync(stateFile, JSON.stringify({ pid: childPid, lastUsedAt, touchedAt: lastUsedAt }, null, 2) + '\n', 'utf8'); } catch { /* ignore */ }
     return lastUsedAt;
   }
 
@@ -127,7 +137,7 @@ export function createTtsService({
         log('[tts] 语音服务未启动 ⇒ 正在拉起（首次约需 40 秒）');
         const child = (spawner ?? spawnDefault)(cfg);
         childPid = child?.pid ?? null;
-        if (childPid) { try { fs.writeFileSync(path.join(stateDir, 'tts-service.json'), JSON.stringify({ pid: childPid, startedAt: now() }, null, 2)); } catch { /* ignore */ } }
+        if (childPid) { try { fs.writeFileSync(stateFile, JSON.stringify({ pid: childPid, startedAt: now(), lastUsedAt }, null, 2) + '\n', 'utf8'); } catch { /* ignore */ } }
         const deadline = now() + (Number(cfg.startupTimeoutMs) || 120000);
         while (now() < deadline) {
           await sleeper(2500);
