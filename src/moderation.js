@@ -246,8 +246,10 @@ export function messageMediaFingerprints(msg) {
   const fps = [...new Set(list.map(mediaFingerprint).filter(Boolean))];
   if (fps.length) return fps;
   // 兜底：图片段没给出 file/url（取字节失败等）时，用占位文本当指纹，至少还能判"重复发图"。
-  const text = String(msg?.plain ?? msg?.text ?? '');
-  if (msg?.hasMedia || isPlaceholderText(text)) {
+  const text = String(msg?.plain ?? msg?.text ?? '').trim();
+  // 2026-10-24 修：只有图片类占位才进「同图」判定；
+  // 语音/视频/文件/转发一律不参与（5 条内容不同的语音曾被误判 image-repeat ×5 ✗）
+  if (/^\[(图片|表情|动画表情)\]$/.test(text)) {
     const norm = normalizeTextForFingerprint(text);
     if (norm) return [`placeholder:${norm}`];
   }

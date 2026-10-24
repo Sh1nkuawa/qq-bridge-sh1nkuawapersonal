@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,905** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
+统计：共 **326** 个被跟踪文件（其中 324 个文本文件、合计 **71,940** 行） —— 文件自带说明 **303**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -309,7 +309,7 @@
 | [`test-meme-prompt.mjs`](../scripts/test-meme-prompt.mjs) | 47 | 只读验收：确认唤醒提示/Prompt 里真的带上了「本地表情包库」段落。 | 文件自带 |
 | [`test-meme-routes.mjs`](../scripts/test-meme-routes.mjs) | 80 | 桥接「本地表情包」路由验收（只读/只做校验路径，不会真发消息到 QQ）。 | 文件自带 |
 | [`test-memes.mjs`](../scripts/test-memes.mjs) | 293 | meme-lib 单元测试：纯函数 + 真实图库只读自检。 | 文件自带 |
-| [`test-moderation-dedupe.mjs`](../scripts/test-moderation-dedupe.mjs) | 70 | 2026-10-20 事故回归：同一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言群友 | 文件自带 |
+| [`test-moderation-dedupe.mjs`](../scripts/test-moderation-dedupe.mjs) | 103 | 2026-10-20 事故回归：同一条消息被重复投递 100 次 ⇒ 刷屏判定数到 50 次 ⇒ 误禁言群友 | 文件自带 |
 | [`test-moderation.mjs`](../scripts/test-moderation.mjs) | 469 | moderation.js 单元测试：检测规则 / 时长阶梯 / 豁免 / 限流 / 公告校验 / 动作白名单。 | 文件自带 |
 | [`test-mood-bridge.mjs`](../scripts/test-mood-bridge.mjs) | 121 | mood-bridge（鱼的心情适配）的离线回归：只改 targetSession、不碰别的、坏文件不覆盖 | 文件自带 |
 | [`test-mood.mjs`](../scripts/test-mood.mjs) | 202 | 自研心情引擎的离线回归：口径正确（心情不许因为被怼而下降）、衰减、记账门槛、注入模式 | 文件自带 |
@@ -395,7 +395,7 @@
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |
 | [`model-prices.js`](../src/model-prices.js) | 290 | DeepSeek 官方价目表与峰谷分时判定（桥接侧自行维护）。 | 文件自带 |
-| [`moderation.js`](../src/moderation.js) | 656 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
+| [`moderation.js`](../src/moderation.js) | 658 | moderation.js —— 群管理（禁言 / 群公告）的**确定性内核**：纯函数 + 只读文件工具。 | 文件自带 |
 | [`mood-bridge.js`](../src/mood-bridge.js) | 73 | 「鱼的心情」(dsh-feiyu-mood) 的本地适配：把它的目标会话跟我们的会话 id 同步。 | 文件自带 |
 | [`mood.js`](../src/mood.js) | 349 | 自研「心情」引擎（2026-10-23）：替代 dsh-feiyu-mood 的判断部分，**保留它的 UI**。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |

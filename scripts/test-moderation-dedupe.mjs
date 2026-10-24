@@ -67,4 +67,37 @@ ok('去重语义：保留第一条，无 messageId 的保留，顺序不变', ()
   assert.deepEqual(out.map((x) => x.v), [1, 2, 4, 5]);
 });
 
+
+console.log('\n语音 vs 图片（2026-10-24 误禁言事故）：');
+
+ok('★ 5 条内容不同的语音不能被判"同图/同文本"', () => {
+  const now = Date.now();
+  const msgs = Array.from({ length: 5 }, (_, i) => ({
+    messageId: 9000 + i, userId: 'u1', sender: '甲', time: now - i * 1000,
+    plain: '[语音]', text: '[语音]', hasMedia: true, media: [{ type: 'voice' }]
+  }));
+  const r = detectRepeat(msgs, { now });
+  assert.equal(r.hit, false, '语音不该被当成重复刷屏');
+});
+
+ok('★ 5 张相同图片仍然要判"同图"（原功能不能丢）', () => {
+  const now = Date.now();
+  const msgs = Array.from({ length: 5 }, (_, i) => ({
+    messageId: 9100 + i, userId: 'u2', sender: '乙', time: now - i * 1000,
+    plain: '[图片]', text: '[图片]', hasMedia: true, media: [{ type: 'image' }]
+  }));
+  const r = detectRepeat(msgs, { now });
+  assert.equal(r.hit, true, '5 张同图应该命中');
+});
+
+ok('★ 5 条内容不同的语音转录（有文字）也不该命中', () => {
+  const now = Date.now();
+  const msgs = Array.from({ length: 5 }, (_, i) => ({
+    messageId: 9200 + i, userId: 'u3', sender: '丙', time: now - i * 1000,
+    plain: ['今天好热', '吃了没', '我在路上了', '晚上打游戏吗', '先睡了我'][i], hasMedia: true, media: [{ type: 'voice' }]
+  }));
+  const r = detectRepeat(msgs, { now });
+  assert.equal(r.hit, false);
+});
+
 console.log(`\n全部通过：${n} 项断言组`);
