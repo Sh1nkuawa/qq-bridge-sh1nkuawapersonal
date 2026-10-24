@@ -12864,7 +12864,9 @@ async function main() {
     })();
     // 「你自己的声音」：不告诉它是"谁的音色"，只说这是它的嗓子；情绪明显时才偶尔开口。
     const voiceOwnLine = '【你的嗓子】你是有声音的——偶尔可以用 `qq_speak` 用**自己的声音**说一句日语（你的声音只会说日语）。\n'
-      + '什么时候用：情绪明显的时候（深夜劝人睡、被夸到不好意思、对方很难过、被点名说句话）。其余正常打字，不要每句都配语音。\n\n';
+      + '这是**可选项**：觉得「用声音说更有味道」就用，不必等谁来要求。\n'
+      + '合适的时候（举例，不限）：深夜劝睡、被夸到不好意思、安慰人、吐槽感叹、想强调一句、道早晚安、想逗人、被点名。 \n'
+      + '格式限制：中文正文 ≤100 字；一个自然段最多 1 条；不连发。\n\n';
     const base = roleLine + tokenLine + speechLine + voiceOwnLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
