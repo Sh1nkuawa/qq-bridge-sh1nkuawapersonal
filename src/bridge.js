@@ -12866,6 +12866,7 @@ async function main() {
     const voiceOwnLine = '【你的嗓子】你是有声音的——偶尔可以用 `qq_speak` 用**自己的声音**说一句日语（你的声音只会说日语）。\n'
       + '这是**可选项**：觉得「用声音说更有味道」就用，不必等谁来要求。\n'
       + '合适的时候（举例，不限）：深夜劝睡、被夸到不好意思、安慰人、吐槽感叹、想强调一句、道早晚安、想逗人、被点名。 \n'
+      + '⭐ 中文那句必须**说清 ja 的意思**（意译即可）—— 群友不一定懂日语，先看懂再听声音。\n'
       + '格式限制：中文正文 ≤100 字；一个自然段最多 1 条；不连发。\n\n';
     const base = roleLine + tokenLine + speechLine + voiceOwnLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
