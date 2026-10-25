@@ -2210,3 +2210,11 @@ owner 要求「不要改窗口大小、自己决定点击位置」，并指出�
 **回归**：`scripts/test-tts-service.mjs` 8 组（复用/拉起/并发单次/空闲阈值/从未用过/已不在/配置覆盖）。
 > 踩坑：测试用假时钟时，`ensureRunning` 里的 `await sleep(2500)` 必须可注入（`sleeper`）✓，
 > 否则假时钟不推进 ⇒ `now()` 永远到不了 deadline ⇒ **死循环** ✗（第一版测试就这么挂的）。
+
+### 16.37 把这个项目交给朋友用（分享前必读）
+
+三种给法、**绝对不能给的东西**（state/ 控制台令牌与聊天记录、config.json 的 token、audio/ 语音库、~/.dsh）、
+他要准备什么、启动顺序、语音功能的版权注意、以及六个常见坑 —— 全部写在 [docs/SHARE.md](./docs/SHARE.md)。
+
+要点：交付用 \git archive --format=zip -o qq-bridge.zip HEAD\（只含被跟踪文件 ✓，实测 1.8 MB，不含任何密钥 ✓）；
+模板是 \config.example.json\（已清空 authToken/authCookie/accessToken/httpToken/consoleToken/afdian.token/tavilyApiKey/arkKeyFile/arkBaseFile，ownerQQ=0，且**不含 allowProcessControl**）。
