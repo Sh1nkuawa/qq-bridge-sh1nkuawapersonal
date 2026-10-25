@@ -77,3 +77,5 @@ config.json.bak*
 # 因为 MCP 子进程要靠仓库根的 node_modules 解析依赖；Windows 上偶尔会留下空壳）
 /.tmp-*
 
+# 本地配置与密钥（2026-10-26：防止误提交）
+.env

@@ -7,25 +7,25 @@
     "authToken": "",
     "authHeader": "authorization",
     "authPrefix": "Bearer",
-    "allowRemote": false
-  },
-  "role": {
-    "maxInjectChars": 6000
+    "authCookie": ""
   },
   "snowluma": {
     "wsUrl": "ws://127.0.0.1:3001",
     "httpUrl": "http://127.0.0.1:3000",
     "accessToken": "",
     "launcherPath": "",
-    "homeDir": ""
+    "homeDir": "",
+    "httpToken": ""
   },
-  "ownerQQ": null,
-  "sessionCwd": "",
+  "ownerQQ": 0,
+  "sessionCwd": "D:\\dsh\\qq-bridge",
   "agentPreset": "qq-chat",
   "workspaceTitle": "QQ 聊天",
   "allow": {
     "private": [],
-    "groups": []
+    "groups": [
+      541026885
+    ]
   },
   "deny": {
     "private": [],
@@ -37,18 +37,6 @@
   "questionTimeoutMs": 300000,
   "consolePort": 3100,
   "consoleToken": "",
-  "pricing": {
-    "models": {
-      "my-relay-model": {
-        "label": "我的中转模型",
-        "off": {
-          "cacheHit": 0.5,
-          "cacheMiss": 3,
-          "output": 9
-        }
-      }
-    }
-  },
   "security": {
     "interceptNotify": true
   },
@@ -111,10 +99,6 @@
     "autoReplyCheckMs": 30000,
     "agentPreset": "qq-chat-v2",
     "provideRecommendations": true,
-    "errorRetry": {
-      "malformedMax": 1,
-      "windowMs": 180000
-    },
     "tools": {
       "getPrompt": true,
       "getUnread": true,
@@ -141,11 +125,17 @@
       "listStickers": true,
       "getStickerImage": true,
       "sendSticker": true,
+      "sendMeme": true,
+      "requestMute": true,
+      "proposeAnnouncement": true,
       "setStickerRemark": false,
       "stickerNote": true,
       "collectSticker": true,
       "getSelfImage": true,
-      "sendVoice": false
+      "getBalance": true,
+      "sendVoice": false,
+      "getImage": true,
+      "adminInfo": true
     },
     "wake": {
       "defaultMode": "diving",
@@ -171,9 +161,7 @@
         "深度求索",
         "大肥鱼",
         "鲸鱼",
-        "DeepSeek V3",
-        "DeepSeek R1",
-        "R1"
+        "哦鲸鲸"
       ],
       "recommendedAtMention": true,
       "recommendedNameMention": true,
@@ -196,7 +184,7 @@
       "longGapMinMs": 5000,
       "longGapMaxMs": 10000,
       "maxSendPerMinute": 8,
-      "maxSendPerHour": 60,
+      "maxSendPerHour": 600,
       "maxMessageChars": 500,
       "maxGapMs": 10000,
       "gapBaseMs": 800,
@@ -235,21 +223,6 @@
       "maxFileBytes": 8388608,
       "rescanTtlMs": 300000
     },
-    "image": {
-      "enabled": true,
-      "dailyLimit": 5,
-      "prefix": "生图",
-      "mentionFreshMs": 180000,
-      "timeoutSec": 600,
-      "outDir": "",
-      "pendingTtlMs": 900000,
-      "backend": "auto",
-      "arkModel": "doubao-seedream-5.0-pro",
-      "arkSize": "2K",
-      "arkKeyFile": "state/ark-key.txt",
-      "arkBaseFile": "state/ark-base.txt",
-      "arkTimeoutMs": 300000
-    },
     "admin": {
       "enabled": true,
       "dryRun": true,
@@ -268,12 +241,23 @@
         "mustAddressBot": true,
         "keywords": [
           "傻逼",
+          "傻b",
+          "煞笔",
           "智障",
+          "弱智",
           "脑残",
           "废物",
+          "垃圾东西",
+          "狗东西",
+          "妈的",
+          "草你",
+          "草泥马",
           "去死",
+          "死开",
           "滚开",
-          "闭嘴"
+          "闭嘴",
+          "神经病",
+          "没用的东西"
         ]
       },
       "mute": {
@@ -291,8 +275,21 @@
         "maxPerDay": 10
       },
       "whitelist": [],
-      "announceInGroup": false,
+      "announceInGroup": true,
       "announceTemplate": "@{name} 刷屏了，先安静 {minutes} 分钟",
+      "announceTemplates": [
+        "@{name} 复读机啊，先歇 {minutes} 分钟",
+        "{name}，{minutes} 分钟内别说话，我耳朵疼",
+        "行行行，{name} 去喝口水，{minutes} 分钟后回来",
+        "{name} 冷静一下，{minutes} 分钟",
+        "刷屏到此为止，{name} 先安静 {minutes} 分钟"
+      ],
+      "announceTemplatesAttack": [
+        "{name}，骂够了没，{minutes} 分钟后再来",
+        "{name} 先闭嘴 {minutes} 分钟，我没空跟你吵",
+        "这么说我可不爱听，{name} 去冷静 {minutes} 分钟"
+      ],
+      "dryRunUntil": 1790678178213,
       "notifyOwner": true,
       "maxRecords": 500,
       "announcement": {
@@ -300,14 +297,64 @@
         "maxChars": 600,
         "allowLinks": false,
         "pinned": 1,
+        "confirmRequired": 0,
         "confirmTimeoutMs": 1800000,
         "requireOwnerApproval": true,
-        "confirmRequired": 0,
         "maxBytes": 1400
       }
     },
+    "proactive": {
+      "enabled": true,
+      "checkIntervalMinMs": 7200000,
+      "checkIntervalMaxMs": 10800000,
+      "idleThresholdMs": 900000,
+      "probability": 0.2,
+      "quietHours": [
+        1,
+        8
+      ]
+    },
+    "feedback": {
+      "maxLength": 500,
+      "notifyOwnerOnError": false
+    },
+    "context": {
+      "recentLimit": 100,
+      "unreadLimit": 30,
+      "contextWindow": 20,
+      "inlineWakeMessages": true,
+      "wakeMessageLimit": 8,
+      "wakeRecentLimit": 3,
+      "wakeMaxChars": 3000
+    },
+    "image": {
+      "ackEnabled": true,
+      "ackTemplates": [
+        "收到，画着呢，1~4 分钟",
+        "{name} 行，等我几分钟",
+        "{name} 稍等，正在画",
+        "画上了，好了直接发群里",
+        "{name} 收到，别急，画完叫你",
+        "{name} 画着呢，今天还剩 {remaining} 次"
+      ],
+      "prefix": "生图",
+      "dailyLimit": 5,
+      "backend": "auto",
+      "arkModel": "doubao-seedream-5.0-pro",
+      "arkSize": "2K",
+      "arkKeyFile": "",
+      "arkBaseFile": "",
+      "arkTimeoutMs": 300000
+    },
+    "feed": {
+      "afdian": {
+        "userId": "63a16aa2ba5411f19fb852540025c377",
+        "token": ""
+      },
+      "enabled": true
+    },
     "voice": {
-      "enabled": false,
+      "enabled": true,
       "dir": "audio",
       "maxSeconds": 300,
       "maxBytes": 20971520,
@@ -316,20 +363,20 @@
       "allowAbsolutePath": false,
       "defaultVolume": 1,
       "loudness": "normal",
-      "ffmpegPath": "",
-      "ffprobePath": "",
+      "ffmpegPath": "D:\\dsh\\ffmpeg\\ffmpeg-9.0.2-essentials_build\\bin\\ffmpeg.exe",
       "autoReadback": true,
-      "transcribe": false,
+      "transcribe": true,
       "transcribeTimeoutMs": 5000,
       "transcribeAttempts": 2,
       "transcribeRetryMs": 800,
       "transcribeMaxChars": 200,
       "transcribeInlineWaitMs": 8000,
       "includeInPrompt": true,
-      "promptDailyMax": 3
+      "promptDailyMax": 99,
+      "ffprobePath": "D:\\dsh\\ffmpeg\\ffmpeg-9.0.2-essentials_build\\bin\\ffprobe.exe"
     },
     "arknights": {
-      "enabled": false,
+      "enabled": true,
       "command": "帮我做明日方舟日活",
       "taskName": "qq-bridge-arknights-daily",
       "timeoutSec": 1800,
@@ -369,33 +416,9 @@
       "closeClient": true,
       "closeMaa": true
     },
-    "proactive": {
-      "enabled": true,
-      "checkIntervalMinMs": 7200000,
-      "checkIntervalMaxMs": 10800000,
-      "idleThresholdMs": 900000,
-      "probability": 0.2,
-      "quietHours": [
-        1,
-        8
-      ]
-    },
-    "feedback": {
-      "maxLength": 500,
-      "notifyOwnerOnError": false
-    },
-    "context": {
-      "recentLimit": 100,
-      "unreadLimit": 30,
-      "contextWindow": 20,
-      "inlineWakeMessages": true,
-      "wakeMessageLimit": 8,
-      "wakeRecentLimit": 3,
-      "wakeMaxChars": 3000
-    },
     "waitToolExternal": true,
     "endfield": {
-      "enabled": false,
+      "enabled": true,
       "command": "帮我做终末地日活",
       "taskName": "qq-bridge-endfield-daily",
       "runnerPath": "scripts/endfield-daily.mjs",
@@ -420,15 +443,14 @@
       "manualWaitSec": 300,
       "clientCandidates": [
         {
-          "exe": "G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe",
-          "args": []
+          "exe": "G:\\Hypergryph Launcher\\Launcher.exe",
+          "args": [],
+          "launcher": true,
+          "click": true
         },
         {
-          "exe": "G:\\Hypergryph Launcher\\Launcher.exe",
-          "args": [
-            "--game=Endfield",
-            "--reason=4"
-          ]
+          "exe": "G:\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe",
+          "args": []
         }
       ],
       "clientProcesses": [
@@ -436,10 +458,46 @@
       ],
       "trigger": "auto",
       "closeClient": true,
-      "closeMaa": true
+      "closeMaa": true,
+      "launcherProcessNames": [
+        "Games.exe",
+        "Launcher.exe"
+      ],
+      "closeLauncher": true,
+      "launcherClick": {
+        "enabled": true,
+        "resizeIfNeeded": false,
+        "pointRatio": {
+          "x": 0.854,
+          "y": 0.865
+        },
+        "fallbackRatios": [
+          {
+            "x": 0.854,
+            "y": 0.914
+          },
+          {
+            "x": 0.854,
+            "y": 0.95
+          }
+        ],
+        "tryWaitSec": 12,
+        "moveOccluders": true,
+        "settleMs": 1200,
+        "windowWaitMs": 15000,
+        "expect": {
+          "width": 1640,
+          "height": 943,
+          "tolerancePct": 8
+        }
+      }
     },
     "turnMaxSteps": 30,
     "autoReplyCheckOnlyWhenExpected": true,
+    "errorRetry": {
+      "malformedMax": 1,
+      "windowMs": 180000
+    },
     "notifyOwnerOnAbort": false,
     "links": {
       "enabled": true,
@@ -464,5 +522,12 @@
     "quote": {
       "enrich": true
     }
+  },
+  "webSearch": {
+    "provider": "tavily",
+    "tavilyApiKey": ""
+  },
+  "role": {
+    "maxInjectChars": 7500
   }
 }
