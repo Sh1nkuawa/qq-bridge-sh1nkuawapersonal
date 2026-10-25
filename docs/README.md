@@ -90,3 +90,5 @@
 | 升级完 DSH 后 bot 不说话 / `unknown prompt variable` | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) **§16.24** |
 | 谁被误禁言了 / 判定数明显不对 | [../INSTALL_NOTES.md](../INSTALL_NOTES.md) **§16.25** |
 | 这个项目要往哪走（QSH） | 上位目录的 `../../QSH-plan/`（总索引 `README.md`；另有工具面/技能/云部署/新仓库与官网四份专项） |
+
+- [SHARE.md](./SHARE.md)：**把这个项目交给朋友用** —— 三种给法、绝对不能给的东西、他要准备什么、启动顺序、语音版权注意、六个常见坑。
