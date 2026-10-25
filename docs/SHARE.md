@@ -6,7 +6,7 @@
 
 | 方式 | 命令 / 做法 | 说明 |
 | --- | --- | --- |
-| **① 给仓库地址** | `git clone https://github.com/Sh1nkuwa/qq-bridge-sh1nkuawapersonal.git` | 仓库若是 **public** 最省事 |
+| **① 给仓库地址** | `git clone https://github.com/Sh1nkuawa/qq-bridge-sh1nkuawapersonal.git` | 仓库若是 **public** 最省事 |
 | **② 打包源码**（推荐） | `git archive --format=zip -o qq-bridge.zip HEAD` | **只含被跟踪文件** ⇒ 天然不含 state/、config.json、audio/、node_modules ✓ |
 | **③ 只给上游** | 从 `Derpyu520/qq-bridge` clone，再对照本仓库的 `INSTALL_NOTES.md` 接 | 适合想从零理解的人 |
 
