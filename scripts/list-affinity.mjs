@@ -11,7 +11,7 @@
 //
 // 用法
 //   node scripts/list-affinity.mjs                    # 默认取 config.json 白名单里的第一个群
-//   node scripts/list-affinity.mjs group:541026885    # 指定会话
+//   node scripts/list-affinity.mjs group:123456789    # 指定会话
 //
 // 输出列
 //   分数     当前的印象分（起始 40，可负）

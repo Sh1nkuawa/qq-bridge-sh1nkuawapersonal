@@ -9,7 +9,7 @@
 //     · 还是**时间错位**（出现未来时间 / dailyDate 不是今天）
 //
 // 用法
-//   node scripts/probe-affinity-clock.mjs              # 默认 group:541026885
+//   node scripts/probe-affinity-clock.mjs              # 默认 group:123456789
 //   node scripts/probe-affinity-clock.mjs group:123456
 //
 // 输出
@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const st = JSON.parse(fs.readFileSync(path.join(ROOT, 'state', 'social-v2.json'), 'utf8').replace(/^\uFEFF/, ''));
-const key = process.argv[2] || 'group:541026885';
+const key = process.argv[2] || 'group:123456789';
 const ms = st.conversations?.[key]?.affinity?.members ?? {};
 const now = Date.now();
 const f = (t) => (t ? new Date(Number(t)).toLocaleString('zh-CN', { hour12: false }) : '-');

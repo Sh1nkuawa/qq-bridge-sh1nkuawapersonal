@@ -44,10 +44,10 @@ ok('仓库里的技能目录被 git 跟踪（不是靠 .gitignore 放着）', ()
 console.log('\n## 不含本机敏感信息（入库前的红线）');
 const blob = [fs.readFileSync(SKILL_MD, 'utf8'), fs.readFileSync(SCRIPT, 'utf8')].join('\n');
 for (const [what, re] of [
-  ['本机用户名', /魏/],
-  ['群号 541026885', /541026885/],
-  ['owner QQ', /103524915/],
-  ['机器人 QQ', /264346863/],
+  ['本机用户名', /User/],
+  ['群号 123456789', /123456789/],
+  ['owner QQ', /100000001/],
+  ['机器人 QQ', /100000003/],
   ['OneBot 令牌前缀 !1407', /!1407/],
   ['控制台令牌前缀 83e9df', /83e9df/],
   ['Tavily key 前缀 tvly', /tvly/],
