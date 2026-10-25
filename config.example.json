@@ -22,9 +22,11 @@
   "agentPreset": "qq-chat",
   "workspaceTitle": "QQ 聊天",
   "allow": {
-    "private": [],
+    "private": [
+      100000001
+    ],
     "groups": [
-      541026885
+      123456789
     ]
   },
   "deny": {
