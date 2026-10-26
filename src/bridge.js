@@ -12588,12 +12588,7 @@ async function main() {
   function buildWakePromptV2(key, reason) {
     // owner 2026-10-24：每轮的心情判断交给插件（LLM），这里只保留**静默落寞**这一条
     // —— 6 小时没人在说话才会有一点（02:00-10:00 不算，正常人要睡觉），且每次静默只算一次。
-    if (reason === 'birthday') {
-    const persons = birthdayPending.get(key) ?? [];
-    birthdayPending.delete(key);
-    return `${base}${birthdayPromptLine(persons, { key })}`;
-  }
-  if (reason === 'proactiveCheck') {
+    if (reason === 'proactiveCheck') {
       try { applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: getSocialV2State(key).lastIncomingAt }); }
       catch (error) { log(`[mood] 静默判定失败：${error?.message ?? error}`); }
     }
@@ -12933,7 +12928,19 @@ async function main() {
     if (reason === 'poke') {
       return `${base}【唤醒】${key}\n原因：有人拍了一拍（可能拍了你，也可能拍了别人）。\n先看未读/最近消息里的 [拍一拍] 事件：如果是拍你，可以自然回应一句，也可以用 qq_send_poke 回一个拍一拍；如果是拍别人，觉得有趣也可以接梗。除了回应，偶尔也可以主动戳一下正在聊的人/熟人，像真人手贱/提醒/逗一下，但别频繁。不想接就安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
     }
-    return `${base}【唤醒】${key}\n原因：${reason}\n【行动前】先判断：群里在聊什么？热闹还是冷清？有没有人直接找你？对方说完了吗？你有没有真正想说的？\n如果群聊正热但没人叫你，可以插一句有趣的/相关的，插不上再看情况潜水；不要一上来就划走。\n【引用：只在必要时用】只有你这条消息指向的人或消息并非最新一条别人的消息，或者你连续的几句话中不同消息指代的是不同的消息或人时，才用 qq_reply 或 qq_send_message 的 replyToMessageId 指向具体那条；其他情况不要引用，别让对方猜。\n你可以调用工具查看未读消息、人设、状态，自行决定是否发言；决定潜水前必须按上面的【沉睡前强制等待】先等够观察窗口。`;
+    if (reason === 'birthday') {
+    const persons = birthdayPending.get(key) ?? [];
+    birthdayPending.delete(key);
+    // ⚠️ 这里才记 lastSentYear：只有"提示词真的构建出来"才算发过，
+    // 否则像 2026-10-27 那样唤醒失败、标记却写了 ⇒ 当天不再重试 ✗
+    try {
+      const list0 = loadBirthdays();
+      for (const p of persons) markSent(list0, p.userId, new Date().getFullYear());
+      saveBirthdays(list0);
+    } catch { /* ignore */ }
+    return `${base}${birthdayPromptLine(persons, { key })}`;
+  }
+  return `${base}【唤醒】${key}\n原因：${reason}\n【行动前】先判断：群里在聊什么？热闹还是冷清？有没有人直接找你？对方说完了吗？你有没有真正想说的？\n如果群聊正热但没人叫你，可以插一句有趣的/相关的，插不上再看情况潜水；不要一上来就划走。\n【引用：只在必要时用】只有你这条消息指向的人或消息并非最新一条别人的消息，或者你连续的几句话中不同消息指代的是不同的消息或人时，才用 qq_reply 或 qq_send_message 的 replyToMessageId 指向具体那条；其他情况不要引用，别让对方猜。\n你可以调用工具查看未读消息、人设、状态，自行决定是否发言；决定潜水前必须按上面的【沉睡前强制等待】先等够观察窗口。`;
   }
 
   function buildWakeReminderPromptV2(key) {
@@ -13144,7 +13151,6 @@ async function main() {
         const list0 = byGroup.get(gid) ?? [];
         list0.push({ name: person.name, userId: person.userId, age });
         byGroup.set(gid, list0);
-        markSent(list, person.userId, verdict.parts.year);
       }
       if (!byGroup.size) return;
       saveBirthdays(list);
