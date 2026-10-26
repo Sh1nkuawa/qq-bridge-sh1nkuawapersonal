@@ -131,12 +131,21 @@ export function markSent(birthdays, userId, year) {
 export function birthdayPromptLine(people, { key = '' } = {}) {
   const list = Array.isArray(people) ? people.filter(Boolean) : (people ? [people] : []);
   const uids = list.map((p) => String(p?.userId || '')).filter(Boolean);
-  if (!uids.length) return `${key}\n【生日】今天有群友过生日，但没拿到 QQ 号。`;
+  if (!uids.length) return `【生日】${key}\n今天有群友过生日，但没拿到 QQ 号。`;
   const multi = uids.length > 1;
-  return `【生日】${key}\n今天有 **${uids.length} 位**群友过生日：${uids.map((u) => `QQ ${u}`).join('、')}。\n`
-    + `请用 \`qq_speak\` 送祝福 —— 顺序它自己会处理（先中文、再语音）：\n`
-    + `· \`text\`：一句**中文**祝福，用 \`atUserId\` **@ 他们` + (multi ? '（一次只能 @ 一个人，所以 \`qq_speak\` 发一次、@ 第一个就够；想都 @ 到就分两次调用）' : '') + `**；\n`
-    + `  **不要写他们的名字**（群名片会变，@ 就够）—— 直接说祝福本身，短一点、真心一点，别套话、别写小作文。\n`
-    + `· \`ja\`：用**你自己的声音**说的一句**日语**生日祝福（必须含假名，≤100 字）；日语里也别带名字。\n`
-    + `如果语音合成失败（服务没起等），就**只发中文祝福**，不要重试、不要假装发了语音。\n`;
+  const head = `【生日】${key}\n今天是${multi ? ` **${uids.length} 位** ` : ''}群友的生日：${uids.map((u) => `QQ ${u}`).join('、')}。\n`;
+
+  // owner 2026-10-26 指定顺序：@第一个+祝福 → 日语 → @第二个+祝福 → 日语（一人一组，不要合并）
+  const steps = uids.map((u, i) => `  ${i + 1}. QQ ${u}：调一次 \`qq_speak\` ——`
+    + ` \`text\` = 用 \`atUserId\`=${u} **@ 他** 的中文祝福，\`ja\` = 给他的**日语**祝福；`
+    + ` **等这一次返回后，再做下一个**`).join('\n');
+
+  const body = multi
+    ? `**顺序很重要：一个人一组、不要合并**（每组都会"先中文、后语音"）：\n${steps}\n`
+    : `请用 \`qq_speak\` 送祝福 —— \`text\` = 用 \`atUserId\`=${uids[0]} **@ 他** 的中文祝福，`
+      + `\`ja\` = 给他的**日语**祝福（顺序它自己会处理：先中文、再语音）。\n`;
+
+  const tail = `· 中文里**不要写名字**（群名片会变，@ 就够）—— 直接说祝福本身，短一点、真心一点；日语里也别带名字。\n`
+    + `· 语音合成失败就**只发中文**，不要重试、不要假装发了语音。\n`;
+  return head + body + tail;
 }
