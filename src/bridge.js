@@ -30,6 +30,7 @@ import { syncMoodTargetSession } from './mood-bridge.js';
 import { decideRename } from './impersonator-guard.js';
 import { synthesizeJapanese } from './tts.js';
 import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickNow, todaysBirthdays } from './birthday.js';
+import { createSerialQueue } from './serialize.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -6645,6 +6646,9 @@ async function main() {
         //
         // 与 /api/send/* 的 agent 通道分开：操作者可能不在任何 QQ 会话里，
         // 所以不套「会话/模式」闸门，但白名单 + 语音限流 + 文件名审计一个都不少。
+        // 所有 qq_speak 走同一个串行队列（前一条发完才做下一条，避免多人祝福时交叉）
+        const speakQueue = globalThis.__qqSpeakQueue ??= createSerialQueue();
+
         // 日文 TTS 一条龙：合成 → 发中文 → 发语音（**内部**调用，不受 tools.sendVoice 工具开关影响）
         // 为什么要在桥接里做：qq_speak 第③步若走 /api/socialV2/send-voice，会被 tools.sendVoice=false 挡掉 ✗；
         // 而 owner 想关掉"音效语音"工具、只保留"它自己的声音" ⇒ 只能在这里内部发。
@@ -6659,6 +6663,7 @@ async function main() {
           const vcNow = voiceCfg();
           if (vcNow.enabled === false) { sendJson({ ok: false, error: '语音总闸关着（socialV2.voice.enabled=false），本次一条都不发' }, 403); return; }
           try { voiceBudgetCheck(key, vcNow); } catch (error) { sendJson({ ok: false, error: `语音配额已用完：${error?.message ?? error}` }, 429); return; }
+          await speakQueue(async () => {
           // ① 先合成（失败就整条不发）
           const syn = await synthesizeJapanese(ja, { voiceDir: path.join(ROOT, 'audio') });
           if (!syn.ok) { sendJson({ ok: false, error: `语音合成失败（本次没发任何消息）：${syn.error}` }, 400); return; }
@@ -6670,6 +6675,7 @@ async function main() {
           try { await sendVoiceV2(key, syn.file, { audit: true }); }
           catch (error) { sendJson({ ok: false, error: `语音发送失败（文字已发出）：${error?.message ?? error}`, textSent: true, file: path.basename(syn.file) }, 502); return; }
           sendJson({ ok: true, textSent: true, voiceSent: true, file: path.basename(syn.file), cached: !!syn.cached });
+          });
           return;
         }
 
