@@ -96,8 +96,19 @@ ok('★ 提示词：@ 他 + 不提名字 + qq_speak + 日语硬要求', () => {
   assert.match(line, /atUserId/);
   assert.match(line, /qq_speak/);
   assert.match(line, /日语/);
-  assert.match(line, /不要写他的名字/, '明确要求不提名字（群名片会变）');
+  assert.match(line, /不要写他们的?名字/, '明确要求不提名字（群名片会变）');
   assert.doesNotMatch(line, /小明/, '提示词里不该再出现名字');
+});
+
+ok('★ 同一天两人 ⇒ 提示词把两个 QQ 都列出来', () => {
+  const line = birthdayPromptLine([
+    { name: '甲', userId: '100000001' },
+    { name: '乙', userId: '100000002' }
+  ], { key: 'group:123456789' });
+  assert.match(line, /2 位/);
+  assert.match(line, /100000001/);
+  assert.match(line, /100000002/);
+  assert.doesNotMatch(line, /甲|乙/, '不该出现名字');
 });
 
 console.log(`\n全部通过：${n} 项断言组`);

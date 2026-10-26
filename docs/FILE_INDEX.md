@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **329** 个被跟踪文件（其中 327 个文本文件、合计 **72,408** 行） —— 文件自带说明 **306**、人工补写 **23**、待补 **0**。
+统计：共 **329** 个被跟踪文件（其中 327 个文本文件、合计 **72,429** 行） —— 文件自带说明 **306**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -279,7 +279,7 @@
 | [`test-bili-direct.mjs`](../scripts/test-bili-direct.mjs) | 102 | B 站直连通道的离线回归：域名判定 / DoH 解析与缓存 / 回落行为 / 接线守卫 | 文件自带 |
 | [`test-bili-online.mjs`](../scripts/test-bili-online.mjs) | 52 | P1/P2/P3 的源码守卫：把"在线交付 / 按需工具 / 兜底唤醒"三条路钉住 | 文件自带 |
 | [`test-bili-subtitle.mjs`](../scripts/test-bili-subtitle.mjs) | 216 | B 站字幕：清洗 / 时间桶抽样 / 分层精编 / 分页 的离线回归（不联网） | 文件自带 |
-| [`test-birthday.mjs`](../scripts/test-birthday.mjs) | 103 | 生日模块的离线回归：北京时区、闰年 2/29、去重、补发、提示词 | 文件自带 |
+| [`test-birthday.mjs`](../scripts/test-birthday.mjs) | 114 | 生日模块的离线回归：北京时区、闰年 2/29、去重、补发、提示词 | 文件自带 |
 | [`test-card-link.mjs`](../scripts/test-card-link.mjs) | 115 | 卡片链接解析的离线回归：各种真实形态的 QQ 卡片 JSON + 兜底路径。 | 文件自带 |
 | [`test-console-encoding.mjs`](../scripts/test-console-encoding.mjs) | 69 | 验证「Windows 控制台乱码 + chcp 修复」的机制是否成立。 | 文件自带 |
 | [`test-console-static.mjs`](../scripts/test-console-static.mjs) | 74 | 控制台静态校验：在无法跑 Playwright 的环境里，替代性地检查 HTML/JS 结构契约。 | 文件自带 |
@@ -381,8 +381,8 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`birthday.js`](../src/birthday.js) | 140 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,926 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`birthday.js`](../src/birthday.js) | 142 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,934 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

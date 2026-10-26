@@ -128,13 +128,15 @@ export function markSent(birthdays, userId, year) {
  * 给唤醒提示词的那一段：告诉模型"今天是他的生日，去祝福并用自己的声音说一句日语"。
  * @param {{name:string,userId:string,age?:number|null}} person
  */
-export function birthdayPromptLine(person, { key = '' } = {}) {
-  const uid = String(person?.userId || '');
-  return `【生日】${key}\n今天是**这位群友**（QQ ${uid}）的生日。\n`
+export function birthdayPromptLine(people, { key = '' } = {}) {
+  const list = Array.isArray(people) ? people.filter(Boolean) : (people ? [people] : []);
+  const uids = list.map((p) => String(p?.userId || '')).filter(Boolean);
+  if (!uids.length) return `${key}\n【生日】今天有群友过生日，但没拿到 QQ 号。`;
+  const multi = uids.length > 1;
+  return `【生日】${key}\n今天有 **${uids.length} 位**群友过生日：${uids.map((u) => `QQ ${u}`).join('、')}。\n`
     + `请用 \`qq_speak\` 送祝福 —— 顺序它自己会处理（先中文、再语音）：\n`
-    + `· \`text\`：一句**中文**祝福，用 \`atUserId\` = ${uid} **@ 他**；\n`
-    + `  **不要写他的名字**（群名片会变，@ 就够）—— 直接说祝福本身，短一点、真心一点，别套话、别写小作文。\n`
-    + `· \`ja\`：用**你自己的声音**说的一句**日语**生日祝福（必须含假名，≤100 字）；\n`
-    + `  日语里同样**不要带名字**。\n`
+    + `· \`text\`：一句**中文**祝福，用 \`atUserId\` **@ 他们` + (multi ? '（一次只能 @ 一个人，所以 \`qq_speak\` 发一次、@ 第一个就够；想都 @ 到就分两次调用）' : '') + `**；\n`
+    + `  **不要写他们的名字**（群名片会变，@ 就够）—— 直接说祝福本身，短一点、真心一点，别套话、别写小作文。\n`
+    + `· \`ja\`：用**你自己的声音**说的一句**日语**生日祝福（必须含假名，≤100 字）；日语里也别带名字。\n`
     + `如果语音合成失败（服务没起等），就**只发中文祝福**，不要重试、不要假装发了语音。\n`;
 }

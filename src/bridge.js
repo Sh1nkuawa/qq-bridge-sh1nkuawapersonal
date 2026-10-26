@@ -12563,9 +12563,9 @@ async function main() {
     // owner 2026-10-24：每轮的心情判断交给插件（LLM），这里只保留**静默落寞**这一条
     // —— 6 小时没人在说话才会有一点（02:00-10:00 不算，正常人要睡觉），且每次静默只算一次。
     if (reason === 'birthday') {
-    const person = birthdayPending.get(key);
-    if (person) birthdayPending.delete(key);
-    return `${base}${birthdayPromptLine(person ?? { name: '这位群友', userId: '' }, { key })}`;
+    const persons = birthdayPending.get(key) ?? [];
+    birthdayPending.delete(key);
+    return `${base}${birthdayPromptLine(persons, { key })}`;
   }
   if (reason === 'proactiveCheck') {
       try { applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: getSocialV2State(key).lastIncomingAt }); }
@@ -13085,7 +13085,7 @@ async function main() {
   // 数据：state/birthdays.json（owner 手动维护）；触发：北京时间 0 点；0 点不在线则当天补发；
   // 同一个人同一年只发一次（lastSentYear 去重）。
   // 祝福由**模型现场写** + **日语语音**（唤醒一次，由它自己调 qq_speak）。
-  const birthdayPending = new Map();   // key -> { name, userId, age }
+  const birthdayPending = new Map();   // key -> [ { name, userId, age }, … ]（同一天可能多人）
   async function birthdayTick() {
     try {
       const list = loadBirthdays();
@@ -13095,15 +13095,23 @@ async function main() {
       if (!people.length) return;
       const groups = (cfg.allow?.groups ?? []).map(String);
       if (!groups.length) { log('[birthday] 没有 allow.groups，跳过'); return; }
+      // 同一天可能有多人 ⇒ **按群聚起来，每个群只唤醒一次**（否则后一个人会覆盖前一个 ✗）
+      const byGroup = new Map();
       for (const person of people) {
         const gid = String(person.group || groups[0]);
         if (!groups.includes(gid)) { log(`[birthday] ${person.name} 的群 ${gid} 不在 allow.groups，跳过`); continue; }
-        const key = `group:${gid}`;
         const age = person.year ? verdict.parts.year - person.year : null;
-        birthdayPending.set(key, { name: person.name, userId: person.userId, age });
+        const list0 = byGroup.get(gid) ?? [];
+        list0.push({ name: person.name, userId: person.userId, age });
+        byGroup.set(gid, list0);
         markSent(list, person.userId, verdict.parts.year);
-        saveBirthdays(list);
-        log(`[birthday] 今天 ${person.name}(${person.userId}) 过生日 ⇒ 唤醒祝福（${key}）`);
+      }
+      if (!byGroup.size) return;
+      saveBirthdays(list);
+      for (const [gid, persons] of byGroup) {
+        const key = `group:${gid}`;
+        birthdayPending.set(key, persons);
+        log(`[birthday] 今天 ${persons.map((p) => `${p.name}(${p.userId})`).join('、')} 过生日 ⇒ 唤醒祝福（${key}）`);
         scheduleWakeV2(key, 'birthday');
       }
     } catch (error) {
