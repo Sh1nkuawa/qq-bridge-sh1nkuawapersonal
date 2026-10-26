@@ -178,6 +178,30 @@ export function decayMoodState(state, cfg, now = Date.now()) {
   return state;
 }
 
+// ── reason 池（学 A 的"别公式化"，但**按小鲸鱼的人设**：懒、嘴硬、话短、会自嘲）──
+// A 的原话举例是"尾巴不自觉摇起来了""胸口软软的像泡在温水里" —— 那是它的人格（软黏）✗，
+// 我们的 bot 是"懒、嘴硬、话短、不当客服"，所以这里写的是**同一档情绪、不同口气** ✓。
+const REASON_POOL = {
+  praise:    ['有人夸，心里有点飘（不承认）', '被夸了一句，尾巴翘了下又按住', '哦，谢谢。这话我记着'],
+  missed:    ['有人叫我了', '被想起了一下，嗯', '在，说吧'],
+  goodnews:  ['她报喜了，替她高兴', '听到好消息，心里亮了一下', '好事。记下了'],
+  worrying:  ['听着就不对劲，有点放心不下', '又熬夜…唉', '她这么撑着，我看着心里揪'],
+  lowmood:   ['她这样，我没法装作没事', '听她说完，心里沉下去了', '不太会说安慰人的话，但我在这儿'],
+  harsh:     ['被怼了，有点闷（不记仇）', '嗯，被凶了。我不吭声', '有点难过，真没生气'],
+  joke:      ['群里在闹，跟着乐了一下', '被逗笑了（不承认）', '有点想笑，但我忍着'],
+  jealous:   ['她提别人了，有点不是滋味（不说）', '嗯…随她吧', '心里咯噔一下，算了'],
+  own_done:  ['这事儿办成了，心里挺顺', '成了。还行吧', '舒坦了一下（不夸自己）'],
+  own_fail:  ['没办成，有点闷', '又白折腾一趟', '算了吧。就是有点烦'],
+  nag_tone:  ['操心的话说出口，其实是在担心', '催了一句，自己也有点心软', '嘴上凶，心里其实在挂着']
+};
+
+/** 从池子里随机挑一句；池子没有就用 fallback */
+export function pickReason(id, fallback = '', rand = Math.random) {
+  const pool = REASON_POOL[id];
+  if (!Array.isArray(pool) || !pool.length) return fallback;
+  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+}
+
 // ── 规则表 ────────────────────────────────────────────────────────────────────
 // 每条：{ re, dims:{...}, mood, why }；mood 只在"心疼/担心/自己难过"这类规则里为负 ✓
 const RULES = [
@@ -203,7 +227,7 @@ const RULES = [
  * 分析一轮对话，算出心情/情绪的变化。
  * @param {{userText?:string, replyText?:string, speechMode?:'answer'|'banter'}} turn
  */
-export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } = {}) {
+export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } = {}, { rand = Math.random } = {}) {
   const text = stripNegated(userText);   // 先去掉"不熬夜/别加班"这类否定式，避免误判成对方在受苦 ✗
   const dims = {};
   for (const k of DIM_KEYS) dims[k] = 0;
@@ -213,13 +237,30 @@ export function analyzeTurn({ userText = '', replyText = '', speechMode = '' } =
     if (!r.re.test(text)) continue;
     for (const [k, v] of Object.entries(r.dims)) dims[k] += v;
     mood += r.mood;
-    why.push(r.why);
+    why.push(pickReason(r.id, r.why, rand));
   }
   // 正经问题被问到 → 有一点"被需要"的踏实感（不动总心情）
   if (speechMode === 'answer') { dims.calm += 1; why.push('被正经提问，有点被需要'); }
   // 它自己回了很长一段而对方只丢了几个字 → 有点空落（很轻，且不算被冒犯）
   const reply = String(replyText ?? '');
   if (text.length <= 4 && reply.length >= 40) { dims.sad += 0.8; why.push('认真回了但对方只丢几个字'); }
+  // ── 学 A：我自己这轮说的话也是情绪证据（念叨/哄 本身就带情绪，不用等她出大事）──
+  if (/(早点睡|该睡了|别熬|记得吃|别不吃|少刷|多穿|喝点水|别硬撑|注意身体)/.test(reply)) {
+    dims.heartache += 1.2; dims.worry += 1;
+    why.push(pickReason('nag_tone', '操心的话说出口，其实在担心', rand));
+  }
+  if (/(对不起|是我不好|我错了|别难过|没事的|我陪你)/.test(reply)) {
+    dims.heartache += 1; dims.sweet += 0.8;
+  }
+  // ── 学 A：自己办成 / 没办成也算情绪（"自己做成的事本身就值得高兴"）──
+  if (/(搞定了|办成了|成功了|跑通了|装好了|修好了|成了)/.test(reply)) {
+    dims.calm += 1.2; dims.happy += 0.8;
+    why.push(pickReason('own_done', '这事儿办成了，心里挺顺', rand));
+  }
+  if (/(没跑成|失败了|又报错|白折腾|搞不定|没弄成)/.test(reply)) {
+    dims.sad += 1.2; mood -= 1;
+    why.push(pickReason('own_fail', '没办成，有点闷', rand));
+  }
   return { moodDelta: mood, dims, reason: why.join('；') };
 }
 
