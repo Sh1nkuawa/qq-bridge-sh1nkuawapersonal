@@ -184,3 +184,7 @@ docs/
 
 共享内核**不复制**：工具经 `../qq-bridge/src/voice-core.js` 与 `../qq-bridge/src/snowluma-conn.js`
 引同一份实现（qq-bridge 里的 `src/send-voice-lib.js` 也是转发这同一份）。
+
+## 附：docs/ 根级文档一览（含新增）
+
+- docs/SHARE.md —— 把这个项目交给朋友用：三种给法、绝对不能给的东西、他要准备什么、启动顺序、语音版权注意、六个常见坑。

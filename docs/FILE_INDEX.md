@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **329** 个被跟踪文件（其中 327 个文本文件、合计 **72,447** 行） —— 文件自带说明 **306**、人工补写 **23**、待补 **0**。
+统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,507** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -48,7 +48,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 186 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 190 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -329,6 +329,7 @@
 | [`test-quote-url.mjs`](../scripts/test-quote-url.mjs) | 59 | 引用消息里的链接必须完整 —— 事故现场回归 | 文件自带 |
 | [`test-reply-wait.mjs`](../scripts/test-reply-wait.mjs) | 203 | First-reply quiet-window regressions. Real bridge handlers, fixture peers only. | 文件自带 |
 | [`test-role-card.mjs`](../scripts/test-role-card.mjs) | 108 | 人格卡按仿真模式取用（src/role-card.js）的离线单测。 | 文件自带 |
+| [`test-serialize.mjs`](../scripts/test-serialize.mjs) | 38 | 串行队列的离线回归：严格按序、失败不阻塞、返回值各自独立 | 文件自带 |
 | [`test-setup-dsh-idempotent.mjs`](../scripts/test-setup-dsh-idempotent.mjs) | 127 | setup-dsh.mjs 幂等性测试：在一个临时 DSH_HOME 里连跑两次， | 文件自带 |
 | [`test-slang-learn.mjs`](../scripts/test-slang-learn.mjs) | 65 | 黑话学习模块新增功能自检：sources 字段、深度研究 prompt、解析。 | 文件自带 |
 | [`test-snowluma-conn.mjs`](../scripts/test-snowluma-conn.mjs) | 115 | SnowLuma 账号/token 自发现自检。 | 文件自带 |
@@ -410,6 +411,7 @@
 | [`self-test.js`](../src/self-test.js) | 116 | 自测脚本：不依赖 SnowLuma / QQ，只验证 DSH 侧链路—— | 文件自带 |
 | [`send-voice-lib.js`](../src/send-voice-lib.js) | 31 | 语音发送共享库 —— 薄转发层（唯一实现在 voice-core.js）。 | 文件自带 |
 | [`sensitive.js`](../src/sensitive.js) | 15 | 共享的敏感信息审计正则：桥接回复、MCP 发送、审批/提问文本等统一使用，避免两处维护不一致。 | 文件自带 |
+| [`serialize.js`](../src/serialize.js) | 18 | 极简串行队列：保证同一时间只有一任务在跑，前一个失败也不影响后一个。 | 文件自带 |
 | [`slang-learner.js`](../src/slang-learner.js) | 373 | 群聊黑话/网络用语学习与迭代模块。 | 文件自带 |
 | [`snowluma-conn.js`](../src/snowluma-conn.js) | 223 | SnowLuma 连接自发现：解决「换 QQ 账号后 token 变了，工具就 401」的问题。 | 文件自带 |
 | [`snowluma-liveness.mjs`](../src/snowluma-liveness.mjs) | 63 | SnowLuma 链路存活判定（纯函数，便于单测）。 | 文件自带 |
