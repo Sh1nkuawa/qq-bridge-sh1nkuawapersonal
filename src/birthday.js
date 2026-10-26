@@ -129,12 +129,12 @@ export function markSent(birthdays, userId, year) {
  * @param {{name:string,userId:string,age?:number|null}} person
  */
 export function birthdayPromptLine(person, { key = '' } = {}) {
-  const name = String(person?.name || person?.userId || '这位群友');
-  const age = Number(person?.age);
-  const ageText = Number.isFinite(age) && age > 0 && age < 120 ? `（今年 ${age} 岁）` : '';
-  return `【生日】${key}\n今天是 **${name}**${ageText} 的生日（QQ ${person?.userId}）。\n`
+  const uid = String(person?.userId || '');
+  return `【生日】${key}\n今天是**这位群友**（QQ ${uid}）的生日。\n`
     + `请用 \`qq_speak\` 送祝福 —— 顺序它自己会处理（先中文、再语音）：\n`
-    + `· \`text\`：一句**中文**祝福，@ 他（\`atUserId\` 填 ${person?.userId}）；短一点、真心一点，别套话、别写小作文。\n`
-    + `· \`ja\`：用**你自己的声音**说的一句**日语**生日祝福（必须含假名，≤100 字）。\n`
+    + `· \`text\`：一句**中文**祝福，用 \`atUserId\` = ${uid} **@ 他**；\n`
+    + `  **不要写他的名字**（群名片会变，@ 就够）—— 直接说祝福本身，短一点、真心一点，别套话、别写小作文。\n`
+    + `· \`ja\`：用**你自己的声音**说的一句**日语**生日祝福（必须含假名，≤100 字）；\n`
+    + `  日语里同样**不要带名字**。\n`
     + `如果语音合成失败（服务没起等），就**只发中文祝福**，不要重试、不要假装发了语音。\n`;
 }
