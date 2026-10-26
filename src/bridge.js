@@ -11988,6 +11988,26 @@ async function main() {
     st.preSleepWaitAccumMs = 0;
     saveSocialV2State();
 
+    // 自研心情（方案B，2026-10-26 恢复）：它刚真的发了话 ⇒ 用规则算一次心情/七根情绪。
+    // 为什么回到规则引擎：插件强依赖具体 session id，会被反复换会话搞脱钩、静默好几天 ✗。
+    try {
+      const lastUser = [...st.recentMessages].reverse().find((m) => m && !m.isSelf);
+      const lastSelf = [...st.recentMessages].reverse().find((m) => m && m.isSelf);
+      if (lastUser) {
+        const r = applyMoodTurn({
+          cfg: readMoodConfig(),
+          turn: {
+            userText: String(lastUser.plain ?? lastUser.text ?? ''),
+            replyText: String(lastSelf?.text ?? ''),
+            speechMode: lastUser.speech?.mode ?? ''
+          }
+        });
+        if (r.changed) log(`[mood] 心情 ${r.state.mood.toFixed(0)}/100（${r.reason}）`);
+      }
+    } catch (error) {
+      log(`[mood] 更新失败（${key}）：${error?.message ?? error}`);
+    }
+
   }
 
   function readFeedbackEntries() {
@@ -12880,7 +12900,21 @@ async function main() {
       + '合适的时候（举例，不限）：深夜劝睡、被夸到不好意思、安慰人、吐槽感叹、想强调一句、道早晚安、想逗人、被点名。 \n'
       + '⭐ 中文那句必须**说清 ja 的意思**（意译即可）—— 群友不一定懂日语，先看懂再听声音。\n'
       + '格式限制：中文正文 ≤100 字；一个自然段最多 1 条；不连发。\n\n';
-    const base = roleLine + tokenLine + speechLine + voiceOwnLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
+    // 心情注入（方案B）：受设置页 injectMode / 每日上限 / 可信度门槛约束；event 模式"同一件事只说一次"。
+    // 读之前先按时间衰减，避免长时间沉默后仍按旧心情说话。
+    const moodLine = (() => {
+      try {
+        const cfgM = readMoodConfig();
+        const state = readMoodState();
+        const before = state.mood;
+        decayMoodState(state, cfgM);
+        const line = moodLineFor(state, cfgM);
+        if (line) markMoodInjected(state, line);
+        if (line || Math.abs(state.mood - before) > 0.5) writeMoodState(state);
+        return line;
+      } catch { return ''; }
+    })();
+    const base = roleLine + tokenLine + speechLine + voiceOwnLine + moodLine + antiAiLine + proactiveLine + stickerLine + replyLine + memeLine + voiceLine + arknightsLine + adminLine + preSleepLine + statusLine + wakeLine + quotedLine + linkLine + imageJobLine + affinityLine + memoryLine + participationLine + retryLine;
     if (reason === 'bootstrap') {
       return `${base}【引导唤醒】你已接入 QQ 会话 ${key}。\n当前是二代仿真模式：你的文本输出不会自动发送到 QQ，所有发言必须通过工具完成。\n请先调用 qq_get_prompt 查看角色、推荐值、可用工具和状态；有待回应的消息先按首回复节奏处理，最后才用 qq_set_wake_config 设置你希望如何被唤醒。`;
     }
