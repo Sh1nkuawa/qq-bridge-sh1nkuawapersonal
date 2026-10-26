@@ -6657,6 +6657,9 @@ async function main() {
           const key = String(body.key ?? '').trim();
           const text = String(body.text ?? '').trim();
           const ja = String(body.ja ?? '').trim();
+          // 生日祝福要 @ 人：允许调用方指定 atUserId（qq_speak 的 atUserId 参数传进来）
+          const atUid = String(body.atUserId ?? '').trim();
+          const atUserId = /^\d{4,12}$/.test(atUid) ? atUid : null;
           const parsed = parseTargetKey(key);
           if (!parsed || !text || !ja) { sendJson({ ok: false, error: 'key/text/ja 都是必填' }, 400); return; }
           if (!modeAllowed(key, parsed.kind, Number(parsed.id), cfg, currentMode)) { sendJson({ ok: false, error: `目标 ${key} 不在白名单内` }, 403); return; }
@@ -6669,7 +6672,7 @@ async function main() {
           if (!syn.ok) { sendJson({ ok: false, error: `语音合成失败（本次没发任何消息）：${syn.error}` }, 400); return; }
           // ② 发中文
           let textSent = false;
-          try { await sendMessagesV2(key, [text], []); textSent = true; }
+          try { await sendMessagesV2(key, [text], [], atUserId); textSent = true; }
           catch (error) { sendJson({ ok: false, error: `文字发送失败：${error?.message ?? error}`, file: path.basename(syn.file) }, 502); return; }
           // ③ 发语音
           try { await sendVoiceV2(key, syn.file, { audit: true }); }
@@ -12930,7 +12933,9 @@ async function main() {
     }
     if (reason === 'birthday') {
     const persons = birthdayPending.get(key) ?? [];
-    birthdayPending.delete(key);
+    // ⚠️ 2026-10-27 踩过：这里原来 delete(key)，但**提示词会被构建多次** ✗
+    // ⇒ 第二次读到空数组 ⇒ 模型收到「今天有群友过生日，但没拿到 QQ 号」⇒ 什么都没做 ✗。
+    // 所以：读但不删；下一次 tick 会 set() 覆盖它。
     // ⚠️ 这里才记 lastSentYear：只有"提示词真的构建出来"才算发过，
     // 否则像 2026-10-27 那样唤醒失败、标记却写了 ⇒ 当天不再重试 ✗
     try {

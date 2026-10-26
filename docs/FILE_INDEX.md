@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,588** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
+统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,599** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -382,8 +382,8 @@
 | [`bili-comments.js`](../src/bili-comments.js) | 146 | B 站评论（辅助理解用）：给"看完字幕"再加一层「观众怎么看」。 | 文件自带 |
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
-| [`birthday.js`](../src/birthday.js) | 151 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,980 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 14,985 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -394,7 +394,7 @@
 | [`link-bilibili.js`](../src/link-bilibili.js) | 176 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
-| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,726 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
+| [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,727 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`mcp-web-search-safe.js`](../src/mcp-web-search-safe.js) | 539 | 安全版 Web Search / Fetch MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |
 | [`md-to-plain.js`](../src/md-to-plain.js) | 110 | 把 agent 的 Markdown 回复转成适合 QQ 发送的纯文本。 | 文件自带 |
 | [`meme-lib.js`](../src/meme-lib.js) | 399 | 本地表情包库（dsh-meme 图库接入）——纯函数 + 只读索引。 | 文件自带 |

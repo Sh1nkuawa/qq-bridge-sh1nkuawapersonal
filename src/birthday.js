@@ -133,7 +133,12 @@ export function birthdayPromptLine(people, { key = '' } = {}) {
   const uids = list.map((p) => String(p?.userId || '')).filter(Boolean);
   if (!uids.length) return `【生日】${key}\n今天有群友过生日，但没拿到 QQ 号。`;
   const multi = uids.length > 1;
-  const head = `【生日】${key}\n今天是${multi ? ` **${uids.length} 位** ` : ''}群友的生日：${uids.map((u) => `QQ ${u}`).join('、')}。\n`;
+  // ⚠️ 实测（2026-10-27 00:19）：只把生日附在 base 后面，模型会顺着群聊上下文接话、
+  // 完全不发生日祝福 ✗。所以这段必须"抢占"：放最前面、写成唯一任务、明确禁止接群聊。
+  const head = `【生日｜这一轮只做这件事】${key}\n`
+    + `⚠️ **本轮唯一任务：给下面过生日的群友送生日祝福。**\n`
+    + `**不要回应当前群聊、不要接群里的话题、不要评论他们在聊什么** —— 先把祝福送出去，这一轮就结束。\n`
+    + `今天是${multi ? ` **${uids.length} 位** ` : ''}群友的生日：${uids.map((u) => `QQ ${u}`).join('、')}。\n`;
 
   // owner 2026-10-26 指定顺序：@第一个+祝福 → 日语 → @第二个+祝福 → 日语（一人一组，不要合并）
   const steps = uids.map((u, i) => `  ${i + 1}. QQ ${u}：调一次 \`qq_speak\` ——`

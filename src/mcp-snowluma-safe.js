@@ -877,9 +877,10 @@ server.tool(
     token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）'),
     text: z.string().describe('要发到群里的中文正文'),
     ja: z.string().describe('要读出来的日文台词（只接受日文，至少要有假名）'),
+    atUserId: z.string().optional().describe('可选：要 @ 的群友 QQ 号。生日祝福、点名回应这类场合用它 @ 人（只 @ 真正的对象，别滥用）'),
     label: z.string().optional().describe('语音备注（给控制台）')
   },
-  async ({ key, token, text, ja, label }) => {
+  async ({ key, token, text, ja, atUserId, label }) => {
     try {
       // 1) 先合成（失败就整条不发 —— 满足"起不来就拒绝"）
       // ⚠️ /api/tts/synthesize 在**操作者通道**（只认 ?token=<控制台令牌>），
@@ -892,7 +893,7 @@ server.tool(
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json; charset=utf-8', ...(consoleTok ? { 'x-console-token': consoleTok } : {}) },
-        body: JSON.stringify({ key, text, ja }),
+        body: JSON.stringify({ key, text, ja, atUserId }),
         signal: AbortSignal.timeout(600000)
       });
       let data = null;
