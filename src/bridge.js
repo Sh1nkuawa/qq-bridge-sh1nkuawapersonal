@@ -29,6 +29,7 @@ import { fetchTopComments, formatCommentsBlock } from './bili-comments.js';
 import { syncMoodTargetSession } from './mood-bridge.js';
 import { decideRename } from './impersonator-guard.js';
 import { synthesizeJapanese } from './tts.js';
+import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickNow, todaysBirthdays } from './birthday.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -12561,7 +12562,12 @@ async function main() {
   function buildWakePromptV2(key, reason) {
     // owner 2026-10-24：每轮的心情判断交给插件（LLM），这里只保留**静默落寞**这一条
     // —— 6 小时没人在说话才会有一点（02:00-10:00 不算，正常人要睡觉），且每次静默只算一次。
-    if (reason === 'proactiveCheck') {
+    if (reason === 'birthday') {
+    const person = birthdayPending.get(key);
+    if (person) birthdayPending.delete(key);
+    return `${base}${birthdayPromptLine(person ?? { name: '这位群友', userId: '' }, { key })}`;
+  }
+  if (reason === 'proactiveCheck') {
       try { applySilenceMood({ cfg: readMoodConfig(), lastIncomingAt: getSocialV2State(key).lastIncomingAt }); }
       catch (error) { log(`[mood] 静默判定失败：${error?.message ?? error}`); }
     }
@@ -13074,6 +13080,42 @@ async function main() {
     const base = String(reason ?? '').split(':')[0];
     return WAKE_PRIORITY[base] ?? 0;
   }
+
+  // ── 生日祝贺（owner 2026-10-26）──────────────────────────────────────────
+  // 数据：state/birthdays.json（owner 手动维护）；触发：北京时间 0 点；0 点不在线则当天补发；
+  // 同一个人同一年只发一次（lastSentYear 去重）。
+  // 祝福由**模型现场写** + **日语语音**（唤醒一次，由它自己调 qq_speak）。
+  const birthdayPending = new Map();   // key -> { name, userId, age }
+  async function birthdayTick() {
+    try {
+      const list = loadBirthdays();
+      const verdict = shouldTickNow(Date.now(), { catchUp: true });
+      if (!verdict.due) return;
+      const people = todaysBirthdays(list, Date.now());
+      if (!people.length) return;
+      const groups = (cfg.allow?.groups ?? []).map(String);
+      if (!groups.length) { log('[birthday] 没有 allow.groups，跳过'); return; }
+      for (const person of people) {
+        const gid = String(person.group || groups[0]);
+        if (!groups.includes(gid)) { log(`[birthday] ${person.name} 的群 ${gid} 不在 allow.groups，跳过`); continue; }
+        const key = `group:${gid}`;
+        const age = person.year ? verdict.parts.year - person.year : null;
+        birthdayPending.set(key, { name: person.name, userId: person.userId, age });
+        markSent(list, person.userId, verdict.parts.year);
+        saveBirthdays(list);
+        log(`[birthday] 今天 ${person.name}(${person.userId}) 过生日 ⇒ 唤醒祝福（${key}）`);
+        scheduleWakeV2(key, 'birthday');
+      }
+    } catch (error) {
+      log(`[birthday] 检查失败：${error?.message ?? error}`);
+    }
+  }
+  // 每分钟检查一次（0 点那一刻 + 当天补发都靠它；lastSentYear 保证不重复）
+  try {
+    const t = setInterval(() => { void birthdayTick(); }, 60 * 1000);
+    if (typeof t.unref === 'function') t.unref();
+    setTimeout(() => { void birthdayTick(); }, 20 * 1000);   // 启动后补发一次
+  } catch { /* ignore */ }
 
   function scheduleWakeV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;

@@ -2218,3 +2218,30 @@ owner 要求「不要改窗口大小、自己决定点击位置」，并指出�
 
 要点：交付用 \git archive --format=zip -o qq-bridge.zip HEAD\（只含被跟踪文件 ✓，实测 1.8 MB，不含任何密钥 ✓）；
 模板是 \config.example.json\（已清空 authToken/authCookie/accessToken/httpToken/consoleToken/afdian.token/tavilyApiKey/arkKeyFile/arkBaseFile，ownerQQ=0，且**不含 allowProcessControl**）。
+
+### 16.38 生日祝贺：北京时间 0 点，模型写的祝福 + 日语语音（2026-10-26）
+
+**需求**：群友过生日时，北京时间 **0 点** 给祝福；**模型现场写** + **用它自己的声音说一句日语**；0 点不在线则**当天补发**。
+
+**数据（owner 手动维护）**：`state/birthdays.json`
+```json
+{
+  "100000001": { "name": "小明", "month": 10, "day": 26, "group": 123456789 },
+  "100000002": { "name": "小红", "month": 2,  "day": 29 }
+}
+```
+- key = QQ 号；`group` 省略时用 `config.allow.groups` 的第一个群；
+- `year`（出生年）可选，填了就能算出"今年几岁"写进祝福；
+- `lastSentYear` 由程序自己写 —— **同一个人同一年只发一次** ✓
+- 改完这个文件**不用重启**（每分钟重新读一次 ✓）。
+
+**实现**（`src/birthday.js` + `bridge.js`）：
+- `beijingParts()`：**显式按 UTC+8** 算"现在几点"，不依赖系统时区；
+- `todaysBirthdays()`：算出今天谁过生日（**2/29 出生的人**在平年默认按 **2/28** 算，可改 `feb29On`）；
+- `shouldTickNow()`：0 点整 ⇒ `midnight`；0 点之后 ⇒ `catch-up`（**当天补发**，去重靠 `lastSentYear`）；
+- 桥接里一个**每分钟**的定时器 + 启动后 20 秒补发一次 ✓；
+- 命中后 `scheduleWakeV2(key, 'birthday')` 唤醒模型，提示词分支告诉它：
+  「今天是 X 的生日（QQ …）→ 用 `qq_speak`：中文祝福 @ 他 + 日语那句用你自己的声音；语音失败就只发中文，别重试」；
+- 目标群：`config.allow.groups`（生日那人在哪个群就发哪个群）。
+
+**回归**：`scripts/test-birthday.mjs` 12 组（时区 / 命中 / 跨年 / 2/29 闰年 / 非法日期 / night vs catch-up / 存取无 BOM / 提示词内容）。
