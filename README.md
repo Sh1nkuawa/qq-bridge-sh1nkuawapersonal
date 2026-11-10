@@ -52,6 +52,10 @@ QQ 消息 ──► SnowLuma（OneBot v11 WS）──► 本桥接进程 ──�
     原因是 **SnowLuma EULA §5.4** 规定「将其并入第三方安装包或 Docker 镜像、**通过自动化脚本部署**」
     须事先取得书面授权，而原生组件属专有组件。本程序**只探测、不部署**：SnowLuma 的安装、启动与扫码
     始终由你自己完成（详见 [LICENSE](LICENSE) 与 [RULES.md](RULES.md)）。
+     > ⚠️ **2026-11 现状**：SnowLuma 作者收到腾讯律师函，**上游仓库已转为私有**，无法再下载或更新。
+     > 因此本仓库**不包含、不分发、不提供任何 QQ 网关的二进制或压缩包**，文档也不引导安装；
+     > 你需要**自备任意 OneBot 11 实现**（或走腾讯官方 QQ 开放平台），并自行承担其可用性与合规性。
+     > 桥接只依赖 **OneBot v11 协议**本身 ⇒ 换网关不需要改桥接代码 ✓ 详见 [docs/SHARE.md](docs/SHARE.md)。
   - `web-search-safe`（桥接自带 `src/mcp-web-search-safe.js`）：只读 `web_search` / `web_fetch`（带 SSRF 防护），供 agent 查网络用语/资料。
     ⚠️ 它会把**搜索关键词发给 Bing**、并按模型决定抓取公网 URL；**黑话学习默认开启**，会拿群聊里提取的词条去搜。
     数据出机清单见 [LICENSE](LICENSE) 的「数据出机清单」，不需要就关掉黑话自动研究（`slang.autoResearch`）。

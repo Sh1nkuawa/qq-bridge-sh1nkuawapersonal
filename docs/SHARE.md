@@ -1,6 +1,6 @@
 # 把这个项目交给朋友用
 
-> 三步：**给他干净的源码** → **他准备自己的 DSH / SnowLuma / QQ 小号** → **填 config.json 启动**。
+> 三步：**给他干净的源码** → **他准备自己的 DSH / OneBot 网关 / QQ 小号** → **填 config.json 启动**。
 
 ## 一、三种给法（任选其一）
 
@@ -17,7 +17,7 @@
 | 路径 | 里面是什么 |
 | --- | --- |
 | `state/` | 控制台令牌、每会话的 agentToken、聊天记录、记忆、缓存、日志 |
-| `config.json` | DSH/SnowLuma 的 token、cookie、你的 QQ 号、群白名单 |
+| `config.json` | DSH / 网关的 token、cookie、你的 QQ 号、群白名单 |
 | `audio/` | 语音库（含真人/角色音色片段） |
 | `.env` | 若存在，同理 |
 | `~/.dsh` | 你的 DSH profile、会话签名钥匙 |
@@ -28,11 +28,21 @@
 
 1. **Windows** + **Node 16+**（本机是 `D:\nodejs16`，全局装在 `D:\nodejs16\node_global`）
 2. **DSH**：`npm i -g @deepseek-ai/dsh`，配**自己的** DeepSeek key
-3. **SnowLuma**：QQ OneBot 网关（`ws://127.0.0.1:3001`），用**自己的 QQ 机器人小号**
+3. **一个 OneBot 11 实现**（QQ 网关），自带 WebSocket 服务，默认 `ws://127.0.0.1:3001`；
+   用**自己的 QQ 小号**（别用主号）
+
+   > ⚠️ **本项目不提供、不分发、不捆绑任何 QQ 网关** ✗
+   > 这类网关属于"QQ 协议第三方实现"，法律与可用性都由**它自己的作者**承担；
+   > 前阵子已有作者因律师函把仓库转为私有、停止更新。
+   > 你需要**自己选一个、自己承担**：常见的有 Lagrange.OneBot / NapCatQQ / LLOneBot 等
+   > （同样都在这条灰线上，只是维护活跃度不同），或者走**腾讯官方 QQ 开放平台**（合法但功能受限）。
+   > 本项目只依赖 **OneBot 11 协议**本身 ⇒ 换任何网关都不需要改桥接代码 ✓
+   > 也**不要**把任何网关的二进制/压缩包塞进本仓库或网盘再分发 ✗
 4. **一个自己的测试群**（不要直接用你的群 ✓）
 5. 复制 `config.example.json` → `config.json`，填：
    - `dsh.baseUrl` / `dsh.provider` / `dsh.model` / `dsh.authToken`（或 cookie）
    - `snowluma.wsUrl` / `snowluma.httpUrl` / `snowluma.accessToken` / `snowluma.httpToken`
+     （**配置项名沿用 `snowluma`**，指的是"你那个 OneBot 网关"的连接信息，与具体实现无关 ✓）
    - `ownerQQ`（他自己的 QQ）
    - `allow.groups` / `allow.private`（他的测试群/号）
    - `consolePort` 若冲突就改（默认 3100）
@@ -40,9 +50,9 @@
 ## 四、启动顺序
 
 1. 起 **DSH**（自己拉起来，别让桥接代劳）
-2. 起 **SnowLuma** 网关
+2. 起**你的 OneBot 网关**
 3. 双击 **`start.bat`**（桥接；控制台 `http://127.0.0.1:3100`）
-4. 看 `state/bridge.log`：应出现 `SnowLuma 已连接` / `DSH 已就绪` / `机器人昵称: …`
+4. 看 `state/bridge.log`：应出现 `SnowLuma 已连接`（日志里的字样沿用旧名，指的是"网关已连上"）/ `DSH 已就绪` / `机器人昵称: …`
 
 ## 五、语音功能（可选，且有版权注意）
 

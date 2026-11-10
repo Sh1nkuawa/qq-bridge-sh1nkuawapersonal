@@ -147,3 +147,5 @@ npm run test-stickers
 ## Compliance
 
 SnowLuma is an independent third-party project and is not affiliated with Tencent/QQ. This project is for learning and technical research only; please follow the relevant terms and the QQ User Agreement.
+
+> **Status (2026-11):** the SnowLuma author received a legal letter from Tencent and the **upstream repository is now private** — it can no longer be downloaded or updated. This project therefore **does not bundle, distribute, or link any QQ gateway binary**, and the docs do not walk you through installing one. Bring your own **OneBot v11** implementation (or use Tencent official bot platform) and accept its availability/compliance yourself. The bridge only depends on the OneBot v11 protocol itself, so **swapping gateways requires no code changes** ✓ — see [docs/SHARE.md](docs/SHARE.md).

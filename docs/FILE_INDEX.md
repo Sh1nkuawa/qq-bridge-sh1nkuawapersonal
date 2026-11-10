@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,599** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
+统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,619** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,13 +22,13 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 535 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,247 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,251 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
 | [`package.json`](../package.json) | 62 | 包定义与 npm 脚本入口（test:*/verify:*/probe:*/postinstall 都在这里） | 人工补写 |
-| [`README.en.md`](../README.en.md) | 149 | QQ ↔ DeepSeek Harness Bridge (qq-bridge) | 文件自带（标题） |
-| [`README.md`](../README.md) | 280 | QQ ↔ DeepSeek Harness 桥接 | 文件自带（标题） |
+| [`README.en.md`](../README.en.md) | 151 | QQ ↔ DeepSeek Harness Bridge (qq-bridge) | 文件自带（标题） |
+| [`README.md`](../README.md) | 284 | QQ ↔ DeepSeek Harness 桥接 | 文件自带（标题） |
 | [`restart.bat`](../restart.bat) | 26 | 先杀旧守护窗口与旧桥接（按锁文件 PID + 命令行兜底），确认退出后再拉起守护窗口 | 人工补写 |
 | [`RULES.md`](../RULES.md) | 163 | QQ 桥接权限与安全规则（RULES） | 文件自带（标题） |
 | [`start.bat`](../start.bat) | 19 | 桥接守护启动器：先收紧 state/ 权限，再在 :loop 里跑 bridge.js，退出 5 秒后自动重启 | 人工补写 |
@@ -53,7 +53,7 @@
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
 | [`README.md`](../docs/README.md) | 94 | 文档索引（docs/README.md） | 文件自带（标题） |
-| [`SHARE.md`](../docs/SHARE.md) | 60 | 把这个项目交给朋友用 | 文件自带（标题） |
+| [`SHARE.md`](../docs/SHARE.md) | 70 | 把这个项目交给朋友用 | 文件自带（标题） |
 
 ## docs/guides
 
