@@ -3804,6 +3804,16 @@ async function main() {
         // [qq-bridge 本地补丁] 释放等待锁：旧回合若卡在 qq_wait_for_messages 里，这把锁会一直占着，
         // 新会话的每次等待都会被 429「已有一个等待中」挡回去（实测卡死十几分钟）。
         activeWaits.delete(key);
+        // [修复 2026-11-15] DSH **明确**报告该会话"没有运行中的回合" ⇒ 这是**回合正常结束**，
+        // 不是卡死 ✗。这种情况只清 busy / 等待锁就够了，**绝不能解绑会话** ——
+        // 解绑 ⇒ 下次唤醒重建会话 ⇒ 对话上下文丢失、prompt cache 全 miss（白烧 token）、
+        // DSH 里堆一堆死会话、心情插件 targetSession 反复重绑。
+        // 实测：2026-11-15 单日 4 小时内 23 次解绑 / 22 个新会话。
+        // 保留解绑的**唯一**场景：查不到运行状态（runningMap 为 null）且静默远超阈值 —— 见下面的旧逻辑。
+        if (runningMap && mapped && runningMap.get(mapped) === false) {
+          log(`[watchdog] ${key} 的回合已正常结束（DSH 无运行中回合）→ 保留会话 ${mapped}，下次唤醒直接复用`);
+          continue;
+        }
         // 复活该会话：下条消息会重建会话（旧会话已卡死，放弃复用）
         if (state.sessions?.[key]) {
           const dead = state.sessions[key];
