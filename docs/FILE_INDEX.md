@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **332** 个被跟踪文件（其中 330 个文本文件、合计 **72,693** 行） —— 文件自带说明 **309**、人工补写 **23**、待补 **0**。
+统计：共 **333** 个被跟踪文件（其中 331 个文本文件、合计 **72,869** 行） —— 文件自带说明 **310**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -21,8 +21,8 @@
 | [`.gitignore`](../.gitignore) | 81 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 535 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,251 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`config.example.json`](../config.example.json) | 544 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,283 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -131,6 +131,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`傲娇助手.md`](../roles/傲娇助手.md) | 7 | 傲娇助手 | 文件自带（标题） |
+| [`猫娘侍从.md`](../roles/猫娘侍从.md) | 64 | 角色卡：猫娘侍从（赛博陪伴） | 文件自带（标题） |
 | [`小鲸鱼.md`](../roles/小鲸鱼.md) | 215 | 角色卡：DeepSeek 小鲸鱼 —— QQ 群友版 | 文件自带（标题） |
 | [`README.md`](../roles/README.md) | 89 | 人格卡目录说明与写法约定 | 人工补写 |
 
@@ -384,7 +385,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 14,995 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,066 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

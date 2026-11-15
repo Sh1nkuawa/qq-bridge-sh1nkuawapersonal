@@ -531,5 +531,14 @@
   },
   "role": {
     "maxInjectChars": 7500
+  },
+  "personaSchedule": {
+    "enabled": false,
+    "switchAt": "05:00",
+    "windowMinutes": 30,
+    "rotation": [
+      "小鲸鱼",
+      "猫娘侍从"
+    ]
   }
 }

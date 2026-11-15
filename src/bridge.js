@@ -31,6 +31,7 @@ import { decideRename } from './impersonator-guard.js';
 import { synthesizeJapanese } from './tts.js';
 import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickNow, todaysBirthdays } from './birthday.js';
 import { createSerialQueue } from './serialize.js';
+import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -13184,6 +13185,76 @@ async function main() {
     const t = setInterval(() => { void birthdayTick(); }, 60 * 1000);
     if (typeof t.unref === 'function') t.unref();
     setTimeout(() => { void birthdayTick(); }, 20 * 1000);   // 启动后补发一次
+  } catch { /* ignore */ }
+
+
+  // ── 每日人格轮换（owner 2026-11-15 拍板）─────────────────────────────────
+  // 规则：北京时间每天 05:00 换一次角色卡；到点若这一轮还在跑就等它结束（窗口内每分钟重试）；
+  // 05:00 那一刻桥接没跑（非正常关机）⇒ 当天跳过，绝不延迟到白天变脸；
+  // 手动切换不暂停自动（只是覆盖到下一个 05:00）；心情/好感度/黑话不清零（两个角色是共同体）。
+  const personaStateFile = path.join(STATE_DIR, 'persona-schedule.json');
+  function readPersonaState() {
+    return readJsonSafe(personaStateFile, { lastSwitchedDay: null, index: null });
+  }
+  function writePersonaState(v) {
+    try { atomicWriteJson(personaStateFile, v); } catch (error) { log(`[persona] 写状态失败：${error?.message ?? error}`); }
+  }
+  function anyConversationBusy() {
+    const keys = [
+      ...(cfg.allow?.groups ?? []).map((g) => `group:${g}`),
+      ...(cfg.allow?.private ?? []).map((u) => `private:${u}`)
+    ];
+    return keys.some((k) => pendingWakeKeys.has(k) || busyWatchdogTimer.has(k) || activeWaits.has(k));
+  }
+  async function personaTick() {
+    try {
+      const sch = cfg.personaSchedule;
+      if (!sch || sch.enabled === false) return;
+      const rotation = Array.isArray(sch.rotation) ? sch.rotation.filter(Boolean) : [];
+      if (rotation.length < 2) return;
+
+      const st = readPersonaState();
+      const cur = readRoleState().role;
+      const plan = shouldSwitch({
+        now: Date.now(),
+        switchAt: sch.switchAt ?? '05:00',
+        windowMinutes: Number(sch.windowMinutes) > 0 ? Number(sch.windowMinutes) : 30,
+        lastSwitchedDay: st.lastSwitchedDay ?? null,
+        rotation,
+        index: Number.isInteger(st.index) ? st.index : indexOfRole(rotation, cur),
+        busy: anyConversationBusy()
+      });
+      if (!plan.due) {
+        if (plan.reason === 'busy') log(`[persona] 到点了但这一轮还在跑，等它结束再换（${plan.day}）`);
+        return;
+      }
+      if (!fs.existsSync(path.join(ROOT, 'roles', plan.name + '.md'))) {
+        log(`[persona] 跳过轮换：角色卡「${plan.name}」不存在（roles/${plan.name}.md）`);
+        return;
+      }
+
+      // a. 换角色卡（保存即生效）
+      writeRoleState(plan.name, readRoleState().mode);
+      // b. 重建会话（换卡不换会话会人格串味 ✗）
+      const rebuilt = [];
+      for (const gid of (cfg.allow?.groups ?? []).map(String)) {
+        const k = `group:${gid}`;
+        if (state.sessions?.[k]) {
+          try { retireSession(k); rebuilt.push(k); } catch (error) { log(`[persona] 重建会话失败 ${k}：${error?.message ?? error}`); }
+        }
+      }
+      // c. 记下"今天切过了"（幂等：重启不会重复切）
+      writePersonaState({ lastSwitchedDay: plan.day, index: plan.index });
+      log(`[persona] ${plan.day} ${sch.switchAt ?? '05:00'} 切换到「${plan.name}」`
+        + (rebuilt.length ? `（已重建会话：${rebuilt.join('、')}）` : '（当前没有活跃会话）'));
+    } catch (error) {
+      log(`[persona] 轮换检查失败：${error?.message ?? error}`);
+    }
+  }
+  try {
+    const t = setInterval(() => { void personaTick(); }, 60 * 1000);
+    if (typeof t.unref === 'function') t.unref();
+    setTimeout(() => { void personaTick(); }, 35 * 1000);
   } catch { /* ignore */ }
 
   function scheduleWakeV2(key, reason) {
