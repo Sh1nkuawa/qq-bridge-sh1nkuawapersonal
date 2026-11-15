@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **332** 个被跟踪文件（其中 330 个文本文件、合计 **72,694** 行） —— 文件自带说明 **309**、人工补写 **23**、待补 **0**。
+统计：共 **331** 个被跟踪文件（其中 329 个文本文件、合计 **72,629** 行） —— 文件自带说明 **308**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -97,7 +97,7 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`package.json`](../plugins/qq-agent-presets/package.json) | 16 | qq-bridge 的 DSH agent preset bundle：把 qq-chat / qq-chat-v2 / qq-chat-cat 作为 @deepseek-ai/dsh-agent-preset 行插入（DSH 0.1.7+ 的 preset 机制），并携带两个 preset 共用的 qq-tool-restrict 安全守卫 | 文件自带（JSON 字段） |
+| [`package.json`](../plugins/qq-agent-presets/package.json) | 15 | qq-bridge 的 DSH agent preset bundle：把 qq-chat / qq-chat-v2 作为 @deepseek-ai/dsh-agent-preset 行插入（DSH 0.1.7+ 的 preset 机制），并携带两个 preset 共用的 qq-tool-restrict 安全守卫 | 文件自带（JSON 字段） |
 | [`qq-tool-restrict.mjs`](../plugins/qq-agent-presets/qq-tool-restrict.mjs) | 201 | QQ 桥接安全硬边界：只允许 QQ MCP 工具与少量无害模型侧工具。 | 文件自带 |
 
 ## plugins/qq-agent-presets/presets
@@ -352,7 +352,6 @@
 | [`test-wake-backlog.mjs`](../scripts/test-wake-backlog.mjs) | 78 | 积压唤醒的离线回归：过期丢弃 + 只补最新（纯函数）+ bridge 接线守卫。 | 文件自带 |
 | [`test-wake-delivered.mjs`](../scripts/test-wake-delivered.mjs) | 57 | "交付给当前回合的积压唤醒没被接住 → 回合结束要重排" 的源码守卫 | 文件自带 |
 | [`test-watchdog-bridge.mjs`](../scripts/test-watchdog-bridge.mjs) | 247 | watchdog-bridge（外部看门狗）纯函数 + 假探针回归测试：不联网、不杀进程、不启动桥接。 | 文件自带 |
-| [`test-watchdog-session-keep.mjs`](../scripts/test-watchdog-session-keep.mjs) | 64 | 回归：busy 看门狗在"DSH 明确报告无运行中回合"时**不许解绑会话**。 | 文件自带 |
 | [`trace-depth.mjs`](../scripts/trace-depth.mjs) | 58 | 找出 main() 的 body 在哪里被提前闭合（括号深度第一次回到 0 的那一行）。 | 文件自带 |
 | [`unify-onebot-token.mjs`](../scripts/unify-onebot-token.mjs) | 76 | 把 SnowLuma 的 OneBot HTTP/WS accessToken 统一成同一个值，并触发配置重载 + 复测 | 文件自带 |
 | [`upgrade-dsh-017.mjs`](../scripts/upgrade-dsh-017.mjs) | 216 | !/usr/bin/env node | 文件自带 |
