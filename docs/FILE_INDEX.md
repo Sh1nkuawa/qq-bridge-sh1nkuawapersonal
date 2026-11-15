@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **333** 个被跟踪文件（其中 331 个文本文件、合计 **72,869** 行） —— 文件自带说明 **310**、人工补写 **23**、待补 **0**。
+统计：共 **335** 个被跟踪文件（其中 333 个文本文件、合计 **73,065** 行） —— 文件自带说明 **312**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -22,7 +22,7 @@
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
 | [`config.example.json`](../config.example.json) | 544 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
-| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,283 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
+| [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,288 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
 | [`package-lock.json`](../package-lock.json) | 1,748 | 依赖锁定（npm 生成，别手改） | 人工补写 |
@@ -321,6 +321,7 @@
 | [`test-onebot-connection.mjs`](../scripts/test-onebot-connection.mjs) | 53 | 一次性连接测试：用 @snowluma/sdk 连接 SnowLuma 的 OneBot WebSocket 网关， | 文件自带 |
 | [`test-owner-dm.mjs`](../scripts/test-owner-dm.mjs) | 59 | 验证「owner 私聊命令」链路（用控制台模拟器，不需要 owner 真的发消息）。 | 文件自带 |
 | [`test-persona-lines.mjs`](../scripts/test-persona-lines.mjs) | 105 | persona-lines.js 单元测试：桥接"替机器人说的话"（禁言播报 / 生图开始提示）。 | 文件自带 |
+| [`test-persona-schedule.mjs`](../scripts/test-persona-schedule.mjs) | 97 | 每日人格轮换的离线回归：窗口、忙碌延后、不补切、幂等、轮换顺序 | 文件自带 |
 | [`test-preset-local-tools.mjs`](../scripts/test-preset-local-tools.mjs) | 260 | 铁律 L7 的注册期断言：仿真会话的 preset **不得包含本地执行能力**。 | 文件自带 |
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
@@ -405,6 +406,7 @@
 | [`mood-bridge.js`](../src/mood-bridge.js) | 73 | 「鱼的心情」(dsh-feiyu-mood) 的本地适配：把它的目标会话跟我们的会话 id 同步。 | 文件自带 |
 | [`mood.js`](../src/mood.js) | 390 | 自研「心情」引擎（2026-10-23）：替代 dsh-feiyu-mood 的判断部分，**保留它的 UI**。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
+| [`persona-schedule.js`](../src/persona-schedule.js) | 94 | 每日人格轮换：北京时间每天 05:00 换一次角色卡（owner 2026-11-15 拍板）。 | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
 | [`quote-ref.js`](../src/quote-ref.js) | 114 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |
