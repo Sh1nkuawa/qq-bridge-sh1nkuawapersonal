@@ -1436,7 +1436,28 @@ function loadConfig() {
         enabled: ps.enabled !== false,
         switchAt: typeof ps.switchAt === 'string' && /^\d{1,2}:\d{2}$/.test(ps.switchAt) ? ps.switchAt : '05:00',
         windowMinutes: Number(ps.windowMinutes) > 0 ? Number(ps.windowMinutes) : 30,
-        rotation: rot
+        rotation: rot,
+        // 每个角色卡绑哪个模型（owner 2026-11-16 接入 Google 后需要）：
+        //   { "角色名": { provider: "google", model: "gemini-4-hydrogen", effort: "high" } }
+        // 没写的角色 ⇒ 回落到 config.json 的 dsh.provider/dsh.model。
+        personas: (() => {
+          const out = {};
+          const src = ps.personas;
+          if (src && typeof src === 'object' && !Array.isArray(src)) {
+            for (const [name, v] of Object.entries(src)) {
+              if (!v || typeof v !== 'object') continue;
+              const provider = typeof v.provider === 'string' && v.provider.trim() ? v.provider.trim() : '';
+              const model = typeof v.model === 'string' && v.model.trim() ? v.model.trim() : '';
+              if (!provider && !model) continue;
+              out[String(name)] = {
+                provider,
+                model,
+                effort: typeof v.effort === 'string' && v.effort.trim() ? v.effort.trim() : ''
+              };
+            }
+          }
+          return out;
+        })()
       };
     }
   }
@@ -10214,16 +10235,32 @@ async function main() {
   // 返回 'applied' | 'not-found' | 'failed'。
   // 'not-found' 表示 DSH 侧会话已经不存在（DSH 重启、异常退出、归档竞态），
   // 本地映射已失效，调用方必须退役重建，否则每条消息都会对着一个不存在的会话重试。
+  /**
+   * 当前角色卡绑定的模型。没配 `personaSchedule.personas[角色名]` 就回落到 cfg.dsh.*。
+   * 注意：这里**每次现读角色卡** ⇒ 手动切换/每日轮换都会立即生效（配合按模型串去重）。
+   */
+  function personaModelFor(roleName) {
+    const table = cfg.personaSchedule?.personas;
+    const hit = table && typeof table === 'object' ? table[String(roleName ?? '')] : null;
+    return {
+      provider: String(hit?.provider || cfg.dsh?.provider || 'deepseek-official'),
+      model: String(hit?.model || cfg.dsh?.model || 'deepseek-flash'),
+      effort: String(hit?.effort || cfg.dsh?.reasoningEffort || REASONING_EFFORT_DEFAULT)
+    };
+  }
+
   async function ensureChatModel(sessionId) {
-    if (modelAppliedSessions.get(sessionId) === modelSelectionEpoch) return 'applied';
-    const provider = String(cfg.dsh?.provider || 'deepseek-official');
-    const model = String(cfg.dsh?.model || 'deepseek-flash');
-    const effort = String(cfg.dsh?.reasoningEffort || REASONING_EFFORT_DEFAULT);
+    // 去重键带上"要用的模型"：模型变了就必须重新 selectModel（换人格时尤其重要）
+    const sel = personaModelFor(readRoleState().role);
+    const stamp = `${sel.provider}/${sel.model}/${sel.effort}`;
+    const appliedKey = `${sessionId}|${stamp}`;
+    if (modelAppliedSessions.get(appliedKey) === modelSelectionEpoch) return 'applied';
+    const { provider, model, effort } = sel;
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, reasoningEffort: effort }), 'session.selectModel');
-        modelAppliedSessions.set(sessionId, modelSelectionEpoch);
+        modelAppliedSessions.set(appliedKey, modelSelectionEpoch);
         log(`已设置会话模型 ${sessionId} -> ${result.selected.provider}/${result.selected.model} (${result.selected.reasoningEffort ?? '默认'})`);
         return 'applied';
       } catch (error) {
@@ -10235,7 +10272,7 @@ async function main() {
     const message = String(lastError?.message ?? lastError ?? '');
     if (/not[- ]?found/i.test(message)) {
       // 终态失败：记下 epoch，避免退役前（或退役失败时）被反复重试刷屏。
-      modelAppliedSessions.set(sessionId, modelSelectionEpoch);
+      modelAppliedSessions.set(appliedKey, modelSelectionEpoch);
       return 'not-found';
     }
     return 'failed';
