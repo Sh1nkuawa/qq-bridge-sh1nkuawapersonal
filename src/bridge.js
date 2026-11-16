@@ -10259,7 +10259,11 @@ async function main() {
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const result = unwrap(await api.sessions.selectModel({ sessionId, provider, model, reasoningEffort: effort }), 'session.selectModel');
+        // effort === 'auto'（或空）⇒ **不带** reasoningEffort，让 DSH 用该模型自己的默认档。
+      // 起因：gemini-4-hydrogen 明确拒绝 "high"（session/model-unavailable: does not support reasoning effort "high"）。
+      const selParams = { sessionId, provider, model };
+      if (effort && effort !== 'auto') selParams.reasoningEffort = effort;
+      const result = unwrap(await api.sessions.selectModel(selParams), 'session.selectModel');
         modelAppliedSessions.set(appliedKey, modelSelectionEpoch);
         log(`已设置会话模型 ${sessionId} -> ${result.selected.provider}/${result.selected.model} (${result.selected.reasoningEffort ?? '默认'})`);
         return 'applied';
