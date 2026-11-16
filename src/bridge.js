@@ -4686,8 +4686,11 @@ async function main() {
               return;
             }
             writeRoleState(name, rs.mode);
-            log(`控制台：角色已设置为 ${name}`);
-            sendJson({ ok: true, role: name });
+            // 换角色卡 ⇒ 重建会话（和 05:00 自动轮换保持一致；否则旧人格的历史会串进来 ✗）
+            const rebuiltRoles = rebuildSessionsForRoleSwitch();
+            log(`控制台：角色已设置为 ${name}`
+              + (rebuiltRoles.length ? `（已重建会话：${rebuiltRoles.join('、')}）` : '（当前没有活跃会话）'));
+            sendJson({ ok: true, role: name, rebuilt: rebuiltRoles });
           } else {
             writeRoleState(null, rs.mode);
             log('控制台：角色已清除');
@@ -13265,6 +13268,24 @@ async function main() {
     return keys.some((k) => pendingWakeKeys.has(k) || busyWatchdogTimer.has(k) || activeWaits.has(k));
   }
   let personaTickSeen = false;
+  /**
+   * 换角色卡之后重建各群会话（防"人格串味"：旧人设说过的话会被新人设当成本人说的）。
+   * 自动轮换与**手动切换**共用这一个入口 —— 两者行为必须一致，否则手动切完还带着旧人格的历史 ✗。
+   * @returns {string[]} 被重建的 key 列表
+   */
+  function rebuildSessionsForRoleSwitch() {
+    const rebuilt = [];
+    const keys = [
+      ...(cfg.allow?.groups ?? []).map((g) => `group:${g}`),
+      ...(cfg.allow?.private ?? []).map((u) => `private:${u}`)
+    ];
+    for (const k of keys) {
+      if (!state.sessions?.[k]) continue;
+      try { retireSession(k); rebuilt.push(k); } catch (error) { log(`[persona] 重建会话失败 ${k}：${error?.message ?? error}`); }
+    }
+    return rebuilt;
+  }
+
   async function personaTick() {
     try {
       if (!personaTickSeen) { personaTickSeen = true; log('[persona] tick 首次执行（之后每分钟一次，只在到点/忙碌/出错时打日志）'); }
@@ -13296,13 +13317,7 @@ async function main() {
       // a. 换角色卡（保存即生效）
       writeRoleState(plan.name, readRoleState().mode);
       // b. 重建会话（换卡不换会话会人格串味 ✗）
-      const rebuilt = [];
-      for (const gid of (cfg.allow?.groups ?? []).map(String)) {
-        const k = `group:${gid}`;
-        if (state.sessions?.[k]) {
-          try { retireSession(k); rebuilt.push(k); } catch (error) { log(`[persona] 重建会话失败 ${k}：${error?.message ?? error}`); }
-        }
-      }
+      const rebuilt = rebuildSessionsForRoleSwitch();
       // c. 记下"今天切过了"（幂等：重启不会重复切）
       writePersonaState({ lastSwitchedDay: plan.day, index: plan.index });
       log(`[persona] ${plan.day} ${sch.switchAt ?? '05:00'} 切换到「${plan.name}」`
