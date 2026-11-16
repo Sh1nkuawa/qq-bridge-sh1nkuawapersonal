@@ -1424,7 +1424,24 @@ function loadConfig() {
     log(`人格注入上限已按范围校正为 ${roleInjectMaxChars} 字符（配置值 ${cfg.role.maxInjectChars}，允许 1000~20000）`);
   }
 
-  return cfg;
+    // ── 每日人格轮换（owner 2026-11-15）────────────────────────────────────────
+  // ⚠️ 这里必须显式搬：loadConfig() 是"白名单式重建"，config.json 里多出来的字段会被丢掉 ✗
+  // （2026-11-16 踩过：config.json 明明写了 personaSchedule，进程里却是 undefined，
+  //   于是 rotation=[] ⇒ 长度<2 ⇒ 安静 return ⇒ 05:00 什么都没发生，且一条日志都没有）
+  {
+    const ps = file.personaSchedule;
+    if (ps && typeof ps === 'object' && !Array.isArray(ps)) {
+      const rot = Array.isArray(ps.rotation) ? ps.rotation.map((x) => String(x)).filter(Boolean) : [];
+      cfg.personaSchedule = {
+        enabled: ps.enabled !== false,
+        switchAt: typeof ps.switchAt === 'string' && /^\d{1,2}:\d{2}$/.test(ps.switchAt) ? ps.switchAt : '05:00',
+        windowMinutes: Number(ps.windowMinutes) > 0 ? Number(ps.windowMinutes) : 30,
+        rotation: rot
+      };
+    }
+  }
+
+return cfg;
 }
 
 // ── 状态持久化（QQ 会话 ↔ DSH 会话映射） ─────────────────────────────────────
@@ -13206,8 +13223,10 @@ async function main() {
     ];
     return keys.some((k) => pendingWakeKeys.has(k) || busyWatchdogTimer.has(k) || activeWaits.has(k));
   }
+  let personaTickSeen = false;
   async function personaTick() {
     try {
+      if (!personaTickSeen) { personaTickSeen = true; log('[persona] tick 首次执行（之后每分钟一次，只在到点/忙碌/出错时打日志）'); }
       const sch = cfg.personaSchedule;
       if (!sch || sch.enabled === false) return;
       const rotation = Array.isArray(sch.rotation) ? sch.rotation.filter(Boolean) : [];
@@ -13255,7 +13274,9 @@ async function main() {
     const t = setInterval(() => { void personaTick(); }, 60 * 1000);
     if (typeof t.unref === 'function') t.unref();
     setTimeout(() => { void personaTick(); }, 35 * 1000);
-  } catch { /* ignore */ }
+    log(`[persona] 轮换定时器已注册（switchAt=${cfg.personaSchedule?.switchAt ?? '(未配置)'}，`
+      + `enabled=${cfg.personaSchedule?.enabled ?? '(未配置)'}，rotation=${(cfg.personaSchedule?.rotation ?? []).join('/') || '(空)'}）`);
+  } catch (error) { log(`[persona] 注册定时器失败：${error?.message ?? error}`); }
 
   function scheduleWakeV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;
