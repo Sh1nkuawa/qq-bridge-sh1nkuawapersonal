@@ -3279,7 +3279,7 @@ async function main() {
       slangLearnerSessionId = String(saved.sessionId);
       learnerSessions.add(slangLearnerSessionId);
       api.events.follow(slangLearnerSessionId);
-      await ensureChatModel(slangLearnerSessionId);
+      await ensureChatModel(slangLearnerSessionId, slangLearnerModel());
       return slangLearnerSessionId;
     }
     const dir = path.join(STATE_DIR, 'slang-agent');
@@ -3295,7 +3295,7 @@ async function main() {
     slangLearnerSessionId = value.sessionId;
     learnerSessions.add(slangLearnerSessionId);
     api.events.follow(slangLearnerSessionId);
-    await ensureChatModel(slangLearnerSessionId);
+    await ensureChatModel(slangLearnerSessionId, slangLearnerModel());
     fs.mkdirSync(STATE_DIR, { recursive: true });
     atomicWriteJson(SLANG_SESSION_FILE, { sessionId: slangLearnerSessionId, preset });
     log(`黑话学习会话已创建：${slangLearnerSessionId}`);
@@ -10239,6 +10239,21 @@ async function main() {
   // 'not-found' 表示 DSH 侧会话已经不存在（DSH 重启、异常退出、归档竞态），
   // 本地映射已失效，调用方必须退役重建，否则每条消息都会对着一个不存在的会话重试。
   /**
+   * 黑话学习会话固定用的模型 —— **不跟随人格** ✗。
+   * 起因（2026-11-16）：DSH 默认模型改成 gemini-4-hydrogen 后，黑话学习也跟着跑了一轮 Gemini ✗
+   * （它走独立 learner session，但沿用了 ensureChatModel 的人格模型）。
+   * 配置：config.json → slang.learnerProvider / learnerModel / learnerEffort（缺省退回 dsh.*）。
+   */
+  function slangLearnerModel() {
+    const sl = cfg.slang ?? {};
+    return {
+      provider: String(sl.learnerProvider || cfg.dsh?.provider || 'deepseek-official'),
+      model: String(sl.learnerModel || cfg.dsh?.model || 'deepseek-flash'),
+      effort: String(sl.learnerEffort || cfg.dsh?.reasoningEffort || REASONING_EFFORT_DEFAULT)
+    };
+  }
+
+  /**
    * 当前角色卡绑定的模型。没配 `personaSchedule.personas[角色名]` 就回落到 cfg.dsh.*。
    * 注意：这里**每次现读角色卡** ⇒ 手动切换/每日轮换都会立即生效（配合按模型串去重）。
    */
@@ -10252,9 +10267,10 @@ async function main() {
     };
   }
 
-  async function ensureChatModel(sessionId) {
+  async function ensureChatModel(sessionId, explicitSel = null) {
     // 去重键带上"要用的模型"：模型变了就必须重新 selectModel（换人格时尤其重要）
-    const sel = personaModelFor(readRoleState().role);
+    // explicitSel：内部会话（黑话学习等）用**自己固定的模型**，不跟随人格 ✗
+    const sel = explicitSel ?? personaModelFor(readRoleState().role);
     const stamp = `${sel.provider}/${sel.model}/${sel.effort}`;
     const appliedKey = `${sessionId}|${stamp}`;
     if (modelAppliedSessions.get(appliedKey) === modelSelectionEpoch) return 'applied';
