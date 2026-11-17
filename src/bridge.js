@@ -13318,12 +13318,21 @@ async function main() {
         windowMinutes: Number(sch.windowMinutes) > 0 ? Number(sch.windowMinutes) : 30,
         lastSwitchedDay: st.lastSwitchedDay ?? null,
         rotation,
-        index: Number.isInteger(st.index) ? st.index : indexOfRole(rotation, cur),
+        // ⚠️ 永远以**实际角色卡**为准算位置，绝不信 state.index ✗
+        // 事故（2026-11-17）：手动切换不更新 index ⇒ 05:00 算出的"下一个"正好是当前角色 ⇒ 空转，
+        // 用户看到的是"没切换"，但日志里明明写着切换成功 ✗。
+        index: indexOfRole(rotation, cur),
         busy: anyConversationBusy()
       });
       if (!plan.due) {
         if (plan.reason === 'busy') log(`[persona] 到点了但这一轮还在跑，等它结束再换（${plan.day}）`);
         return;
+      }
+      // 防御：算出来的"下一个"如果还是当前角色，往后挪一格（正常情况下不会发生）
+      if (plan.due && plan.name === cur) {
+        const nextIdx = (plan.index + 1) % rotation.length;
+        plan.name = String(rotation[nextIdx]);
+        plan.index = nextIdx;
       }
       if (!fs.existsSync(path.join(ROOT, 'roles', plan.name + '.md'))) {
         log(`[persona] 跳过轮换：角色卡「${plan.name}」不存在（roles/${plan.name}.md）`);

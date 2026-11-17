@@ -94,4 +94,15 @@ ok('按当前角色算起始位置（保证下一次真的换人）', () => {
   assert.equal(indexOfRole(ROT, '不存在的角色'), 0);
 });
 
+ok('★★ 脱节场景：state.index 说在 0（小鲸鱼），实际角色是猫娘侍从 ⇒ 下一个必须是小鲸鱼', () => {
+  // 复现 2026-11-17 事故：手动切换不更新 state.index，
+  // 导致 05:00 算出的"下一个"正好等于当前角色 ⇒ 空转，看起来像"没切换"。
+  const actual = '猫娘侍从';
+  const idx = indexOfRole(ROT, actual);   // 以**实际角色**为准 = 1
+  const r = shouldSwitch({ ...base, now: bj(2026, 11, 17, 5, 0), lastSwitchedDay: '2026-11-16', index: idx });
+  assert.equal(r.due, true);
+  assert.notEqual(r.name, actual, '不能切到当前角色（那等于没切）');
+  assert.equal(r.name, '小鲸鱼');
+});
+
 console.log(`\n全部通过：${n} 项断言组`);
