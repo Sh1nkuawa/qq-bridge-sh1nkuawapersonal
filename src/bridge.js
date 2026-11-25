@@ -4829,6 +4829,43 @@ async function main() {
           sendJson({ ok: true, sent, failed });
           return;
         }
+        // ── #3 记忆（AGY 模式下模型没有 qq_memory_* 工具 ⇒ 由 CLI 走这里）──
+        if (action === 'memory') {
+          const memKey = String(req.method === 'GET' ? (url.searchParams.get('key') ?? '') : (agyBody.key ?? '')).trim();
+          if (!memKey) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          const st = getSocialV2State(memKey);
+          if (req.method === 'GET') {
+            const cat = String(url.searchParams.get('category') ?? '').trim();
+            const dump = (c) => (Array.isArray(st.memory?.[c]) ? st.memory[c] : []);
+            const out = cat ? { [cat]: dump(cat) } : { activeTopic: dump('activeTopic'), pendingThought: dump('pendingThought'), memberImpression: dump('memberImpression') };
+            sendJson({ ok: true, key: memKey, memory: out });
+            return;
+          }
+          const category = String(agyBody.category ?? '').trim();
+          const content = String(agyBody.content ?? '').trim();
+          const allowed = new Set(['activeTopic', 'pendingThought', 'memberImpression']);
+          if (!allowed.has(category) || !content) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          appendMemoryV2(st, category, content, agyBody.extra && typeof agyBody.extra === 'object' ? agyBody.extra : {});
+          saveSocialV2State();
+          log(`[agy] 记忆写入 ${memKey}（${category}）：${content.slice(0, 40)}`);
+          sendJson({ ok: true, key: memKey, category });
+          return;
+        }
+        // ── #4 表情包（收藏表情）──
+        if (action === 'sticker') {
+          if (req.method !== 'POST') { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          const stKey = String(agyBody.key ?? '').trim();
+          const ref = String(agyBody.sticker ?? agyBody.stickerId ?? '').trim();
+          if (!stKey || !ref) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          try {
+            await sendStickerV2(stKey, ref, {});
+            log(`[agy] 表情已发 ${stKey}：${ref}`);
+            sendJson({ ok: true });
+          } catch (error) {
+            sendJson({ ok: false, error: String(error?.message ?? error) }, 500);
+          }
+          return;
+        }
         sendJson({ ok: false, error: 'unknown-agy-action' }, 404);
         return;
       }
@@ -10398,6 +10435,17 @@ async function main() {
       markReadCalledKeys.delete(key);
       wakeConfigMissCount.delete(key);
       const st = getSocialV2State(key);
+      // #2 提交已读水位：AGY 模式下模型没有 qq_mark_read 工具 ⇒ 由桥接在收尾时代为提交，
+      // 否则未读会一直堆积、下次唤醒又看到一堆旧消息（AGY 侧 2026-11-25 指出）。
+      try {
+        const seq = readThroughSeqV2(st);
+        if (Number.isSafeInteger(seq) && seq > 0) {
+          const marked = acknowledgeMessagesV2(st, seq);
+          if (marked > 0) log(`[agy] ${key} 收尾已读：${marked} 条（水位 ${seq}）`);
+        }
+      } catch (error) {
+        log(`[agy] 提交已读水位失败 ${key}：${error?.message ?? error}`);
+      }
       try { ensureWakeableV2(st, { key }); } catch { /* ignore */ }
       if (dropped) {
         log(`[agy] ${key} 回合被丢弃（超过重排上限）→ 已释放繁忙标记，等下一条消息`);
