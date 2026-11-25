@@ -13,7 +13,8 @@ import {
   agySpillPromptText,
   composeAgyPrompt,
   formatAgySnapshotBlock,
-  needsSpill
+  needsSpill,
+  pickNewestWithinBudget
 } from '../src/agy-prompt.js';
 
 let n = 0;
@@ -55,10 +56,14 @@ ok('★★ 看图：换成"用 message-images 落盘再看"，不能再写"看�
   assert.ok(block.includes('别假装看过'), '仍要禁止编造图片内容');
 });
 
-ok('★ partial=true 要说清"下一轮再给"，别让模型这轮追问', () => {
-  const block = formatAgySnapshotBlock(SNAP);
+ok('★★ partial：必须说清"还有多少更早的没给"+ 补读命令，且不能说"下一轮再给"', () => {
+  // 2026-11-25 22:09 事故：模型看到 partial 且 prompt 写着"下一轮再给"，就真的回 [] 等下一轮 ⇒ 漏回 ✗
+  const block = formatAgySnapshotBlock({ ...SNAP, skippedOlder: 21 });
   assert.ok(block.includes('partial=true'));
-  assert.ok(block.includes('下一轮'));
+  assert.ok(!block.includes('下一轮再给你'), '旧说法必须去掉');
+  assert.ok(block.includes('还有 **21 条更早的**'), '要说清差多少条');
+  assert.ok(block.includes('agy-api.mjs unread'), '要给补读命令');
+  assert.ok(block.includes('--after-seq'), '要告诉用哪个水位补读');
 });
 
 console.log('\n值守覆盖说明：');
@@ -114,6 +119,37 @@ ok('基础提示是 undefined 也不会拼成 "undefined"', () => {
   const out = composeAgyPrompt(undefined, null);
   assert.ok(!out.includes('undefined'));
   assert.ok(out.startsWith('【AGY 值守模式') || out.startsWith('\n\n【AGY 值守模式'));
+});
+
+console.log('\n最新优先挑选（22:09 漏回事故的回归）：');
+
+ok('★★ 预算只够 3 条时，必须保住**最新**的那条（触发唤醒的 @）', () => {
+  const items = Array.from({ length: 10 }, (_, i) => ({ seq: 100 + i, text: `m${i}` }));
+  const { picked, skippedOlder } = pickNewestWithinBudget({
+    items,
+    maxItems: 12,
+    build: (m) => ({ ...m }),
+    size: (arr) => JSON.stringify(arr).length,
+    budget: JSON.stringify(items.slice(-3)).length
+  });
+  assert.equal(picked.length, 3, `应该只装得下 3 条，实际 ${picked.length}`);
+  assert.equal(picked[picked.length - 1].seq, 109, '最新那条（@）必须在里面');
+  assert.equal(skippedOlder, 7);
+});
+
+ok('★ 输出仍是时间正序（不是倒序塞给模型）', () => {
+  const items = Array.from({ length: 5 }, (_, i) => ({ seq: 1 + i }));
+  const { picked } = pickNewestWithinBudget({ items, maxItems: 5, build: (m) => ({ ...m }), size: () => 0, budget: 99999 });
+  assert.deepEqual(picked.map((x) => x.seq), [1, 2, 3, 4, 5]);
+});
+
+ok('★ maxItems 生效；空列表不炸', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({ seq: i }));
+  const { picked, skippedOlder } = pickNewestWithinBudget({ items, maxItems: 12, build: (m) => ({ ...m }), size: () => 0, budget: 99999 });
+  assert.equal(picked.length, 12);
+  assert.equal(picked[11].seq, 29, '保留的是最后 12 条');
+  assert.equal(skippedOlder, 18);
+  assert.deepEqual(pickNewestWithinBudget({ items: [], size: () => 0 }).picked, []);
 });
 
 console.log('\n落盘：');

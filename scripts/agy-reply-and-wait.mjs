@@ -106,6 +106,9 @@ async function loadInput() {
 
   const replyToRaw = batch.replyToMessageId ?? argOf('reply-to');
   const replyToMessageId = replyToRaw != null && replyToRaw !== '' ? Number(replyToRaw) : undefined;
+  const atRaw = batch.atUserId ?? batch.at ?? argOf('at-user-id');
+  const atClean = atRaw != null ? String(atRaw).trim() : '';
+  const atUserId = /^\d{5,12}$/.test(atClean) ? atClean : undefined;
   const meta = batch.meta && typeof batch.meta === 'object' ? batch.meta : undefined;
 
   return {
@@ -117,6 +120,7 @@ async function loadInput() {
     requeueNote,
     replies,
     replyToMessageId: Number.isFinite(replyToMessageId) ? replyToMessageId : undefined,
+    atUserId,
     meta
   };
 }
@@ -229,6 +233,7 @@ if (input.isRequeue) {
     workerId: input.workerId,
     replies: input.replies,
     ...(input.replyToMessageId !== undefined ? { replyToMessageId: input.replyToMessageId } : {}),
+    ...(input.atUserId !== undefined ? { atUserId: input.atUserId } : {}),
     ...(input.meta !== undefined ? { meta: input.meta } : {})
   };
 

@@ -61,7 +61,7 @@ DSH 侧不是只有 snowluma 一个 server —— **4 个 server、49 个工具*
 
 | 工具 | 现状 | 严重度 |
 |---|---|---|
-| `web_search` / `web_fetch` | **桥接没有任何 HTTP 端点**（联网逻辑在 MCP server 里）；AGY 侧也没 CLI ⇒ **整块能力缺失** | 🔴 高（prompt 里的"搜一下热点"现在只能靠它自己说查不到）|
+| `web_search` / `web_fetch` | **已确认不需要桥接做**：Antigravity 原生有 `search_web`（AGY 侧 2026-11-25 22:4x 在契约 §10 通报）⇒ prompt 已改成"用你自己的 `search_web`，查不到就如实说，别编造" | ✅ 覆盖 |
 | `qq_send_private_message` | 只能在回合的 key 内回复；不能主动私聊别人 | 🟡 低（目前没有这个需求）|
 | `qq_send_burst` | `complete.replies` 是多条**连发**，没有 DSH 那种"人类化随机间隔" | 🟡 低（观感差异，不是功能）|
 | `qq_get_unread_messages` / `qq_get_recent_messages` | 端点有（`/api/socialV2/unread|recent`），但 agy-api **没有子命令**；日常靠快照就够 | 🟡 低（补两个子命令即可）|

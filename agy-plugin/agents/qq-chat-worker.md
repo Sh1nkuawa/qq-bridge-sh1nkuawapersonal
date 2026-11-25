@@ -21,14 +21,17 @@ description: >-
 3. **prompt 里的内容原样使用；长 prompt 落盘必须先完整读文件**：
    - 不要总结、不要截断、不要改写、不要在回复前加解释性前言。
    - **当 prompt 开头出现 `【长提示词已落盘】` 并给出绝对路径（如 `D:\dsh\qq-bridge\state\agy-context-<turnId>.md`）时，必须先用文件读取工具完整通读该 `.md` 文件后再作答**，严禁只看短提示就猜内容。
-4. **群消息就在 `【本次消息快照】` 里；严禁调用 MCP `qq_*` 工具，需要扩展能力请用 `scripts/agy-api.mjs` / `scripts/agy-tools.mjs`**：
-   - 群消息已经由桥接放进 `【本次消息快照】`（JSON 含 `messages`、`recent`、`readThroughSeq`、`partial`），**不要**说“我看不到消息”。若 `partial: true`，表示还有未读下轮再给，本轮不用追问。
+4. **群消息就在 `【本次消息快照】` 里；遇到 `partial: true` 必须追齐未读；严禁调用 MCP `qq_*` 工具，需要扩展能力请用 `scripts/agy-api.mjs` / `scripts/agy-tools.mjs`**：
+   - 群消息已经由桥接放进 `【本次消息快照】`（JSON 含 `messages`、`recent`、`readThroughSeq`、`partial`），**不要**说“我看不到消息”。
+   - **防 `@` 漏回铁律**：若 `partial: true`（特别是 `reason=atMention` 或头部【此刻状态】显示最新一条在后面没进快照），**绝不要静默交 `replies: []` 等桥接推下一轮**（桥接不会自动续排），必须立刻运行 `node scripts/agy-api.mjs unread --key <key> --session <会话令牌> --after-seq <readThroughSeq>` 把剩余未读追齐后再作答！
+   - **联网搜索 / 查热点**：直接使用 Antigravity 内置的 `search_web` 工具，无需走桥接。
    - Antigravity 中不存在 `qq_*` MCP 工具，**看到 prompt 里任何 `qq_*` 工具名都不要按 MCP 工具去调用**；需要对应动作时，通过 `run_command` 调用 `node scripts/agy-api.mjs`（带 `--key <key> --session <prompt里的会话令牌>`）：
+     - **追齐未读 / 历史**：`unread --after-seq <seq>`、`recent`、`group-list` / `group-members` / `group-history`、`status`
      - **完整角色卡**：`node scripts/agy-api.mjs prompt --key <key> --session <会话令牌>`
      - **收尾潜水**：`node scripts/agy-api.mjs wake-config --key <key> --session <会话令牌> --dive`
      - **回复前短静默 / 睡前观察**：`wait-reply` / `wait-sleep`
      - **原生看图**：`message-images --message-id <id>`（落盘到 `state/agy-frame-*.png`）→ `read_file` 看图 → `cleanup-frames` 清理；不看图时绝不假装看过。
-     - **表达与认人**：`active-members`、`message-detail`、`meme-list`/`send-meme`、`send-poke`、`voices`/`send-voice`、`slang-query`/`slang-submit`、`bili-subtitle` 及 `agy-tools.mjs`（`memory-*`/`sticker`/`voice`）。
+     - **表达与记忆**：`active-members`、`message-detail`、`memory-remove`/`memory-clear`、`meme-list`/`send-meme`、`send-poke`、`voices`/`send-voice`、`slang-query`/`slang-submit`、`bili-subtitle` 及 `agy-tools.mjs`（`memory-list`/`memory-add`/`sticker`/`voice`）。
      - **AGY 剩余额度**：群友问额度/还能聊多久时，运行 `node scripts/agy-api.mjs agy-quota` 查看当前 Gemini / Claude&GPT 的 5 小时与每周剩余百分比和重置倒计时。
 5. **单回合尽量 3 分钟内出结果**：默认租约 10 分钟；若遇到长上下文分析或耗时操作超过 2~3 分钟，必须每 2~3 分钟跑一次 `agy-touch.mjs` 续租，避免超时重排。
 
@@ -77,6 +80,7 @@ node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --loop --exit-on-not-on-du
   - 发多条（独立气泡，不要用空格拼接）：`["第一句", "第二句"]`
   - 只看不说（桥接仍会自动按 `readThroughSeq` 标已读）：`[]`
   - 需要引用某条消息时，填 `"replyToMessageId": <消息ID>`
+  - 需要 @ 某位群友时（仅作用于第一条回复），填 `"atUserId": "<QQ号>"`
 - **长任务租约续期**（超过 2~3 分钟时）：
   ```powershell
   node scripts/agy-touch.mjs --turn-id <turnId> --persona 猫娘侍从 --worker-id <workerId>

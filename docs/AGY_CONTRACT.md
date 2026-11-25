@@ -205,8 +205,13 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 
 1. 人格卡摘要、心情、双态判定（答题态/闲扯态）、生日、关系面板、黑话表 —— 全部来自 `buildWakePromptV2()`
 2. **【本次消息快照】** —— 本轮要给模型看的未读消息（JSON，含 `readThroughSeq`）。
-   ⚠️ AGY 那边的 agent **没有任何 QQ 工具**（没有 MCP），群消息**只能**靠这一段带过去；
+   ⚠️ AGY 那边的 agent **没有任何 MCP 工具**，群消息**只能**靠这一段带过去；
    没有它模型只会看到"未读 N 条"，回什么全靠猜 ✗
+   - **选哪几条**（v1.4 起）：AGY（`force` 分支）按**最新优先**装 —— 触发唤醒的 `@`/提问**一定**在里面；
+     DSH 仍按最早优先（它的已读水位依赖"从旧到新连续"）。
+   - **装不下时**：`skippedOlder` 给出"还有几条更早的没给"，文案要求模型去
+     `agy-api.mjs unread --after-seq <readThroughSeq>` 补读，**不许**"等下一轮"。
+   - 容量：`socialV2.context.wakeMessageLimit: 12` / `wakeMaxChars: 5500`。
 3. **【AGY 值守模式】** —— 明确告诉模型：上面提到的 `qq_*` 是 DSH 侧的 MCP 工具，**不要调用**；
    扩展动作（角色卡全文 / 等人 / 收尾潜水 / 看图 / 表情包 / 拍一拍…）改用 `scripts/agy-api.mjs`；
    它只要把这一轮要说的话写成 `replies` 数组交给 `agy-reply-and-wait.mjs` ✓
@@ -339,3 +344,5 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 | 2026-11-25 | AGY 侧 | **`POST /api/agy/complete` 增加可选 `atUserId` 字段**：透传给 `sendMessagesV2`，让群聊回复能真正 @ 到指定群友（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3）：脏值静默丢弃；只作用于第一条 replies |
 | 2026-11-25 | AGY 侧 | **新增只读 OneBot 白名单端点**（如 `GET /api/agy/onebot?action=get_group_list\|get_group_member_list\|get_group_msg_history`）：补齐群列表/群成员/群历史只读查询（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3，见 §3.7）：只放三个只读动作 + 群白名单 |
 | 2026-11-25 | AGY 侧 | **同步【AGY 值守模式】prompt 措辞**：AGY 侧已落地 `scripts/agy-api.mjs`（涵盖 `wake-config`/`wait-reply`/`wait-sleep`/`prompt`/表情包/拍一拍/**`message-images` 落盘配合 `read_file` 原生看图**、以及本机 **`agy-quota`** 查 Antigravity 5h/周剩余额度，不再需要桥接侧做视觉转述或 DeepSeek 余额代理）。建议将 prompt 中「看不到图 / 没有任何工具」改表述为「无 MCP `qq_*` 工具，需扩展动作/看图/收尾潜水时使用 `scripts/agy-api.mjs`」避免指令冲突 | ✅ 已上线（v1.3）：`src/agy-prompt.js` 已改成"没有 MCP 的 qq_* 工具 + 用 agy-api.mjs 扩展"；看图改为 `message-images` 落盘再读，不再说"看不到图"；余额不再代做（AGY 侧用 `agy-quota`）|
+| 2026-11-25 | AGY 侧 | **优化 AGY 快照取最新 12 条 + 同步水位与唤醒细节（owner 已确认方向）**：22:09 实测 `atMention` 时未读 29 条，`buildWakeSnapshotV2` 按最早优先（`st.unread.slice(0, maxUnread)`）且 `config.json` 限制 `wakeMessageLimit: 8` / `wakeMaxChars: 3000`，只塞了 10 分钟前 8 条旧闲聊（`partial=true`），触发 `@` 的最新消息被切在外面；模型按「桥接会在下一轮再给你」静默交 `replies: []` 后桥接未续排导致漏回。AGY 侧现已落地 `agy-api.mjs unread`/`recent` 兜底。按 owner 确认，请桥接侧评审以下调整：① **快照改为最新优先（至少 AGY `force=true` 分支）**：从 `st.unread` 尾部取最新消息（按字符预算倒序装入后再正序输出），确保触发唤醒的 `@`/提问必在快照内；② **上调快照容量**：`config.json` 的 `socialV2.context.wakeMessageLimit` 从 `8` 调到 `12`，同步把 `wakeMaxChars` 从 `3000` 放宽到 `5500~6000`（否则 12 条仍会被 3000 字符截回 ~8 条）；③ **`agyReleaseTurn` 水位取 `Math.max(explicit ?? 0, readThroughSeqV2(st) ?? 0)`**，让本轮通过 `unread`/`wait-reply` 追齐的消息收尾时一起标已读；④ **修正快照尾部文案**：去掉「桥接会在下一轮再给你」，改为引导 `agy-api.mjs unread` / `recent`；⑤ **可选（配合 owner 确认的折中实时体验）**：评估 `atMention` 适当缩短 `batchWindowMs`（当前 8000ms）或放宽 `maxWakePerMinute: 1`（21:59:18 刚回完 8s 内被 `@` 曾触发「唤醒频率超限，跳过」） | 待桥接侧评审 → **✅ v1.4 全部处理**：① `force` 分支改**最新优先**（纯函数 `pickNewestWithinBudget`，3 组回归；DSH 仍最早优先 —— 换顺序会把没看过的标成已读 ✗）；② `wakeMessageLimit: 12` / `wakeMaxChars: 5500`；③ 水位改为 `Math.max(本轮显式水位, readThroughSeqV2 自动水位)`；④ 文案改为「还有 **N 条更早的**没给 → `agy-api.mjs unread --after-seq …` 补读」，并明令**不许**"等下一轮"；⑤ `atMention` 撞限流**不再丢弃**：改「等窗口过期后重试」（最多 2 次，日志 `唤醒频率超限，改为 Ns 后重试 …`）；`batchWindowMs` 保持 8000（它负责合并连发，缩短会打散一条消息里的多句）|
+| 2026-11-25 | AGY 侧 | **同步 v1.3 & §2.0 全量对账进展（通报）**：AGY 侧已完成 `agy-reply-and-wait.mjs` 的 `atUserId` 解析，以及 `agy-api.mjs` 的 `onebot`/`group-list`/`group-members`/`group-history`、`unread`/`recent`、`memory-remove`/`memory-clear`、`status`。另：`AGY_FEATURE_GAPS.md` §2.0 标 🔴 的 `web_search` 实际已由 Antigravity 原生内置 `search_web` 覆盖（规则已明确直接调用），无需桥接另开搜索代理 | ✅ 收到。`web_search` 这条结论已采纳：桥接**不做**搜索代理；`AGY_FEATURE_GAPS.md` §2.0 的标记已同步为"由 Antigravity 原生 `search_web` 覆盖"；prompt 里已改成"用 Antigravity 自带搜索，查不到就如实说" |

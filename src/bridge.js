@@ -33,7 +33,7 @@ import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickN
 import { createSerialQueue } from './serialize.js';
 import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
-import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill } from './agy-prompt.js';
+import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill, pickNewestWithinBudget } from './agy-prompt.js';
 import { normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport } from './persona-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
@@ -10621,8 +10621,12 @@ async function main() {
       // 修法：用**这个回合自己塞进 prompt 的快照水位**（turn.readThroughSeq）。
       // dropped 的回合不标已读：那些消息没人处理过，留在未读里，下一条唤醒还要用 ✓
       try {
-        const explicit = Number.isSafeInteger(throughSeq) && throughSeq > 0 ? throughSeq : null;
-        const seq = dropped ? null : (explicit ?? readThroughSeqV2(st));
+        const explicit = Number.isSafeInteger(throughSeq) && throughSeq > 0 ? throughSeq : 0;
+        // 契约 §10（AGY 侧 2026-11-25）：这一轮它可能用 `agy-api.mjs unread/recent` 自己补读过，
+        // 那些消息会进 modelSeenSeqs ⇒ readThroughSeqV2 会推高。取两者较大值，
+        // 否则"补读过的"会被留在未读里反复出现 ✗
+        const computed = readThroughSeqV2(st);
+        const seq = dropped ? null : (Math.max(explicit, Number.isSafeInteger(computed) ? computed : 0) || null);
         if (seq) {
           const marked = acknowledgeMessagesV2(st, seq);
           if (marked > 0) {
@@ -13150,8 +13154,28 @@ async function main() {
       return false;
     };
     if (v2ToolEnabled('getUnread')) {
-      // Oldest unread first: a budget cutoff must not silently acknowledge unseen messages.
-      for (const msg of st.unread.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
+      if (force) {
+        // ⭐ AGY：**最新优先**（契约 §10 · AGY 侧报的 22:09 事故）
+        // 触发这次唤醒的 @/提问必须进快照 —— 那次未读 29 条、按最早优先只给了 8 条
+        // 10 分钟前的闲聊，@ 被切在外面；模型按"下一轮再给"回了 [] ⇒ 群里就是漏回 ✗
+        // 挑选逻辑在 src/agy-prompt.js（纯函数，有回归）；输出仍是时间正序。
+        const { picked, skippedOlder } = pickNewestWithinBudget({
+          items: st.unread,
+          maxItems: maxUnread,
+          build: (m) => compactModelMessage(m),
+          size: (arr) => JSON.stringify({ ...packet, messages: arr, includedUnreadCount: arr.length }).length,
+          budget: maxChars
+        });
+        packet.messages = picked;
+        packet.includedUnreadCount = picked.length;
+        packet.partial = picked.length < st.unread.length;
+        // 明确告诉模型"还有 N 条更早的没给"（原来只写 partial，模型不知道差多少）
+        packet.skippedOlder = skippedOlder;
+        packet.readThroughSeq = readThroughSeqV2(st, picked);
+      } else {
+        // DSH：最早优先（ack 水位靠"从旧到新连续"才有意义，换顺序会把没看过的标成已读 ✗）
+        for (const msg of st.unread.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
+      }
     }
     if (v2ToolEnabled('getRecent') && maxRecent > 0) {
       const unread = new Set(st.unread.map((m) => m.seq));
@@ -13541,6 +13565,10 @@ async function main() {
     return `${roleLine}${tokenLine}【提醒】你还没有完成回合收尾。请调用 qq_set_wake_config 设置下一次唤醒条件（例如继续潜水多久、@/名字/关键词/提问/概率/指定成员等），或者调用 qq_mark_read 表示你看过且决定不接。这是为了防止你忘记收尾后进入“永眠”。注意：设置潜水前先用 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成沉睡前观察；等待期间有人说话时查看 newMessages，判断不需要你参与即可收尾。`;
   }
 
+  // 限流重试的定时器/计数放模块级 Map（不进 st：st 会被 JSON 序列化，Timer 对象不能进 ✗）
+  const wakeRateLimitTimers = new Map();   // key -> Timeout
+  const wakeRateLimitTries = new Map();    // key -> 已重试次数
+
   async function sendWakePromptV2(key, reason) {
     if (cfg.socialV2?.enabled === false) return;
     if (currentMode !== 'reserved2' || socialV2.paused) return;
@@ -13562,16 +13590,50 @@ async function main() {
       log(`[reserved2] 会话繁忙，暂存唤醒原因 ${key}（${reason}@seq${seq}）`);
       return;
     }
-    // 唤醒频率硬限制：超限则跳过本次唤醒，避免成本失控
+    // 唤醒频率硬限制：超限**不再直接丢**，改为"等窗口过期后重试"。
+    // 2026-11-25 21:59 实测：刚回完 8 秒内被 @，撞上 maxWakePerMinute=1 ⇒ 那条 @ 被**跳过**
+    // ⇒ 群里看起来就是不理人 ✗（契约 §10 · AGY 侧报的 ⑤）
     const now = Date.now();
     const maxPerMinute = Number(cfg.socialV2?.wake?.maxWakePerMinute) || 0;
     const maxPerHour = Number(cfg.socialV2?.wake?.maxWakePerHour) || 0;
-    const recentMinute = (st.wakeTimes || []).filter((t) => now - t < 60000).length;
-    const recentHour = (st.wakeTimes || []).filter((t) => now - t < 3600000).length;
-    if ((maxPerMinute > 0 && recentMinute >= maxPerMinute) || (maxPerHour > 0 && recentHour >= maxPerHour)) {
-      log(`[reserved2] 唤醒频率超限，跳过 ${key}（${reason}）`);
+    const wakeTimes = Array.isArray(st.wakeTimes) ? st.wakeTimes : [];
+    const inMinute = wakeTimes.filter((t) => now - t < 60000).sort((a, b) => a - b);
+    const inHour = wakeTimes.filter((t) => now - t < 3600000).sort((a, b) => a - b);
+    const minuteHit = maxPerMinute > 0 && inMinute.length >= maxPerMinute;
+    const hourHit = maxPerHour > 0 && inHour.length >= maxPerHour;
+    if (minuteHit || hourHit) {
+      let waitMs = 0;
+      if (minuteHit) {
+        const oldestKept = inMinute[Math.max(0, inMinute.length - maxPerMinute)];
+        waitMs = Math.max(waitMs, 60000 - (now - oldestKept) + 500);
+      }
+      if (hourHit) {
+        const oldestKept = inHour[Math.max(0, inHour.length - maxPerHour)];
+        waitMs = Math.max(waitMs, 3600000 - (now - oldestKept) + 500);
+      }
+      waitMs = Math.max(1000, Math.min(waitMs, 3600000));
+      const tries = Number(wakeRateLimitTries.get(key)) || 0;
+      if (tries >= 2) {
+        log(`[reserved2] 唤醒频率超限，已重试 ${tries} 次仍不行，放弃 ${key}（${reason}）`);
+        wakeRateLimitTries.delete(key);
+        return;
+      }
+      wakeRateLimitTries.set(key, tries + 1);
+      const prev = wakeRateLimitTimers.get(key);
+      if (prev) clearTimeout(prev);
+      const timer = setTimeout(() => {
+        wakeRateLimitTimers.delete(key);
+        void sendWakePromptV2(key, reason).catch((error) => log(`[reserved2] 限流重试唤醒失败 ${key}:`, error?.message ?? error));
+      }, waitMs);
+      timer.unref?.();
+      wakeRateLimitTimers.set(key, timer);
+      log(`[reserved2] 唤醒频率超限，改为 ${Math.round(waitMs / 1000)}s 后重试 ${key}（${reason}，第 ${tries + 1} 次）`);
       return;
     }
+    // 这次真的发出去了：清掉限流重试状态，避免"正常唤醒 + 重试"各发一次 ✗
+    const pendingRetry = wakeRateLimitTimers.get(key);
+    if (pendingRetry) { clearTimeout(pendingRetry); wakeRateLimitTimers.delete(key); }
+    wakeRateLimitTries.delete(key);
     // Only a real new wake resets observation; skipped/busy candidates must
     // preserve the current turn's progress through its required wait window.
     st.preSleepWaitSatisfiedAt = 0;

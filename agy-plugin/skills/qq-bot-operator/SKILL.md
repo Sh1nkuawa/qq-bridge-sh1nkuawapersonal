@@ -16,7 +16,7 @@ description: >-
 1. **一次只处理一个回合**：禁止并发领活；完成（`complete`）或退回（`requeue`）当前回合后再领下一条。
 2. **`complete` 之后就结束了**：桥接发完回复会自动按 `readThroughSeq` 标已读，严禁额外补发“已发送”之类的确认消息。
 3. **prompt 原样使用 + 落盘必读**：禁止截断或改写 `prompt`；若开头出现 `【长提示词已落盘】` 指向 `D:\dsh\qq-bridge\state\agy-context-<turnId>.md`，**必须先用文件读取工具完整通读该文件后再作答**，严禁猜内容。
-4. **群消息就在 `【本次消息快照】` 里，禁止调用任何 `qq_*` 工具**：AGY 侧没有任何 `qq_*` 工具（不要调 `qq_wait_for_messages` / `qq_mark_read` / `qq_set_wake_config` / `qq_get_prompt` / `qq_send_message` 等）；遇到图片/表情当前无看图通道，不要假装看过。
+4. **群消息就在 `【本次消息快照】` 里；`partial=true` 时必须用 `agy-api.mjs unread` 追齐未读；禁止调用 MCP `qq_*` 工具**：Antigravity 中没有 `qq_*` MCP 工具，需要读未读/看图/收尾潜水/查群成员/表达时一律改用 `scripts/agy-api.mjs`（或 `scripts/agy-tools.mjs`）；联网搜热点请直接用 Antigravity 内置 `search_web` 工具；想看图时用 `message-images` 落盘后 `read_file` 原生看图，没看图时绝不假装看过。
 5. **单回合尽量 3 分钟内完成**：长任务每 2~3 分钟用 `agy-touch.mjs` 续租。
 
 ---
@@ -59,6 +59,7 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 - **顺手领下一回合**：在命令末尾加 `--wait --timeout-ms 90000`。
 - **只看不说**（桥接仍自动标已读）：传 `"replies": []`。
 - **引用回复某条消息**：加 `"replyToMessageId": -1234567890`。
+- **@ 某位群友**（v1.3，仅作用于第一条回复）：加 `"atUserId": "123456789"`。
 - **拒答 / 异常退回队首**（绝不把半成品发到群里）：
   ```powershell
   $utf8 = [System.Text.UTF8Encoding]::new($false)
@@ -73,6 +74,16 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 所有 `/api/socialV2/*` 与 `/api/images/*` 端点统一走 `scripts/agy-api.mjs`（自动区分鉴权前缀：`/api/agy/*` 只带 console token；`/api/socialV2/*` 双带 console token 与 `--session` 会话令牌）：
 
 ```powershell
+# 追齐未读（遇到 partial=true 必用，不要交空 replies 等下一轮！）/ 查最近历史 / 网关状态
+node scripts/agy-api.mjs unread --key group:541026885 --session <会话令牌> --after-seq 53363 --limit 30
+node scripts/agy-api.mjs recent --key group:541026885 --session <会话令牌> --limit 20
+node scripts/agy-api.mjs status
+
+# OneBot 只读白名单（v1.3，自动不带 x-agent-token）
+node scripts/agy-api.mjs group-list
+node scripts/agy-api.mjs group-members --key group:541026885
+node scripts/agy-api.mjs group-history --key group:541026885
+
 # 完整角色卡（首次接班建议读一次）
 node scripts/agy-api.mjs prompt --key group:541026885 --session <会话令牌>
 

@@ -8,11 +8,13 @@
 //
 // 常用子命令：
 //   行为闭环：wake-config | wait-reply | wait-sleep
-//   认人上下文：prompt | message-detail | active-members | my-recent | social-state
+//   读消息/认人：unread | recent | prompt | message-detail | active-members | my-recent | social-state | status
+//   OneBot只读：onebot | group-list | group-members | group-history
+//   记忆管理：memory-remove | memory-clear（list/add 见 agy-tools.mjs）
 //   表达工具：meme-list | meme-image | send-meme | send-poke | voices | send-voice | sticker-list | sticker-note | collect-sticker | image-request | slang-query | slang-submit | feedback
 //   群管理：admin-status | mute-request | announcement
 //   看图/转发/字幕：message-images | sticker-image | self-image | cleanup-frames | forward-message | bili-subtitle
-//   通用调用：get | call
+//   额度/通用：agy-quota | get | call
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,7 +55,11 @@ function printHelp() {
     '  [行为闭环]   wake-config (--dive | --mode diving --infinite true --sleep-ms N --through-seq N)',
     '               wait-reply  (--quiet-ms 10000 --timeout-ms 30000)',
     '               wait-sleep  (--timeout-ms 300000 --quiet-ms 10000 --min-new 1)',
-    '  [认人上下文] prompt | message-detail (--message-id) | active-members | my-recent | social-state',
+    '  [消息/上下文] unread (--after-seq N --limit 30) | recent (--limit 20 --offset 0) | status',
+    '               prompt | message-detail (--message-id) | active-members | my-recent | social-state',
+    '  [OneBot只读] onebot (--action get_group_list|get_group_member_list|get_group_msg_history --group-id --message-seq)',
+    '               group-list | group-members (--group-id) | group-history (--group-id --message-seq)',
+    '  [记忆管理]   memory-remove (--category --content --target) | memory-clear (--category)',
     '  [表达工具]   meme-list (--tag --query --limit) | meme-image (--path) | send-meme (--path)',
     '               send-poke (--target-user-id) | voices | send-voice (--voice)',
     '               sticker-list | sticker-note | collect-sticker | image-request (--prompt)',
@@ -392,7 +398,99 @@ if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
       break;
     }
 
-    // ── §2.2 认人 / 完整角色卡 / 历史 ────────────────────────────────────────
+    // ── §2.2 读未读 / 历史 / 认人 / 完整角色卡 / 状态 ────────────────────────
+    case 'unread': {
+      requireKey();
+      const afterSeq = argOf('after-seq', null, argv);
+      const limit = argOf('limit', '30', argv);
+      res = await requestApi({
+        method: 'GET',
+        pathname: '/api/socialV2/unread',
+        query: {
+          key,
+          ...(afterSeq != null && afterSeq !== '' ? { afterSeq } : {}),
+          ...(limit != null && limit !== '' ? { limit } : {})
+        }
+      });
+      break;
+    }
+
+    case 'recent': {
+      requireKey();
+      res = await requestApi({
+        method: 'GET',
+        pathname: '/api/socialV2/recent',
+        query: {
+          key,
+          limit: argOf('limit', '20', argv),
+          offset: argOf('offset', '0', argv)
+        }
+      });
+      break;
+    }
+
+    case 'status':
+      res = await requestApi({ method: 'GET', pathname: '/api/status' });
+      break;
+
+    // ── §3.7 OneBot 只读白名单（/api/agy/onebot，绝不带 x-agent-token） ───────
+    case 'onebot':
+    case 'group-list':
+    case 'group-members':
+    case 'group-history': {
+      const actionMap = {
+        'group-list': 'get_group_list',
+        'group-members': 'get_group_member_list',
+        'group-history': 'get_group_msg_history'
+      };
+      const action = actionMap[cmd] ?? String(argOf('action', '', argv) ?? '').trim();
+      if (!action) {
+        console.error(JSON.stringify({ ok: false, error: 'bad-request', message: '缺少 --action (get_group_list|get_group_member_list|get_group_msg_history)' }));
+        process.exit(2);
+      }
+      const keyGroupId = key.startsWith('group:') ? key.slice('group:'.length) : '';
+      const groupId = String(argOf('group-id', keyGroupId, argv) ?? '').trim();
+      const messageSeq = argOf('message-seq', null, argv);
+      res = await requestApi({
+        method: 'GET',
+        pathname: '/api/agy/onebot',
+        query: {
+          action,
+          ...(groupId ? { groupId } : {}),
+          ...(messageSeq != null && messageSeq !== '' ? { messageSeq } : {})
+        },
+        timeoutMs: 30000
+      });
+      break;
+    }
+
+    // ── 记忆删清（list/add 在 agy-tools.mjs） ────────────────────────────────
+    case 'memory-remove': {
+      requireKey();
+      const payload = bodyOverride
+        ? { key, ...bodyOverride }
+        : {
+          key,
+          category: argOf('category', '', argv),
+          ...(argOf('content', null, argv) != null ? { content: argOf('content', null, argv) } : {}),
+          ...(argOf('target', null, argv) != null ? { target: argOf('target', null, argv) } : {})
+        };
+      res = await requestApi({ method: 'POST', pathname: '/api/socialV2/memory-remove', payload });
+      break;
+    }
+
+    case 'memory-clear': {
+      requireKey();
+      const payload = bodyOverride
+        ? { key, ...bodyOverride }
+        : {
+          key,
+          ...(argOf('category', null, argv) != null ? { category: argOf('category', null, argv) } : {})
+        };
+      res = await requestApi({ method: 'POST', pathname: '/api/socialV2/memory-clear', payload });
+      break;
+    }
+
     case 'prompt':
       requireKey();
       res = await requestApi({ method: 'GET', pathname: '/api/socialV2/prompt', query: { key }, timeoutMs: 20000 });

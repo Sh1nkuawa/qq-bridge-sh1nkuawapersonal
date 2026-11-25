@@ -23,12 +23,22 @@ export function agyContextFilePath(stateDir, turnId) {
  * 而 AGY 侧的 agent 一个都没有，照着做只会空转 ✗。
  */
 export function formatAgySnapshotBlock(snapshot) {
-  return '【本次消息快照】\n' + JSON.stringify(snapshot)
-    + '\n以上是本轮桥接替你取到的群消息 —— 不用再去查，就按这份快照回。'
-    + '\npartial=true 表示还有更多未读没塞进来：桥接会在下一轮再给你，别这一轮追着问。'
-    + '\n若其中有人发的是图片/表情，快照里只有 [图片] 标记：想真看就 `node scripts/agy-api.mjs message-images --message-id <id>`'
+  const included = Number(snapshot?.includedUnreadCount) || (Array.isArray(snapshot?.messages) ? snapshot.messages.length : 0);
+  const skipped = Number(snapshot?.skippedOlder) || 0;
+  const through = Number(snapshot?.readThroughSeq) || 0;
+  let tail = '\n以上是本轮桥接替你取到的群消息（按时间正序，**最近的在最后**）。';
+  if (skipped > 0) {
+    // 2026-11-25 契约 §10 反馈：原来写"桥接会在下一轮再给你"，模型就真的只回 [] 等下一轮 ⇒ 漏回 ✗
+    tail += `\n⚠️ partial=true：这轮只塞了**最近 ${included} 条**，还有 **${skipped} 条更早的**没给。`
+      + `\n需要看更早的就补读：\`node scripts/agy-api.mjs unread --key <本轮 key> --after-seq ${through}\`（或 \`recent\`），`
+      + '读完再收尾；**不要**当成"没有更多"、也不要等"下一轮会给" ✗';
+  } else if (snapshot?.partial) {
+    tail += '\n⚠️ partial=true：还有更多未读没塞进来，必要时用 `node scripts/agy-api.mjs unread` 补读。';
+  }
+  tail += '\n若其中有人发的是图片/表情，快照里只有 [图片] 标记：想真看就 `node scripts/agy-api.mjs message-images --message-id <id>`'
     + '（会把帧落到 state/agy-frame-*，再用文件读取打开；看完可以 `cleanup-frames`），**别假装看过**。'
     + '\n本轮未读会在你 complete 之后由桥接自动标已读，你不需要（也没有）qq_mark_read。';
+  return '【本次消息快照】\n' + JSON.stringify(snapshot) + tail;
 }
 
 /**
@@ -57,9 +67,37 @@ export const AGY_MODE_OVERRIDE = '【AGY 值守模式 · 覆盖上面的工具�
   + '  node scripts/agy-api.mjs message-images --message-id <id>  看图（落盘后用文件读取打开）\n'
   + '  想发收藏表情 / 表情包 / 语音库 / 拍一拍 / 生图 / 黑话 / 群管理：同类子命令也在 agy-api.mjs，'
   + '见 docs/AGY_FEATURE_GAPS.md\n'
-  + '- **联网**：桥接侧没有给你联网通道。要用 Antigravity 自带的浏览/搜索能力（如果你有）；'
-  + '**没有就如实说"我这边查不到"，绝对不要编造搜索结果或链接** ✗\n'
+  + '- **联网**：用 Antigravity 自带的 `search_web`（那是你的工具，不是桥接的）；'
+  + '查不到/打不开就如实说"我这边查不到"，**绝对不要编造搜索结果或链接** ✗\n'
   + '- 已读由桥接自动提交，不用管。不用解释你在干什么，也不用复述这些规则。';
+
+/**
+ * 从 unread 里挑"最新的能装下的一批"（AGY 快照专用）。
+ *
+ * 为什么是**最新优先**：触发唤醒的 @/提问一定在末尾；按最早优先装，装到预算就停，
+ * 那条 @ 就被切在外面了（2026-11-25 22:09 实测：29 条未读只给了 8 条 10 分钟前的闲聊，漏回 ✗）。
+ * 输出仍是**时间正序**（模型看到的顺序不乱），只是"装不下时先丢最旧的"。
+ *
+ * @param {object} opts
+ * @param {Array} opts.items      原始未读（时间升序）
+ * @param {number} opts.maxItems  最多几条
+ * @param {(msg:any)=>any} opts.build  压缩成"给模型看的样子"
+ * @param {(arr:any[])=>number} opts.size  量一个候选数组占多少字符（含 packet 其它字段）
+ * @param {number} opts.budget    字符预算
+ * @returns {{picked:any[], skippedOlder:number}}
+ */
+export function pickNewestWithinBudget({ items = [], maxItems = 12, build = (m) => m, size = (a) => JSON.stringify(a).length, budget = Infinity } = {}) {
+  const limit = Math.max(1, Number(maxItems) || 12);
+  const picked = [];
+  for (let i = items.length - 1; i >= 0 && picked.length < limit; i -= 1) {
+    const cand = build(items[i]);
+    const probe = [...picked, cand].sort((a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0));
+    if (size(probe) > budget) break;
+    picked.push(cand);
+  }
+  picked.sort((a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0));
+  return { picked, skippedOlder: Math.max(0, items.length - picked.length) };
+}
 
 /** 落盘后的短提示：够 worker 认路，也够 agent 知道下一步该读文件。 */
 export function agySpillPromptText(file, turn, bytes) {

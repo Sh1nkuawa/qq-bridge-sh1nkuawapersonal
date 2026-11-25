@@ -95,6 +95,34 @@ const server = http.createServer(async (req, res) => {
     const body = await readReqBody(req);
     return sendJson({ ok: true, key: body.key, purpose: body.purpose, quiet: true, newMessages: [] });
   }
+  if (url.pathname === '/api/socialV2/unread' && req.method === 'GET') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    const afterSeq = Number(url.searchParams.get('afterSeq') ?? 0);
+    return sendJson({
+      ok: true,
+      key: url.searchParams.get('key'),
+      unreadCount: 2,
+      messages: [{ seq: afterSeq + 1, text: '@bot 在吗', atSelf: true }],
+      readThroughSeq: afterSeq + 1
+    });
+  }
+  if (url.pathname === '/api/socialV2/recent' && req.method === 'GET') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    return sendJson({ ok: true, key: url.searchParams.get('key'), messages: [{ seq: 100, text: '历史测试' }], readThroughSeq: 100 });
+  }
+  if (url.pathname === '/api/socialV2/memory-remove' && req.method === 'POST') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    const body = await readReqBody(req);
+    return sendJson({ ok: true, key: body.key, removed: body.content || body.target });
+  }
+  if (url.pathname === '/api/socialV2/memory-clear' && req.method === 'POST') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    const body = await readReqBody(req);
+    return sendJson({ ok: true, key: body.key, category: body.category || 'all' });
+  }
+  if (url.pathname === '/api/status' && req.method === 'GET') {
+    return sendJson({ ok: true, snowlumaConnected: true });
+  }
   if (url.pathname === '/api/images/message' && req.method === 'GET') {
     if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
     return sendJson({
@@ -110,6 +138,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && action === 'status') {
     return sendJson(transport.status({ onDuty, lastWorkerSeenAt, lastCompleteAt, transport: 'agy' }));
+  }
+
+  if (req.method === 'GET' && action === 'onebot') {
+    const obAction = String(url.searchParams.get('action') ?? '');
+    const groupId = String(url.searchParams.get('groupId') ?? '');
+    return sendJson({ ok: true, action: obAction, groupId, data: [{ group_id: 541026885 }] });
   }
 
   if (req.method === 'GET' && action === 'wait') {
@@ -174,7 +208,8 @@ const server = http.createServer(async (req, res) => {
         turnId: r.turn.turnId,
         key: r.turn.key,
         replies,
-        replyToMessageId: body.replyToMessageId ?? null
+        replyToMessageId: body.replyToMessageId ?? null,
+        atUserId: body.atUserId ?? null
       });
     }
     lastCompleteAt = fakeNow;
@@ -294,13 +329,14 @@ try {
     assert.equal(touchData.ok, true);
     assert.ok(touchData.leaseUntil > t0);
 
-    // 分两条发送 + replyToMessageId
+    // 分两条发送 + replyToMessageId + atUserId（v1.3）
     const batch = JSON.stringify({
       turnId: parsed.meta.turnId,
       persona: '小鲸鱼',
       workerId: parsed.meta.workerId,
       replies: ['第一句带 "引号" 测试', '第二句独立发出'],
       replyToMessageId: -1234567890,
+      atUserId: '123456789',
       meta: { rounds: 1 }
     });
     const rep = await runScript('agy-reply-and-wait.mjs', ['--batch-stdin'], batch);
@@ -313,6 +349,7 @@ try {
     const lastSent = sentBatches.at(-1);
     assert.deepEqual(lastSent.replies, ['第一句带 "引号" 测试', '第二句独立发出']);
     assert.equal(lastSent.replyToMessageId, -1234567890);
+    assert.equal(lastSent.atUserId, '123456789');
   });
 
   // 5. Empty replies [] = mark read only
@@ -596,8 +633,50 @@ try {
     assert.ok(data.summary.includes('75.0%'));
   });
 
-  // 17. Log format & secret redaction check
-  await test('17. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
+  // 17. agy-api.mjs: unread/recent + v1.3 onebot + memory-remove/clear + status
+  await test('17. agy-api.mjs 支持 unread/recent、onebot(不带 agent token)、memory 删清与 status', async () => {
+    const ur = await runScript('agy-api.mjs', [
+      'unread', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--after-seq', '53363', '--limit', '30'
+    ]);
+    assert.equal(ur.status, 0, `stdout=${ur.stdout} stderr=${ur.stderr}`);
+    const urData = JSON.parse(ur.stdout);
+    assert.equal(urData.ok, true);
+    assert.equal(urData.readThroughSeq, 53364);
+
+    const rc = await runScript('agy-api.mjs', [
+      'recent', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--limit', '10'
+    ]);
+    assert.equal(rc.status, 0, rc.stderr);
+    assert.equal(JSON.parse(rc.stdout).ok, true);
+
+    // 即使传入 --session，onebot 走 /api/agy/onebot 也绝不能带 x-agent-token
+    const ob = await runScript('agy-api.mjs', [
+      'group-members', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN
+    ]);
+    assert.equal(ob.status, 0, `stdout=${ob.stdout} stderr=${ob.stderr}`);
+    const obData = JSON.parse(ob.stdout);
+    assert.equal(obData.action, 'get_group_member_list');
+    assert.equal(obData.groupId, '541026885');
+
+    const mr = await runScript('agy-api.mjs', [
+      'memory-remove', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--category', 'activeTopic', '--content', '旧话题'
+    ]);
+    assert.equal(mr.status, 0, mr.stderr);
+    assert.equal(JSON.parse(mr.stdout).ok, true);
+
+    const mc = await runScript('agy-api.mjs', [
+      'memory-clear', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--category', 'pendingThought'
+    ]);
+    assert.equal(mc.status, 0, mc.stderr);
+    assert.equal(JSON.parse(mc.stdout).category, 'pendingThought');
+
+    const st = await runScript('agy-api.mjs', ['status']);
+    assert.equal(st.status, 0, st.stderr);
+    assert.equal(JSON.parse(st.stdout).snowlumaConnected, true);
+  });
+
+  // 18. Log format & secret redaction check
+  await test('18. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
     const rawLog = fs.readFileSync(testLogPath, 'utf8');
     assert.ok(!rawLog.includes(TEST_TOKEN), '日志泄漏了测试令牌！');
     assert.ok(!rawLog.includes(TEST_SESSION_TOKEN), '日志泄漏了会话令牌！');
