@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **353** 个被跟踪文件（其中 351 个文本文件、合计 **76,757** 行） —— 文件自带说明 **329**、人工补写 **23**、待补 **1**。
+统计：共 **355** 个被跟踪文件（其中 353 个文本文件、合计 **76,966** 行） —— 文件自带说明 **331**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -67,7 +67,7 @@
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 280 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 145 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 153 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
@@ -296,6 +296,7 @@
 | [`test-admin-routes.mjs`](../scripts/test-admin-routes.mjs) | 108 | 群管理路由验收（不会真的禁言；公告只走"起草→校验→作废"，不发布）。 | 文件自带 |
 | [`test-affinity.mjs`](../scripts/test-affinity.mjs) | 126 | 好感度引擎单测：node scripts/test-affinity.mjs | 文件自带 |
 | [`test-agent-preset-patches.mjs`](../scripts/test-agent-preset-patches.mjs) | 123 | 钉住 DSH 0.1.7 preset 装配的「防漂移」契约（纯离线，不需要 DSH 在跑）： | 文件自带 |
+| [`test-agy-prompt.mjs`](../scripts/test-agy-prompt.mjs) | 129 | AGY prompt 组装层的离线回归 | 文件自带 |
 | [`test-agy-transport.mjs`](../scripts/test-agy-transport.mjs) | 260 | AGY 传输层的离线回归：队列、长轮询、租约、重排上限、persona 分区、丢弃 | 文件自带 |
 | [`test-arknights-command.mjs`](../scripts/test-arknights-command.mjs) | 51 | arknights-command 纯函数回归（触发命令判定 + 状态描述）：不联网、不碰 MAA/QQ。 | 文件自带 |
 | [`test-arknights-daily.mjs`](../scripts/test-arknights-daily.mjs) | 301 | arknights-daily 执行器的离线回归：不联网、不起 MAA、不杀进程（全部注入假实现）。 | 文件自带 |
@@ -411,6 +412,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
+| [`agy-prompt.js`](../src/agy-prompt.js) | 72 | AGY prompt 的组装片段（纯函数，离线可测） | 文件自带 |
 | [`agy-transport.js`](../src/agy-transport.js) | 285 | AGY 传输层：唤醒队列 + 租约 + 重排（纯逻辑，不碰 bridge.js 内部） | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
