@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **362** 个被跟踪文件（其中 360 个文本文件、合计 **79,704** 行） —— 文件自带说明 **338**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **79,844** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -75,7 +75,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 370 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_FEATURE_GAPS.md`](../docs/AGY_FEATURE_GAPS.md) | 222 | AGY 侧能力缺口矩阵（2026-11-25） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 231 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 253 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 204 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
@@ -338,6 +338,7 @@
 | [`test-foldermap-facts.mjs`](../scripts/test-foldermap-facts.mjs) | 137 | 防漂移：docs/FOLDER_MAP.md 的**结构类事实**必须与仓库/工作区现状一致。 | 文件自带 |
 | [`test-forward.mjs`](../scripts/test-forward.mjs) | 136 | 合并转发消息能力自检脚本： | 文件自带 |
 | [`test-hardening.mjs`](../scripts/test-hardening.mjs) | 131 | 2026-09-20 体检修复的回归测试。 | 文件自带 |
+| [`test-hot-chat.mjs`](../scripts/test-hot-chat.mjs) | 71 | 热聊窗口的离线回归（owner 2026-11-26 要求：回复后 5 分钟滑动窗口） | 文件自带 |
 | [`test-image-ack.mjs`](../scripts/test-image-ack.mjs) | 105 | 生图开始提示（ack）验收：渲染预览 + 配置生效检查（不会往群里发消息）。 | 文件自带 |
 | [`test-image-backend.mjs`](../scripts/test-image-backend.mjs) | 178 | Agent Plan 生图后端：纯函数 + 请求构造 + 错误路径的离线回归（不联网） | 文件自带 |
 | [`test-image-skill.mjs`](../scripts/test-image-skill.mjs) | 96 | 生图技能「入库」验收： | 文件自带 |
@@ -437,6 +438,7 @@
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
 | [`forward.js`](../src/forward.js) | 220 | 合并转发消息（合并聊天记录）相关纯函数： | 文件自带 |
+| [`hot-chat.js`](../src/hot-chat.js) | 47 | 热聊窗口（owner 2026-11-26 要求，AGY 侧在契约 §10 登记） | 文件自带 |
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
 | [`impersonator-guard.js`](../src/impersonator-guard.js) | 88 | 冒名守卫：群友把昵称/群名片改成"像 bot 的名字"时，自动给他改成「冒名·X」。 | 文件自带 |

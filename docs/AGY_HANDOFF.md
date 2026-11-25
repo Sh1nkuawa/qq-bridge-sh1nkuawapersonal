@@ -15,6 +15,28 @@ v1.3 已对接 AGY 侧在契约 §10 登记的三条（@人 / 只读 OneBot / pr
 worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
 
+### 1.6 v1.5（2026-11-26 01:0x）—— 热聊窗口
+
+**问题**（owner 明确要求，AGY 侧在契约 §10 登记）：bot 回完一句就结束回合、群停在 `diving`
+⇒ 群友接着聊（不带 @/关键词）**再也唤不醒它**。00:08 实测：`@bot` 回复后 87 秒，
+owner 追问「看看你的功能点是否正常」——零唤醒，对话断掉。
+
+**实现**（§5.2 有完整规则表）：
+
+- `st.hotChatUntil` **滑动窗口**：每次成功发言（`sent > 0`）刷新到 `now + 5min`
+  （本群已实测：01:04:03 发 2 条 → 窗口设上，还剩 257s）
+- 窗口内普通消息也能唤醒，新理由 `hotChat`（优先级 45）
+- 显式潜水（`wake-config` 判定 sleeping）**清空**窗口
+- 窗口内限流放宽到 `hotChatMaxWakePerMinute`（默认 3）
+- `hotChatUntil` **落盘**（重启后仍然"刚聊起来"）
+- AGY `complete` 在 `sent>0` 后补调 `scheduleReplyCheckV2`（对齐 DSH）
+- `recommendedKeywords` 加「猫娘」「侍从」
+- 纯逻辑在 `src/hot-chat.js` + `scripts/test-hot-chat.mjs`（7 组回归）
+- 配置：`socialV2.wake.hotChatWindowMs`（默认 300000，**0 = 关闭**）、`hotChatMaxWakePerMinute`
+
+> 还没在群里看到一次真实 `hotChat` 唤醒样本（验收时群里 2 分钟没人说话）。
+> **下次有人接着聊**时，日志里应该出现 `[reserved2] 唤醒 group:… （hotChat）` —— 看到这行才算闭环。✓
+
 ### 1.5 v1.3（2026-11-25 22:0x）
 
 AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地：
