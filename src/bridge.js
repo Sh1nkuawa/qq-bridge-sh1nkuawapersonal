@@ -34,6 +34,7 @@ import { createSerialQueue } from './serialize.js';
 import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
 import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill, pickNewestWithinBudget } from './agy-prompt.js';
+import { effectiveMaxWakePerMinute, isHotChat, nextHotChatUntil, normalizeHotChatWindowMs } from './hot-chat.js';
 import { normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport } from './persona-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
@@ -4988,6 +4989,9 @@ async function main() {
                 const stAfter = getSocialV2State(r.turn.key);
                 stAfter.lastAiReplyAt = Date.now();
                 saveSocialV2State();
+                // 契约 §10（AGY 侧 2026-11-25）：DSH 的每条发送路径都会排一次回复检查，
+                // AGY 漏了 ⇒ 回完"有人接话吗"这一步没人做。补上（它内部会判断"真的还欠一句话"才排）
+                scheduleReplyCheckV2(r.turn.key);
               } catch (error) {
                 log(`[agy] 记录自己发的消息失败 ${r.turn.key}：${error?.message ?? error}`);
               }
@@ -6519,6 +6523,9 @@ async function main() {
           st.preSleepWaitSatisfiedAt = 0;
           st.preSleepWaitObservedAt = 0;
           st.preSleepWaitAccumMs = 0;
+          // 契约 §10（owner 2026-11-25）：**显式潜水**要能真正安静下来 ⇒ 清掉热聊窗口，
+          // 否则"刚说过话的 5 分钟"会继续让普通消息把它叫醒，和它自己选的潜水冲突 ✗
+          if (isSleepingConfigV2(next)) st.hotChatUntil = 0;
           saveSocialV2State();
           wakeConfigUpdatedKeys.add(key);
           wakeConfigMissCount.delete(key);
@@ -11144,6 +11151,8 @@ async function main() {
             lastUnreadSeq: Number(val.lastUnreadSeq) || 0,
             lastReadThroughSeq: Number.isSafeInteger(val.lastReadThroughSeq) && val.lastReadThroughSeq >= 0
               ? Math.min(val.lastReadThroughSeq, Number(val.lastUnreadSeq) || 0) : 0,
+            // 热聊窗口要能跨重启（否则重启一下"刚聊起来"的状态就丢了）
+            hotChatUntil: Number(val.hotChatUntil) || 0,
             modelSeenSeqs: new Set(),
             activeTopics: Array.isArray(val.activeTopics) ? val.activeTopics : [],
             pendingThoughts: Array.isArray(val.pendingThoughts) ? val.pendingThoughts : [],
@@ -11235,6 +11244,8 @@ async function main() {
           preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
           lastUnreadSeq: st.lastUnreadSeq || 0,
           lastReadThroughSeq: st.lastReadThroughSeq || 0,
+          // 热聊窗口（回复后 5 分钟滑动）：落盘，重启后仍然"刚聊起来" ✓
+          hotChatUntil: Number(st.hotChatUntil) || 0,
           activeTopics: Array.isArray(st.activeTopics) ? st.activeTopics.slice(-50) : [],
           pendingThoughts: Array.isArray(st.pendingThoughts) ? st.pendingThoughts.slice(-50) : [],
           memberImpressions: st.memberImpressions && typeof st.memberImpressions === 'object' ? st.memberImpressions : {},
@@ -12575,6 +12586,11 @@ async function main() {
     st.preSleepWaitSatisfiedAt = 0;
     st.preSleepWaitObservedAt = 0;
     st.preSleepWaitAccumMs = 0;
+    // 热聊窗口：它刚说过话 ⇒ 把窗口滑到 now + 5 分钟（这里顺手和上面的 save 合并，不再单独落盘）
+    {
+      const hotMs = hotChatWindowMs();
+      if (hotMs > 0) st.hotChatUntil = now + hotMs;
+    }
     saveSocialV2State();
 
     // 自研心情（方案B，2026-10-26 恢复）：它刚真的发了话 ⇒ 用规则算一次心情/七根情绪。
@@ -13035,6 +13051,27 @@ async function main() {
     log(`[feed] 余额水位检查已启用：每 ${Math.round(every / 60000)} 分钟一次，阈值 ¥${fc.hungry.threshold}`);
   }
 
+  // ── 热聊窗口（owner 2026-11-26 要求，AGY 侧在契约 §10 登记）─────────────────
+  // 现象：bot 回完一句后，群友接着聊（不带 @ / 关键词）根本唤不醒它 ——
+  //   2026-11-26 00:08 实测：@bot 回复后 87 秒 owner 追问「看看你的功能点是否正常」，零唤醒，
+  //   对话直接断掉（AGY 回完即结束回合，群停在 diving）。
+  // 规则：每次**成功发言**就把窗口滑到 now + hotChatWindowMs（默认 5 分钟，配 0 关闭）；
+  //   窗口期内普通消息也能唤醒（reason: hotChat，优先级低于 @/提问/关键词，高于 replyCheck）；
+  //   窗口过期、或 bot 显式潜水（wake-config 设成 diving）都自动失效 ⇒ 安静时仍然 0 唤醒 ✓
+  // 纯逻辑在 src/hot-chat.js（有回归），这里只做"读配置 + 落盘"。
+  function hotChatWindowMs() {
+    return normalizeHotChatWindowMs(cfg.socialV2?.wake?.hotChatWindowMs);
+  }
+  function isHotChatV2(st) {
+    return isHotChat(st?.hotChatUntil);
+  }
+  function markHotChatV2(st) {
+    const until = nextHotChatUntil(Date.now(), hotChatWindowMs());
+    if (!st || !until) return;
+    st.hotChatUntil = until;
+    saveSocialV2State();
+  }
+
   function evaluateWakeTriggerV2(key, st, event, kind, textContent, plainContent, quoteTargetIsSelf) {
     if (kind === 'private') return 'private';
     const tr = st.wakeConfig?.triggers ?? {};
@@ -13068,6 +13105,9 @@ async function main() {
         return `speaker:${senderLabel}`;
       }
     }
+    // 热聊窗口：bot 刚在本群说过话 ⇒ 接着聊也唤醒（不用 @）。放在显式触发之后、
+    // 概率触发之前：@/提问/关键词仍然优先，只是"没人叫它但刚聊过"这一档不再哑火 ✓
+    if (isHotChatV2(st)) return 'hotChat';
     if (Number(tr.probability) > 0 && Math.random() < Number(tr.probability)) return 'probability';
     return null;
   }
@@ -13603,8 +13643,14 @@ async function main() {
     // 唤醒频率硬限制：超限**不再直接丢**，改为"等窗口过期后重试"。
     // 2026-11-25 21:59 实测：刚回完 8 秒内被 @，撞上 maxWakePerMinute=1 ⇒ 那条 @ 被**跳过**
     // ⇒ 群里看起来就是不理人 ✗（契约 §10 · AGY 侧报的 ⑤）
+    // 热聊窗口内适度放宽（契约 §10：刚接一句就被限频会打断对话）
     const now = Date.now();
-    const maxPerMinute = Number(cfg.socialV2?.wake?.maxWakePerMinute) || 0;
+    const hotChat = isHotChatV2(st);
+    const maxPerMinute = effectiveMaxWakePerMinute({
+      hotChat,
+      base: Number(cfg.socialV2?.wake?.maxWakePerMinute) || 0,
+      hot: cfg.socialV2?.wake?.hotChatMaxWakePerMinute
+    });
     const maxPerHour = Number(cfg.socialV2?.wake?.maxWakePerHour) || 0;
     const wakeTimes = Array.isArray(st.wakeTimes) ? st.wakeTimes : [];
     const inMinute = wakeTimes.filter((t) => now - t < 60000).sort((a, b) => a - b);
@@ -13778,6 +13824,8 @@ async function main() {
     nameMention: 70,
     keyword: 60,
     anyMessage: 50,
+    // 刚聊完接着聊：高于"回复检查/主动机会"，低于一切显式触发
+    hotChat: 45,
     replyCheck: 40,
     timeout: 30,
     proactiveCheck: 20

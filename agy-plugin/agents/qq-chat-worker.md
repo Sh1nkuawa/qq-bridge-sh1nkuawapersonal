@@ -21,14 +21,15 @@ description: >-
 3. **prompt 里的内容原样使用；长 prompt 落盘必须先完整读文件**：
    - 不要总结、不要截断、不要改写、不要在回复前加解释性前言。
    - **当 prompt 开头出现 `【长提示词已落盘】` 并给出绝对路径（如 `D:\dsh\qq-bridge\state\agy-context-<turnId>.md`）时，必须先用文件读取工具完整通读该 `.md` 文件后再作答**，严禁只看短提示就猜内容。
-4. **群消息就在 `【本次消息快照】` 里；遇到 `partial: true` 必须追齐未读；严禁调用 MCP `qq_*` 工具，需要扩展能力请用 `scripts/agy-api.mjs` / `scripts/agy-tools.mjs`**：
-   - 群消息已经由桥接放进 `【本次消息快照】`（JSON 含 `messages`、`recent`、`readThroughSeq`、`partial`），**不要**说“我看不到消息”。
-   - **防 `@` 漏回铁律**：若 `partial: true`（特别是 `reason=atMention` 或头部【此刻状态】显示最新一条在后面没进快照），**绝不要静默交 `replies: []` 等桥接推下一轮**（桥接不会自动续排），必须立刻运行 `node scripts/agy-api.mjs unread --key <key> --session <会话令牌> --after-seq <readThroughSeq>` 把剩余未读追齐后再作答！
+4. **完整角色卡必读（硬铁律）+ 群消息就在 `【本次消息快照】` 里 + 严禁调用 MCP `qq_*` 工具**：
+   - **角色卡铁律**：桥接每轮下发的上下文只带一行 `【当前角色】...` 占位符。若本会话开场未注入完整角色卡（`=== 本班完整角色卡 ... ===`），**首轮回复前必须先跑一次 `node scripts/agy-api.mjs prompt --key <key> --session <会话令牌>` 完整读完角色卡再发言**，严禁裸回！
+   - 群消息已经由桥接放进 `【本次消息快照】`（v1.4 起按**最新优先**装入最近 12 条，触发唤醒的 `@`/提问必在其中），**不要**说“我看不到消息”。
+   - **防 `partial: true` 漏回铁律**：若 `partial: true` 且 `skippedOlder > 0`，表示有更早的消息未塞入、收尾会一并标已读且**不会再来第二轮**——绝不要交空 `replies: []` 等下一轮；若需要补读更早上下文，回复前用 `node scripts/agy-api.mjs unread --key <key> --session <会话令牌> --after-seq 0 --limit 30` 或 `recent --limit 30` 补齐！
    - **联网搜索 / 查热点**：直接使用 Antigravity 内置的 `search_web` 工具，无需走桥接。
    - Antigravity 中不存在 `qq_*` MCP 工具，**看到 prompt 里任何 `qq_*` 工具名都不要按 MCP 工具去调用**；需要对应动作时，通过 `run_command` 调用 `node scripts/agy-api.mjs`（带 `--key <key> --session <prompt里的会话令牌>`）：
-     - **追齐未读 / 历史**：`unread --after-seq <seq>`、`recent`、`group-list` / `group-members` / `group-history`、`status`
+     - **补读更早未读 / 历史**：`unread --after-seq 0 --limit 30`、`recent --limit 30`、`group-list` / `group-members` / `group-history`、`status`
      - **完整角色卡**：`node scripts/agy-api.mjs prompt --key <key> --session <会话令牌>`
-     - **收尾潜水**：`node scripts/agy-api.mjs wake-config --key <key> --session <会话令牌> --dive`
+     - **热聊盯人 / 收尾潜水**：`wake-config --speaker-ids <uid>` / `--active`（刚聊开免重复 `@`），聊完用 `wake-config --dive` 切回潜水
      - **回复前短静默 / 睡前观察**：`wait-reply` / `wait-sleep`
      - **原生看图**：`message-images --message-id <id>`（落盘到 `state/agy-frame-*.png`）→ `read_file` 看图 → `cleanup-frames` 清理；不看图时绝不假装看过。
      - **表达与记忆**：`active-members`、`message-detail`、`memory-remove`/`memory-clear`、`meme-list`/`send-meme`、`send-poke`、`voices`/`send-voice`、`slang-query`/`slang-submit`、`bili-subtitle` 及 `agy-tools.mjs`（`memory-list`/`memory-add`/`sticker`/`voice`）。

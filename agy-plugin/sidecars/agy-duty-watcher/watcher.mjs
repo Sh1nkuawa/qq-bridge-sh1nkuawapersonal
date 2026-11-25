@@ -110,6 +110,40 @@ async function fetchBridgeStatus() {
   }, 10000);
 }
 
+async function fetchRoleCard(persona) {
+  const token = readConsoleToken();
+  if (!token) return '';
+  const base = resolveBridgeUrl();
+  let key = 'group:541026885';
+  try {
+    const stRes = await fetchJsonWithTimeout(`${base}/api/status`, {
+      method: 'GET',
+      headers: { 'x-console-token': token }
+    }, 8000);
+    const groups = stRes.body?.allowGroups;
+    if (Array.isArray(groups) && groups.length > 0 && groups[0]) {
+      key = `group:${String(groups[0]).trim()}`;
+    }
+  } catch { /* fallback key */ }
+
+  try {
+    const pr = await fetchJsonWithTimeout(
+      `${base}/api/socialV2/prompt?key=${encodeURIComponent(key)}`,
+      {
+        method: 'GET',
+        headers: { 'x-console-token': token }
+      },
+      10000
+    );
+    if (pr.http === 200 && pr.body?.ok) {
+      const hint = String(pr.body?.role?.hint ?? pr.body?.prompt ?? '').trim();
+      if (hint) return hint;
+    }
+  } catch { /* ignore */ }
+  log('role-card-fetch-empty', { persona, key });
+  return '';
+}
+
 function getLsConfig() {
   const addr = String(process.env.ANTIGRAVITY_LS_ADDRESS ?? '').trim();
   const csrf = String(process.env.ANTIGRAVITY_CSRF_TOKEN ?? '').trim();
@@ -141,16 +175,26 @@ async function hasRunningWorkerConversation(persona) {
   return active ? active.id : false;
 }
 
-function buildDutyPrompt(persona, triggerReason) {
-  return [
+function buildDutyPrompt(persona, triggerReason, roleCard = '') {
+  const lines = [
     `现在由你接班执行「${persona}」的 QQ 值守任务（触发原因：${triggerReason}）。`,
     `请严格遵守 D:\\geminiqq\\.agents\\rules\\AGENTS.md 与 qq-bot-operator 规范：`,
     `1. 工作目录切换到 D:\\dsh\\qq-bridge，先跑 node scripts/agy-status.mjs --persona ${persona} 确认 dutyTransport 为 "agy"。`,
     `2. 领活与回话后等待一律使用 --loop --exit-on-not-on-duty --timeout-ms 90000，且调用 run_command 时不要设置 NotificationTimeoutSeconds（确保群里安静时 0 次唤醒模型、0 token 消耗，直到下一次有原因的真实唤醒或切班退出）。`,
-    `3. 串行处理单个回合：若提示【长提示词已落盘】，先完整 read_file 读完 .md 再作答；严禁调用任何 qq_* 工具；PowerShell 管道传 JSON 前先设无 BOM UTF-8 $OutputEncoding。`,
-    `4. 当脚本返回 IDLE not-on-duty 或 IDLE persona-on-dsh 时，立刻结束值守并收工。`,
-    `5. 为防止上下文超限，本会话累计完成 20 轮 complete 后请主动结束值守并收工，由侧车自动拉起新会话无缝接力。`
-  ].join('\n');
+    `3. 串行处理单个回合：若提示【长提示词已落盘】，先完整 read_file 读完 .md 再作答；严禁调用任何 MCP qq_* 工具；PowerShell 管道传 JSON 前先设无 BOM UTF-8 $OutputEncoding。`,
+    `4. 严格按照下方完整角色卡人设说话（自称、称呼、语气档、去AI味死刑表、喵口癖剂量等全部生效）；若下方未附带角色卡，首轮回复前必须先跑 node scripts/agy-api.mjs prompt --key <key> --session <会话令牌> 读完再发言。`,
+    `5. 当脚本返回 IDLE not-on-duty 或 IDLE persona-on-dsh 时，立刻结束值守并收工。`,
+    `6. 为防止上下文超限，本会话累计完成 20 轮 complete 后请主动结束值守并收工，由侧车自动拉起新会话无缝接力。`
+  ];
+  if (roleCard) {
+    lines.push(
+      '',
+      '=== 本班完整角色卡（已从桥接自动注入，整个值守会话严格遵守） ===',
+      roleCard,
+      '=== 角色卡结束 ==='
+    );
+  }
+  return lines.join('\n');
 }
 
 function formatBeijingStamp(ts) {
@@ -159,12 +203,13 @@ function formatBeijingStamp(ts) {
 }
 
 async function spawnFreshConversation(persona, triggerReason) {
-  const promptText = buildDutyPrompt(persona, triggerReason);
+  const roleCard = await fetchRoleCard(persona);
+  const promptText = buildDutyPrompt(persona, triggerReason, roleCard);
   const title = `${persona} QQ值守 (${formatBeijingStamp(Date.now())})`;
 
   if (DRY_RUN) {
-    log('dry-run-spawn', { persona, triggerReason, projectId: PROJECT_ID, model: MODEL, title });
-    return { ok: true, method: 'dry-run', conversationId: 'dry-run-id' };
+    log('dry-run-spawn', { persona, triggerReason, projectId: PROJECT_ID, model: MODEL, title, roleCardChars: roleCard.length });
+    return { ok: true, method: 'dry-run', conversationId: 'dry-run-id', roleCardChars: roleCard.length };
   }
 
   // 优先走官方 ConversationService/CreateConversation（可显式指定 projectId、title、tags、model）
@@ -190,7 +235,7 @@ async function spawnFreshConversation(persona, triggerReason) {
       15000
     );
     if (r.http === 200 && r.body?.conversation?.id) {
-      return { ok: true, method: 'conversation-service', conversationId: r.body.conversation.id };
+      return { ok: true, method: 'conversation-service', conversationId: r.body.conversation.id, roleCardChars: roleCard.length };
     }
     log('create-conversation-fallback', { http: r.http, error: r.body?.error ?? r.body?.code ?? 'unknown' });
   }
@@ -202,11 +247,12 @@ async function spawnFreshConversation(persona, triggerReason) {
     shell: process.platform === 'win32'
   });
   if (proc.status === 0) {
-    return { ok: true, method: 'agentapi', conversationId: String(proc.stdout || '').trim() || null };
+    return { ok: true, method: 'agentapi', conversationId: String(proc.stdout || '').trim() || null, roleCardChars: roleCard.length };
   }
   return {
     ok: false,
     method: 'agentapi',
+    roleCardChars: roleCard.length,
     error: String(proc.stderr || proc.error?.message || `exit-${proc.status}`).trim().slice(0, 300)
   };
 }
@@ -334,7 +380,8 @@ async function tick() {
       persona: onDuty,
       triggerReason,
       method: spawned.method,
-      conversationId: spawned.conversationId
+      conversationId: spawned.conversationId,
+      roleCardChars: spawned.roleCardChars ?? 0
     });
     state.lastDutyTransport = dutyTransport;
     state.lastOnDuty = onDuty;

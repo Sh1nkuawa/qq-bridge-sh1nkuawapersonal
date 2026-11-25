@@ -29,10 +29,15 @@ export function formatAgySnapshotBlock(snapshot) {
   let tail = '\n以上是本轮桥接替你取到的群消息（按时间正序，**最近的在最后**）。';
   if (skipped > 0) {
     // 2026-11-25 契约 §10 反馈：原来写"桥接会在下一轮再给你"，模型就真的只回 [] 等下一轮 ⇒ 漏回 ✗
+    // 2026-11-26 契约 §10 反馈②：readThroughSeq 现在=**最新**那条的 seq（v1.4 最新优先的副作用），
+    //   所以补读**不能**用 `--after-seq <readThroughSeq>`（查 seq > 最新必然空），
+    //   要拉更早的那批 ⇒ `recent` 或 `unread --after-seq 0` ✓
     tail += `\n⚠️ partial=true：这轮只塞了**最近 ${included} 条**（触发这次唤醒的 @/提问一定在里面）。`
-      + `\n另有 **${skipped} 条更早的**没给：收尾时会**一并标已读**，不会再来第二轮。`
-      + `\n所以如果它们有用（有人在等你回、或上下文接不上），**回复前**就先补读：`
-      + `\`node scripts/agy-api.mjs unread --key <本轮 key> --after-seq ${through}\`（或 \`recent\`）。`
+      + `\n另有 **${skipped} 条更早的**没给（都在这批之前，即 seq ≤ ${through}）：收尾时会**一并标已读**，不会再来第二轮。`
+      + '\n所以如果它们有用（有人在等你回、或上下文接不上），**回复前**先补读：'
+      + '`node scripts/agy-api.mjs recent --key <本轮 key> --session <会话令牌> --limit 30`'
+      + '（或 `unread --after-seq 0 --limit 30`）。'
+      + '\n注意：补读**不要**用 `--after-seq <readThroughSeq>`，那个水位已经在最前面了，查不到东西。'
       + '\n不要假装看过那几条，也不要因此沉默 ✗';
   } else if (snapshot?.partial) {
     tail += '\n⚠️ partial=true：还有更多未读没塞进来，必要时用 `node scripts/agy-api.mjs unread` 补读。';

@@ -56,15 +56,18 @@ ok('★★ 看图：换成"用 message-images 落盘再看"，不能再写"看�
   assert.ok(block.includes('别假装看过'), '仍要禁止编造图片内容');
 });
 
-ok('★★ partial：说清"还有多少更早的没给"、会被一并标已读、并给补读命令（不能说"下一轮再给"）', () => {
+ok('★★ partial：说清"还有多少更早的没给"、会被一并标已读、并给**正确**的补读命令', () => {
   // 2026-11-25 22:09 事故：模型看到 partial 且 prompt 写着"下一轮再给"，就真的回 [] 等下一轮 ⇒ 漏回 ✗
-  const block = formatAgySnapshotBlock({ ...SNAP, skippedOlder: 21 });
+  // 2026-11-26 反馈②：readThroughSeq 已是最新，补读不能再用 --after-seq <它>（查空）
+  const block = formatAgySnapshotBlock({ ...SNAP, skippedOlder: 21, readThroughSeq: 53436 });
   assert.ok(block.includes('partial=true'));
   assert.ok(!block.includes('下一轮再给你'), '旧说法必须去掉');
   assert.ok(block.includes('另有 **21 条更早的**'), '要说清差多少条');
   assert.ok(block.includes('一并标已读'), '要说明这批不会再给（否则会一直等）');
-  assert.ok(block.includes('agy-api.mjs unread'), '要给补读命令');
-  assert.ok(block.includes('--after-seq'), '要告诉用哪个水位补读');
+  assert.ok(block.includes('agy-api.mjs recent'), '要给 recent 补读');
+  assert.ok(block.includes('--after-seq 0'), '要给 unread --after-seq 0 这种能查到东西的参数');
+  assert.ok(block.includes('--after-seq <readThroughSeq>'), '要明确点名那个"别用"的参数');
+  assert.ok(block.includes('查不到东西'), '要解释为什么不能用它');
 });
 
 console.log('\n值守覆盖说明：');

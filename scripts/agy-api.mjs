@@ -52,7 +52,7 @@ function printHelp() {
     '  --body-stdin | --body-file <p> | --body <json>',
     '',
     '子命令：',
-    '  [行为闭环]   wake-config (--dive | --mode diving --infinite true --sleep-ms N --through-seq N)',
+    '  [行为闭环]   wake-config (--dive | --active | --speaker-ids 123,456 | --mode active|diving --infinite true --sleep-ms N --through-seq N)',
     '               wait-reply  (--quiet-ms 10000 --timeout-ms 30000)',
     '               wait-sleep  (--timeout-ms 300000 --quiet-ms 10000 --min-new 1)',
     '  [消息/上下文] unread (--after-seq N --limit 30) | recent (--limit 20 --offset 0) | status',
@@ -353,15 +353,35 @@ if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
       if (bodyOverride) {
         payload = { key, ...bodyOverride };
       } else {
-        const mode = hasFlag('dive', argv) ? 'diving' : String(argOf('mode', 'diving', argv));
-        const infRaw = argOf('infinite', null, argv);
-        const infinite = infRaw != null ? infRaw !== 'false' && infRaw !== '0' : (argOf('sleep-ms', null, argv) == null);
+        const isDive = hasFlag('dive', argv);
+        const isActive = hasFlag('active', argv);
+        const mode = isDive ? 'diving' : (isActive ? 'active' : String(argOf('mode', 'diving', argv)));
         const sleepMsRaw = argOf('sleep-ms', null, argv);
+        const infRaw = argOf('infinite', null, argv);
+        const infinite = infRaw != null
+          ? infRaw !== 'false' && infRaw !== '0'
+          : (sleepMsRaw == null);
         const throughSeqRaw = argOf('through-seq', null, argv);
+        const speakerIdsRaw = argOf('speaker-ids', null, argv);
+        const triggers = {};
+        if (speakerIdsRaw != null) {
+          triggers.speakerIds = String(speakerIdsRaw)
+            .split(/[,，\s]+/)
+            .map((s) => s.trim())
+            .filter((s) => /^\d+$/.test(s));
+        } else if (isDive) {
+          triggers.speakerIds = [];
+        }
+        if (hasFlag('any-message', argv) || isActive) {
+          triggers.anyMessage = true;
+        } else if (isDive) {
+          triggers.anyMessage = false;
+        }
         const config = {
           mode,
           infinite,
-          ...(sleepMsRaw != null ? { sleepMs: Number(sleepMsRaw) } : {})
+          ...(sleepMsRaw != null ? { sleepMs: Number(sleepMsRaw) } : {}),
+          ...(Object.keys(triggers).length ? { triggers } : {})
         };
         payload = {
           key,

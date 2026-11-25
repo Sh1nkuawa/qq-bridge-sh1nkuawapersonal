@@ -573,6 +573,18 @@ try {
     assert.equal(wcData.ok, true);
     assert.equal(wcData.wakeConfig.mode, 'diving');
     assert.equal(wcData.wakeConfig.infinite, true);
+    assert.equal(wcData.wakeConfig.triggers.anyMessage, false);
+    assert.deepEqual(wcData.wakeConfig.triggers.speakerIds, []);
+
+    // wake-config --active --speaker-ids
+    const wca = await runScript('agy-api.mjs', [
+      'wake-config', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--active', '--speaker-ids', '123456,789012'
+    ]);
+    assert.equal(wca.status, 0, `stdout=${wca.stdout} stderr=${wca.stderr}`);
+    const wcaData = JSON.parse(wca.stdout);
+    assert.equal(wcaData.wakeConfig.mode, 'active');
+    assert.equal(wcaData.wakeConfig.triggers.anyMessage, true);
+    assert.deepEqual(wcaData.wakeConfig.triggers.speakerIds, ['123456', '789012']);
 
     // wait-reply
     const wr = await runScript('agy-api.mjs', [

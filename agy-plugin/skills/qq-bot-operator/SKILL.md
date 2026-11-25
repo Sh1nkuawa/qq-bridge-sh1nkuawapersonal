@@ -16,7 +16,7 @@ description: >-
 1. **一次只处理一个回合**：禁止并发领活；完成（`complete`）或退回（`requeue`）当前回合后再领下一条。
 2. **`complete` 之后就结束了**：桥接发完回复会自动按 `readThroughSeq` 标已读，严禁额外补发“已发送”之类的确认消息。
 3. **prompt 原样使用 + 落盘必读**：禁止截断或改写 `prompt`；若开头出现 `【长提示词已落盘】` 指向 `D:\dsh\qq-bridge\state\agy-context-<turnId>.md`，**必须先用文件读取工具完整通读该文件后再作答**，严禁猜内容。
-4. **群消息就在 `【本次消息快照】` 里；`partial=true` 时必须用 `agy-api.mjs unread` 追齐未读；禁止调用 MCP `qq_*` 工具**：Antigravity 中没有 `qq_*` MCP 工具，需要读未读/看图/收尾潜水/查群成员/表达时一律改用 `scripts/agy-api.mjs`（或 `scripts/agy-tools.mjs`）；联网搜热点请直接用 Antigravity 内置 `search_web` 工具；想看图时用 `message-images` 落盘后 `read_file` 原生看图，没看图时绝不假装看过。
+4. **完整角色卡必读 + 群消息就在 `【本次消息快照】` 里 + 禁止调用 MCP `qq_*` 工具**：若会话开场未注入完整角色卡，首轮回复前**必须**先跑 `node scripts/agy-api.mjs prompt --key <key> --session <会话令牌>` 读完角色卡再发言；快照已含最新 12 条，若 `partial=true` 且需补读更早消息请用 `unread --after-seq 0 --limit 30` 或 `recent --limit 30`（绝不要交空 `[]` 等下一轮）；联网搜热点用 Antigravity 内置 `search_web`；看图用 `message-images` 落盘后 `read_file` 原生看图，没看图绝不假装看过。
 5. **单回合尽量 3 分钟内完成**：长任务每 2~3 分钟用 `agy-touch.mjs` 续租。
 
 ---
@@ -74,9 +74,9 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 所有 `/api/socialV2/*` 与 `/api/images/*` 端点统一走 `scripts/agy-api.mjs`（自动区分鉴权前缀：`/api/agy/*` 只带 console token；`/api/socialV2/*` 双带 console token 与 `--session` 会话令牌）：
 
 ```powershell
-# 追齐未读（遇到 partial=true 必用，不要交空 replies 等下一轮！）/ 查最近历史 / 网关状态
-node scripts/agy-api.mjs unread --key group:541026885 --session <会话令牌> --after-seq 53363 --limit 30
-node scripts/agy-api.mjs recent --key group:541026885 --session <会话令牌> --limit 20
+# 补读更早未读（v1.4 快照已含最新 12 条，补读 skippedOlder 请用 --after-seq 0 或 recent）/ 查网关状态
+node scripts/agy-api.mjs unread --key group:541026885 --session <会话令牌> --after-seq 0 --limit 30
+node scripts/agy-api.mjs recent --key group:541026885 --session <会话令牌> --limit 30
 node scripts/agy-api.mjs status
 
 # OneBot 只读白名单（v1.3，自动不带 x-agent-token）
@@ -87,8 +87,9 @@ node scripts/agy-api.mjs group-history --key group:541026885
 # 完整角色卡（首次接班建议读一次）
 node scripts/agy-api.mjs prompt --key group:541026885 --session <会话令牌>
 
-# 行为闭环：回复前短静默 / 主动切回潜水收尾 / 沉睡前观察
+# 行为闭环：回复前短静默 / 热聊盯人或活跃 / 主动切回潜水收尾 / 沉睡前观察
 node scripts/agy-api.mjs wait-reply --key group:541026885 --session <会话令牌> --quiet-ms 10000
+node scripts/agy-api.mjs wake-config --key group:541026885 --session <会话令牌> --speaker-ids <对方uid>
 node scripts/agy-api.mjs wake-config --key group:541026885 --session <会话令牌> --dive
 node scripts/agy-api.mjs wait-sleep --key group:541026885 --session <会话令牌> --timeout-ms 300000
 

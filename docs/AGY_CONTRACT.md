@@ -268,6 +268,26 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 
 - 非值班 worker：`wait` 返回 `idle: true, reason: "not-on-duty"` ✓，**继续轮询** ✓
   （它的轮询同时是"我还活着"的心跳，但**只记在它自己的人格名下**）
+
+### 5.2 热聊窗口（2026-11-26 v1.5，owner 明确要求）
+
+**问题**：bot 回完一句就结束回合，群停在 `diving` ⇒ 群友接着聊（不带 @/关键词）**再也唤不醒它**。
+2026-11-26 00:08 实测：`@bot` 回复后 87 秒，owner 追问「看看你的功能点是否正常」——零唤醒，对话断掉。
+
+**规则**：
+
+| 项 | 行为 |
+|---|---|
+| 开窗 | 每次 **成功发言**（`sent > 0`，四类发送路径都算）⇒ `hotChatUntil = now + 5min`（**滑动**：每说一句往后推） |
+| 窗口内的普通消息 | 也能唤醒，理由 `hotChat`（优先级 45：低于 @/提问/关键词/任意消息，高于 replyCheck/主动机会） |
+| 窗口过期 | 自动失效（纯时间戳判定，无定时器）⇒ 安静时仍然 **0 唤醒** ✓ |
+| bot 显式潜水 | `wake-config` 判定为 sleeping 时**清空** `hotChatUntil`，尊重它自己想安静 |
+| 限流 | 窗口期内每分钟上限用 `wake.hotChatMaxWakePerMinute`（默认 **3**，原来 1） |
+| 配置 | `socialV2.wake.hotChatWindowMs`（默认 300000，**0 = 关闭**）、`socialV2.wake.hotChatMaxWakePerMinute` |
+| 持久化 | `hotChatUntil` 落盘（`state/social-v2.json`）⇒ 重启后仍然"刚聊起来" ✓ |
+
+> 纯逻辑在 `src/hot-chat.js`（`isHotChat` / `nextHotChatUntil` / `effectiveMaxWakePerMinute`），
+> `scripts/test-hot-chat.mjs` 7 组回归钉住"滑动 / 到点即失效 / 关掉 / 限流放宽"。
 - 值班者掉线（该 persona 的 `onDutyWorkerSeenAt` > 5 分钟）：
   - `transportFallback: "dsh"`（默认）→ 该回合回落给 DSH 处理 ✓（保证不哑火 ✓）
   - `"none"` → 只在日志与 `status` 里告警 ✓
@@ -346,3 +366,5 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 | 2026-11-25 | AGY 侧 | **同步【AGY 值守模式】prompt 措辞**：AGY 侧已落地 `scripts/agy-api.mjs`（涵盖 `wake-config`/`wait-reply`/`wait-sleep`/`prompt`/表情包/拍一拍/**`message-images` 落盘配合 `read_file` 原生看图**、以及本机 **`agy-quota`** 查 Antigravity 5h/周剩余额度，不再需要桥接侧做视觉转述或 DeepSeek 余额代理）。建议将 prompt 中「看不到图 / 没有任何工具」改表述为「无 MCP `qq_*` 工具，需扩展动作/看图/收尾潜水时使用 `scripts/agy-api.mjs`」避免指令冲突 | ✅ 已上线（v1.3）：`src/agy-prompt.js` 已改成"没有 MCP 的 qq_* 工具 + 用 agy-api.mjs 扩展"；看图改为 `message-images` 落盘再读，不再说"看不到图"；余额不再代做（AGY 侧用 `agy-quota`）|
 | 2026-11-25 | AGY 侧 | **优化 AGY 快照取最新 12 条 + 同步水位与唤醒细节（owner 已确认方向）**：22:09 实测 `atMention` 时未读 29 条，`buildWakeSnapshotV2` 按最早优先（`st.unread.slice(0, maxUnread)`）且 `config.json` 限制 `wakeMessageLimit: 8` / `wakeMaxChars: 3000`，只塞了 10 分钟前 8 条旧闲聊（`partial=true`），触发 `@` 的最新消息被切在外面；模型按「桥接会在下一轮再给你」静默交 `replies: []` 后桥接未续排导致漏回。AGY 侧现已落地 `agy-api.mjs unread`/`recent` 兜底。按 owner 确认，请桥接侧评审以下调整：① **快照改为最新优先（至少 AGY `force=true` 分支）**：从 `st.unread` 尾部取最新消息（按字符预算倒序装入后再正序输出），确保触发唤醒的 `@`/提问必在快照内；② **上调快照容量**：`config.json` 的 `socialV2.context.wakeMessageLimit` 从 `8` 调到 `12`，同步把 `wakeMaxChars` 从 `3000` 放宽到 `5500~6000`（否则 12 条仍会被 3000 字符截回 ~8 条）；③ **`agyReleaseTurn` 水位取 `Math.max(explicit ?? 0, readThroughSeqV2(st) ?? 0)`**，让本轮通过 `unread`/`wait-reply` 追齐的消息收尾时一起标已读；④ **修正快照尾部文案**：去掉「桥接会在下一轮再给你」，改为引导 `agy-api.mjs unread` / `recent`；⑤ **可选（配合 owner 确认的折中实时体验）**：评估 `atMention` 适当缩短 `batchWindowMs`（当前 8000ms）或放宽 `maxWakePerMinute: 1`（21:59:18 刚回完 8s 内被 `@` 曾触发「唤醒频率超限，跳过」） | 待桥接侧评审 → **✅ v1.4 全部处理**：① `force` 分支改**最新优先**（纯函数 `pickNewestWithinBudget`，3 组回归；DSH 仍最早优先 —— 换顺序会把没看过的标成已读 ✗）；② `wakeMessageLimit: 12` / `wakeMaxChars: 5500`；③ 水位改为 `Math.max(本轮显式水位, readThroughSeqV2 自动水位)`；④ 文案改为「还有 **N 条更早的**没给 → `agy-api.mjs unread --after-seq …` 补读」，并明令**不许**"等下一轮"；⑤ `atMention` 撞限流**不再丢弃**：改「等窗口过期后重试」（最多 2 次，日志 `唤醒频率超限，改为 Ns 后重试 …`）；`batchWindowMs` 保持 8000（它负责合并连发，缩短会打散一条消息里的多句）|
 | 2026-11-25 | AGY 侧 | **同步 v1.3 & §2.0 全量对账进展（通报）**：AGY 侧已完成 `agy-reply-and-wait.mjs` 的 `atUserId` 解析，以及 `agy-api.mjs` 的 `onebot`/`group-list`/`group-members`/`group-history`、`unread`/`recent`、`memory-remove`/`memory-clear`、`status`。另：`AGY_FEATURE_GAPS.md` §2.0 标 🔴 的 `web_search` 实际已由 Antigravity 原生内置 `search_web` 覆盖（规则已明确直接调用），无需桥接另开搜索代理 | ✅ 收到。`web_search` 这条结论已采纳：桥接**不做**搜索代理；`AGY_FEATURE_GAPS.md` §2.0 的标记已同步为"由 Antigravity 原生 `search_web` 覆盖"；prompt 里已改成"用 Antigravity 自带搜索，查不到就如实说" |
+| 2026-11-26 | AGY 侧 | **v1.4 补读参数小修建议 + 角色卡注入通报**：① v1.4 快照改为最新优先后，`readThroughSeq` 现在是最新一条的 seq，但快照尾部文案写的是 `agy-api.mjs unread --key <本轮 key> --after-seq <readThroughSeq>`——查 `seq > 最新` 会返回空，建议改为 `--after-seq 0 --limit 30` 或 `recent --limit 30`（并提醒带 `--session`）；② AGY 侧 `watcher.mjs` 开新会话时已改为自动拉取 `/api/socialV2/prompt` 并把完整角色卡（`role.hint`）硬注入到首条开场消息，同时 `AGENTS.md` 强制未注入时首轮回复前必先调 `agy-api.mjs prompt` | ✅ v1.5 文案已改：补读改为 `agy-api.mjs recent --limit 30`（或 `unread --after-seq 0 --limit 30`），并**明确警告**不要用 `--after-seq <readThroughSeq>`（那个水位已在最前面，查不到东西）；② 角色卡注入的做法很对，桥接侧不用改 —— 它的 `prompt` 端点返回的就是完整角色卡 + 推荐值 ✓ |
+| 2026-11-26 | AGY 侧 | **回复后 5 分钟滑动热聊窗口 + 对齐 `scheduleReplyCheckV2`（owner 明确要求）**：00:08 实测 `@bot` 回复后，87 秒后 owner 追问「看看你的功能点是否正常」未再唤醒，排查发现：① `POST /api/agy/complete` 发完消息漏调了 `scheduleReplyCheckV2(r.turn.key)`（DSH 所有发送路径都有调）；② AGY 回完即结束回合，群停在 `diving` 导致后续不带 `@` 的追聊无法续上。按 owner 明确指定，请桥接侧实现：**① 新增「回复后 5 分钟滑动热聊窗口」**（如 `st.hotChatUntil = Date.now() + 300000`，每次 bot 成功发言（`sent > 0`）均刷新该窗口；窗口期内群内新消息无需再 `@`/关键词即可按正常合批触发唤醒，例如 `reason: "hotChat"`；超过 5 分钟未再发言或 bot 显式调 `wake-config --dive` 主动潜水时自动失效回到 `diving`，保证安静时 0 唤醒、0 token；热聊期内也建议适度放宽 `maxWakePerMinute: 1`，避免刚接一句就被限频）；**② `POST /api/agy/complete` 在 `sent > 0` 后补调 `scheduleReplyCheckV2(r.turn.key)`**；**③ `recommendedKeywords` 顺手补充 `"猫娘"`、`"侍从"`**。AGY 侧已同步扩展 `agy-api.mjs wake-config --active / --speaker-ids / --dive` 作为配合 | ✅ v1.5 全部实现（§5.2）：① `st.hotChatUntil` **滑动窗口**（每次成功发言刷新，默认 5 分钟，可配 `wake.hotChatWindowMs`，0=关闭）+ 新唤醒理由 `hotChat`（优先级 45，低于 @/提问/关键词、高于 replyCheck）；显式潜水（`wake-config` 判定为 sleeping）会**清掉窗口**；窗口期内限流放宽为 `hotChatMaxWakePerMinute`（默认 3）；② AGY `complete` 在 `sent>0` 后补调 `scheduleReplyCheckV2`；③ `recommendedKeywords` 已加「猫娘」「侍从」。纯逻辑在 `src/hot-chat.js`（7 组回归）|
