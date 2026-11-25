@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **358** 个被跟踪文件（其中 356 个文本文件、合计 **77,506** 行） —— 文件自带说明 **334**、人工补写 **23**、待补 **1**。
+统计：共 **360** 个被跟踪文件（其中 358 个文本文件、合计 **77,854** 行） —— 文件自带说明 **336**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -48,6 +48,13 @@
 | --- | ---: | --- | --- |
 | [`qq-chat-worker.md`](../agy-plugin/agents/qq-chat-worker.md) | 109 | QQ Chat Worker（AGY 传输层值守指令） | 文件自带（标题） |
 
+## agy-plugin/sidecars/agy-duty-watcher
+
+| 文件 | 行数 | 作用 | 来源 |
+| --- | ---: | --- | --- |
+| [`sidecar.json`](../agy-plugin/sidecars/agy-duty-watcher/sidecar.json) | 14 | 监听本地 D:\dsh\qq-bridge 的 dutyTransport；每次切到 AGY（05:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），保证上下文不超限。 | 文件自带（JSON 字段） |
+| [`watcher.mjs`](../agy-plugin/sidecars/agy-duty-watcher/watcher.mjs) | 312 | watcher.mjs —— Antigravity Plugin Sidecar：监听 qq-bridge 的 AGY 值班切换并在 geminiqq 自动开新会话 | 文件自带 |
+
 ## agy-plugin/skills/qq-bot-operator
 
 | 文件 | 行数 | 作用 | 来源 |
@@ -67,7 +74,7 @@
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 313 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 183 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 205 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 203 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |

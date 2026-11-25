@@ -8,17 +8,39 @@
 ## 1. 现状（一句话）
 
 ```
-按人格分流已上线 ✓  小鲸鱼 → DSH（照旧花钱，owner 的选择）   猫娘侍从 → AGY（省钱的才是它）
-transport = "agy" ✓   v1.1 修完 5 个"看起来跑了、其实没生效"的坑 ✓   套件 77/77 ✓   commit 见 git log
-worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）
+按人格分流已上线 ✓  小鲸鱼 → DSH   猫娘侍从 → AGY（**已实测跑通** ✓ 见 §1.3）
+transport = "agy" ✓   v1.1 修完 6 个"看起来跑了、其实没生效"的坑 ✓   套件 77/77 ✓
+当前值班：**猫娘侍从**（2026-11-25 20:40 手动切过去做实测；05:00 会自动切回小鲸鱼）
+worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
 
-> ⚠️ 现在的实际效果：值班的是**小鲸鱼 ⇒ 走 DSH ⇒ 仍然花 API 钱**。AGY 只有到
-> **猫娘侍从**当班（05:00 换班 / 控制台手动切）才真正开始省。worker 停着的话，
-> 猫娘当班时也会回落 DSH（日志 `值班者「猫娘侍从」掉线`）—— 所以**换班前把 worker 叫起来**才有意义 ✓
+### 1.3 2026-11-25 20:40–20:50 的 AGY 实测（真跑通了）
 
-> 待办第一件事就是**给猫娘侍从起 worker**：它只服务猫娘（小鲸鱼的活被分流到 DSH，
-> worker 会拿到 `idle: persona-on-dsh`，别当成故障 ✓）。
+手动 `POST /api/role {"role":"猫娘侍从"}` 切班后：
+
+| 时间 | 回合 | 结果 |
+|---|---|---|
+| 20:41:33 | `admin` 主动唤醒 | `prompt 21031 字节 → 落盘 → worker 认领 → 28s 完成 → 发送 0 条`（8 条未读都是群友斗嘴、没人找它，选择潜水 ✓）+ `收尾已读：8 条` |
+| 20:43:59 | `atMention` 唤醒 | `20670 字节 → 落盘 → 14s → 发送 1 条` ✓ |
+| 20:49:51 | `atMention` 唤醒（重启后） | `19264 字节 → 落盘 → 16s → 发送 1 条`（"捞起来了，11g下啥了"）+ `收尾已读：3 条` |
+
+- 切班时 `rebuilt:["group:541026885"]`、`droppedTurns:0`、`persona-schedule.json` 的 `onDuty` 同步成猫娘 ✓
+- 桥接重启**不会**把 worker 弄死：20:48:11 重启，worker 20:48:34 自动接回（`stale=false`）✓
+- ⚠️ 顺手发现第 6 个坑（见下表）：AGY 回合发完话**没把自己发的消息记回上下文**
+
+### 1.4 AGY 侧新交付（他们的文件，我只负责提交 ✓）
+
+- `agy-plugin/sidecars/agy-duty-watcher/`（`sidecar.json` + `watcher.mjs`，312 行）：
+  每 10 秒读 `/api/agy/status`，**`dutyTransport` 切到 `agy`（05:00 换班或手动切班）或上一轮值守会话轮满下班时**，
+  就在 `geminiqq` 项目里自动开一个干净会话当 worker（默认 Gemini 4 Hydrogen Medium），
+  保证上下文不超限。它**只读** `config.json` / `state/console-token`，不改桥接侧文件 ✓
+- `agy-plugin/agents/qq-chat-worker.md`、`agy-plugin/skills/**`、`install.ps1`、`plugin.json` 同步更新
+- `scripts/agy-lib.mjs`、`scripts/agy-self-test.mjs` 小改（适配新的 idle 理由 / 自检）
+- 这些都是他们写的，**2026-11-25 21:0x 随我的修复一起提交**（commit `8884951`，因为规则是"只有桥接侧 commit"✓）
+
+> ⚠️ 现在的实际效果：**猫娘当班 ⇒ AGY**（省钱 ✓）；小鲸鱼当班 ⇒ DSH（照旧花钱，owner 的选择）。
+> 想切回小鲸鱼：`POST /api/role {"role":"小鲸鱼"}`（**注意 PowerShell 会把中文角色名弄乱**，
+> 用 `node -e` 写文件脚本发，别用 `Invoke-RestMethod` 内联中文 ✗）。
 
 ### 1.0 按人格分流（owner 2026-11-25 追加）
 
