@@ -4729,7 +4729,11 @@ async function main() {
           } catch { return readRoleState().role ?? null; }
         };
         if (req.method === 'GET' && action === 'status') {
-          sendJson(agyTransport.status({ onDuty: dutyOf() }));
+          sendJson(agyTransport.status({
+            onDuty: dutyOf(),
+            lastWorkerSeenAt: agyLastWorkerSeenAt || null,
+            lastCompleteAt: agyLastCompleteAt || null
+          }));
           return;
         }
         if (req.method === 'GET' && action === 'wait') {
@@ -4741,6 +4745,8 @@ async function main() {
             timeoutMs: Number(url.searchParams.get('timeoutMs')) || 90000,
             onDuty: dutyOf()
           });
+          // 204 = 正常空闲：**也算心跳** ✓ 否则空闲长轮询会被误判成"值班者掉线"（AGY 侧 2026-11-25 指出）
+          agyLastWorkerSeenAt = Date.now();
           if (!got) { res.writeHead(204); res.end(); return; }
           agyLastWorkerSeenAt = Date.now();
           sendJson(got);

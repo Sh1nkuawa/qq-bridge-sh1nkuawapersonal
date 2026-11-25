@@ -1,0 +1,11 @@
+{
+  "name": "qq-bridge-worker",
+  "displayName": "QQ Bridge Worker (AGY)",
+  "version": "1.0.0",
+  "description": "Connects an Antigravity worker agent to the local qq-bridge AGY transport queue: wait/claim QQ turns, read verbatim wake prompts, and return replies cleanly.",
+  "suggestedPrompts": [
+    "检查 D:\\dsh\\qq-bridge 的 AGY 传输层状态",
+    "启动小鲸鱼 QQ 值守 worker，按 qq-bot-operator 流程开始轮询并回复",
+    "启动猫娘侍从 QQ 值守 worker，按 qq-bot-operator 流程开始轮询并回复"
+  ]
+}
