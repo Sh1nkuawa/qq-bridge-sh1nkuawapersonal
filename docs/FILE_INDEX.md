@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **357** 个被跟踪文件（其中 355 个文本文件、合计 **77,247** 行） —— 文件自带说明 **333**、人工补写 **23**、待补 **1**。
+统计：共 **358** 个被跟踪文件（其中 356 个文本文件、合计 **77,450** 行） —— 文件自带说明 **334**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -68,6 +68,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 313 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 182 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 203 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
