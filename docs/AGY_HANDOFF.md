@@ -151,6 +151,11 @@ AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地�
     （2026-11-25 踩过：`bridge.js` 被按 GBK 整份重写，3521 行中文全乱码，`node --check` 直接报
     "Invalid or unexpected token"。只能 `git checkout -- <file>` 回 HEAD 再重做改动。）
     改代码只用编辑器/edit 工具；批量文本替换用 node 脚本（`fs.readFileSync`/`writeFileSync` 都是 UTF-8 ✓）
+12. **重启桥接会掐断 AGY worker 的长轮询** ⚠️ —— 他们的脚本会重试几次（日志 `error ECONNRESET/ECONNREFUSED`
+    → `recovered`），但 **Antigravity 那边的对话可能就此结束**，之后要人工/侧车重开值守会话。
+    2026-11-25 一晚踩了三次（22:20 自己接回，22:57 那次没回来）。所以：
+    **改动攒着一次重启**，别改一处重启一次；重启后**立刻**看 `status.workerSeenByPersona` 有没有新心跳，
+    没有就提醒 owner 在 Antigravity 重开；队列里没人认领的回合会在 5 分钟后被 sweep 丢弃（消息留在未读）✓
 
 ---
 

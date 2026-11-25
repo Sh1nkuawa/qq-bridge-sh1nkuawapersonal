@@ -13140,6 +13140,8 @@ async function main() {
     const maxUnread = bounded('wakeMessageLimit', 12, 1, 100);
     const maxRecent = bounded('wakeRecentLimit', 4, 0, 20);
     const packet = { messages: [], recent: [], unreadCount: st.unread.length, includedUnreadCount: 0, readThroughSeq: readThroughSeqV2(st), partial: st.unread.length > 0 };
+    // AGY（force）专用：最新优先时的水位（看到的最新技术），最后要重新盖回去
+    let forcedThrough = null;
     const tryAdd = (field, msg) => {
       const previousThrough = packet.readThroughSeq;
       packet[field].push(compactModelMessage(msg));
@@ -13176,6 +13178,7 @@ async function main() {
         // 每轮都重复给同一批最新消息、旧的未读永远排不出去（2026-11-25 22:52 实测：跑完还是 23 条）✗
         const maxShownSeq = picked.length ? (Number(picked[picked.length - 1].seq) || 0) : 0;
         packet.readThroughSeq = maxShownSeq || readThroughSeqV2(st, picked);
+        forcedThrough = packet.readThroughSeq;
       } else {
         // DSH：最早优先（ack 水位靠"从旧到新连续"才有意义，换顺序会把没看过的标成已读 ✗）
         for (const msg of st.unread.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
@@ -13187,6 +13190,9 @@ async function main() {
       for (const msg of recent.reverse()) if (!tryAdd('recent', msg)) break;
       packet.recent.reverse();
     }
+    // ⚠️ tryAdd 会按"从旧到新连续"重算 readThroughSeq（DSH 的语义），
+    // 这里要把它盖回 AGY 的水位（maxShown）—— 否则水位又被拉回最旧那段，旧未读永远排不出去 ✗
+    if (forcedThrough != null) packet.readThroughSeq = forcedThrough;
     return packet;
   }
 
