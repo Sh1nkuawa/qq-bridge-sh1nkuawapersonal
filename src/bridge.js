@@ -1430,7 +1430,11 @@ function loadConfig() {
     log(`人格注入上限已按范围校正为 ${roleInjectMaxChars} 字符（配置值 ${cfg.role.maxInjectChars}，允许 1000~20000）`);
   }
 
-    // ── 每日人格轮换（owner 2026-11-15）────────────────────────────────────────
+    // ── 传输层：dsh（默认）| agy（Antigravity worker）──────────────────────────────
+  // ⚠️ 同 personaSchedule 的教训：loadConfig 是白名单式重建，不显式搬就永远 undefined ✗
+  cfg.transport = String(file.transport ?? 'dsh') === 'agy' ? 'agy' : 'dsh';
+
+  // ── 每日人格轮换（owner 2026-11-15）────────────────────────────────────────
   // ⚠️ 这里必须显式搬：loadConfig() 是"白名单式重建"，config.json 里多出来的字段会被丢掉 ✗
   // （2026-11-16 踩过：config.json 明明写了 personaSchedule，进程里却是 undefined，
   //   于是 rotation=[] ⇒ 长度<2 ⇒ 安静 return ⇒ 05:00 什么都没发生，且一条日志都没有）
@@ -11273,6 +11277,20 @@ async function main() {
 
   // 实际的 DSH prompt 投递（不再直接对外暴露，统一走 promptQueues 串行队列）。
   async function deliverPromptNow(key, promptText, opts = {}) {
+    // ── AGY 传输层（config.transport === "agy"）────────────────────────────────
+    // 唤醒不再推进 DSH 会话，而是入队等 Antigravity worker 认领。
+    // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
+    if (String(cfg.transport ?? 'dsh') === 'agy') {
+      const persona = readRoleState().role || 'default';
+      const turn = agyTransport.enqueue({
+        persona,
+        key,
+        reason: opts.wakeReason ?? (opts.silent ? 'silent' : 'prompt'),
+        prompt: promptText
+      });
+      log(`[agy] 唤醒入队 ${turn.turnId}（${persona} / ${key} / ${turn.reason}）等 worker 认领`);
+      return { ok: true, via: 'agy', turnId: turn.turnId };
+    }
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
     // and no reserved2 prompt leaking into an ordinary chat after a mode switch.
