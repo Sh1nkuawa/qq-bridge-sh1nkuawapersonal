@@ -29,9 +29,11 @@ export function formatAgySnapshotBlock(snapshot) {
   let tail = '\n以上是本轮桥接替你取到的群消息（按时间正序，**最近的在最后**）。';
   if (skipped > 0) {
     // 2026-11-25 契约 §10 反馈：原来写"桥接会在下一轮再给你"，模型就真的只回 [] 等下一轮 ⇒ 漏回 ✗
-    tail += `\n⚠️ partial=true：这轮只塞了**最近 ${included} 条**，还有 **${skipped} 条更早的**没给。`
-      + `\n需要看更早的就补读：\`node scripts/agy-api.mjs unread --key <本轮 key> --after-seq ${through}\`（或 \`recent\`），`
-      + '读完再收尾；**不要**当成"没有更多"、也不要等"下一轮会给" ✗';
+    tail += `\n⚠️ partial=true：这轮只塞了**最近 ${included} 条**（触发这次唤醒的 @/提问一定在里面）。`
+      + `\n另有 **${skipped} 条更早的**没给：收尾时会**一并标已读**，不会再来第二轮。`
+      + `\n所以如果它们有用（有人在等你回、或上下文接不上），**回复前**就先补读：`
+      + `\`node scripts/agy-api.mjs unread --key <本轮 key> --after-seq ${through}\`（或 \`recent\`）。`
+      + '\n不要假装看过那几条，也不要因此沉默 ✗';
   } else if (snapshot?.partial) {
     tail += '\n⚠️ partial=true：还有更多未读没塞进来，必要时用 `node scripts/agy-api.mjs unread` 补读。';
   }

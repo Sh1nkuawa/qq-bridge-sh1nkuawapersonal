@@ -56,12 +56,13 @@ ok('★★ 看图：换成"用 message-images 落盘再看"，不能再写"看�
   assert.ok(block.includes('别假装看过'), '仍要禁止编造图片内容');
 });
 
-ok('★★ partial：必须说清"还有多少更早的没给"+ 补读命令，且不能说"下一轮再给"', () => {
+ok('★★ partial：说清"还有多少更早的没给"、会被一并标已读、并给补读命令（不能说"下一轮再给"）', () => {
   // 2026-11-25 22:09 事故：模型看到 partial 且 prompt 写着"下一轮再给"，就真的回 [] 等下一轮 ⇒ 漏回 ✗
   const block = formatAgySnapshotBlock({ ...SNAP, skippedOlder: 21 });
   assert.ok(block.includes('partial=true'));
   assert.ok(!block.includes('下一轮再给你'), '旧说法必须去掉');
-  assert.ok(block.includes('还有 **21 条更早的**'), '要说清差多少条');
+  assert.ok(block.includes('另有 **21 条更早的**'), '要说清差多少条');
+  assert.ok(block.includes('一并标已读'), '要说明这批不会再给（否则会一直等）');
   assert.ok(block.includes('agy-api.mjs unread'), '要给补读命令');
   assert.ok(block.includes('--after-seq'), '要告诉用哪个水位补读');
 });

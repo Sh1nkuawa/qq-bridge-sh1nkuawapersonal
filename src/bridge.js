@@ -13171,7 +13171,11 @@ async function main() {
         packet.partial = picked.length < st.unread.length;
         // 明确告诉模型"还有 N 条更早的没给"（原来只写 partial，模型不知道差多少）
         packet.skippedOlder = skippedOlder;
-        packet.readThroughSeq = readThroughSeqV2(st, picked);
+        // ⚠️ 水位必须跟着**看到的最新技术**走。
+        // 若仍用 readThroughSeqV2（"从旧到新连续"），最新优先会让水位永远卡在最旧那段：
+        // 每轮都重复给同一批最新消息、旧的未读永远排不出去（2026-11-25 22:52 实测：跑完还是 23 条）✗
+        const maxShownSeq = picked.length ? (Number(picked[picked.length - 1].seq) || 0) : 0;
+        packet.readThroughSeq = maxShownSeq || readThroughSeqV2(st, picked);
       } else {
         // DSH：最早优先（ack 水位靠"从旧到新连续"才有意义，换顺序会把没看过的标成已读 ✗）
         for (const msg of st.unread.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
