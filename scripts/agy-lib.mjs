@@ -92,8 +92,8 @@ export function readConsoleToken(tokenPath = null) {
 }
 
 export function resolvePersona(cliPersona = null) {
-  const p = String(cliPersona ?? process.env.AGY_PERSONA ?? '小鲸鱼').trim();
-  return p || '小鲸鱼';
+  const p = String(cliPersona ?? process.env.AGY_PERSONA ?? '猫娘侍从').trim();
+  return p || '猫娘侍从';
 }
 
 export function resolveWorkerId(persona, cliWorkerId = null) {
@@ -357,6 +357,10 @@ export async function waitAndClaimOne({
             logPath,
             secretToken: token
           });
+          // persona-on-dsh：该人格已被分流给 DSH，绝不死等（AGY_SIDE_TASKS §2.5 / §4.8）
+          if (reason === 'persona-on-dsh') {
+            return { status: 'idle', reason, http: 200, transport: w.body.transport ?? 'dsh' };
+          }
           // 避免非值班时高频刷屏（契约 §3.1 / §8.2：5~10 秒后再 wait）
           if (notOnDutySleepMs > 0) await sleep(notOnDutySleepMs);
           if (!loop) return { status: 'idle', reason, http: 200, onDuty: w.body.onDuty ?? null };

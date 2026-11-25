@@ -81,6 +81,9 @@ const server = http.createServer(async (req, res) => {
     }
     const persona = String(url.searchParams.get('persona') ?? '').trim();
     if (!persona) return sendJson({ ok: false, error: 'bad-request' }, 400);
+    if (persona === '分流到DSH人格') {
+      return sendJson({ ok: true, idle: true, reason: 'persona-on-dsh', transport: 'dsh' });
+    }
     const got = await transport.wait({
       persona,
       workerId: String(url.searchParams.get('workerId') ?? ''),
@@ -444,8 +447,19 @@ try {
     assert.equal(c.status, 0);
   });
 
-  // 12. Log format & secret redaction check
-  await test('12. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
+  // 12. persona-on-dsh exits cleanly even in --loop mode
+  await test('12. persona-on-dsh 在 --loop 模式下立即返回 IDLE persona-on-dsh 不死等', async () => {
+    const r = await runScript('agy-wait-wake.mjs', [
+      '--persona', '分流到DSH人格',
+      '--loop',
+      '--timeout-ms', '2000'
+    ]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), 'IDLE persona-on-dsh');
+  });
+
+  // 13. Log format & secret redaction check
+  await test('13. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
     const rawLog = fs.readFileSync(testLogPath, 'utf8');
     assert.ok(!rawLog.includes(TEST_TOKEN), '日志泄漏了测试令牌！');
     assert.ok(!rawLog.includes('测试行A1234567890'), '日志泄漏了 prompt 内容！');

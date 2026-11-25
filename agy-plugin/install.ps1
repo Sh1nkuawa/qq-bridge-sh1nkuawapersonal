@@ -53,7 +53,7 @@ if (Test-Path $TargetDir) {
 }
 New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 
-$ItemsToCopy = @("plugin.json", "mcp_config.json", "agents", "skills")
+$ItemsToCopy = @("plugin.json", "mcp_config.json", "agents", "skills", "sidecars")
 foreach ($item in $ItemsToCopy) {
   $src = Join-Path $SourceDir $item
   if (Test-Path $src) {
@@ -67,4 +67,5 @@ Write-Output "    - plugin.json"
 Write-Output "    - mcp_config.json"
 Write-Output "    - agents\qq-chat-worker.md"
 Write-Output "    - skills\qq-bot-operator\SKILL.md"
-Write-Output "[i] 后续步骤：在 Antigravity 的 Customizations / Plugins 页面确认 qq-bridge-worker 已启用。"
+Write-Output "    - sidecars\agy-duty-watcher\ (自动切 AGY 开新会话)"
+Write-Output "[i] 后续步骤：在 Antigravity 的 Customizations / Plugins 页面确认 qq-bridge-worker 已启用；如需自动开新会话，请在 Sidecars 设置中启用「AGY QQ 值守自动开会话」并绑定 geminiqq 项目。"

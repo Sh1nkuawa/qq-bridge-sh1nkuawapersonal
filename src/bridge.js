@@ -4932,8 +4932,20 @@ async function main() {
           let sent = 0; let failed = 0;
           if (replies.length) {
             try {
-              await sendMessagesV2(r.turn.key, replies, [], agyBody.replyToMessageId ?? null);
+              const sentList = await sendMessagesV2(r.turn.key, replies, [], agyBody.replyToMessageId ?? null);
               sent = replies.length;
+              // ⚠️ 自己发的消息必须记回上下文（2026-11-25 实测漏了）：
+              // 其他所有发送路径（控制台/工具发送/send-burst）都会 recordSentMessagesV2 + 更新
+              // lastAiReplyAt；AGY 这条漏了 ⇒ 下一轮 prompt 的【最近对话】里没有自己刚说的话，
+              // 「你上次发言 N 分钟前」永远不对，心情/双态/回复检查也全都基于陈旧状态 ✗
+              try {
+                recordSentMessagesV2(r.turn.key, Array.isArray(sentList) && sentList.length ? sentList : replies);
+                const stAfter = getSocialV2State(r.turn.key);
+                stAfter.lastAiReplyAt = Date.now();
+                saveSocialV2State();
+              } catch (error) {
+                log(`[agy] 记录自己发的消息失败 ${r.turn.key}：${error?.message ?? error}`);
+              }
             } catch (error) {
               failed = replies.length;
               log(`[agy] 发送失败 ${r.turn.key}：${error?.message ?? error}`);

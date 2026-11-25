@@ -1,0 +1,14 @@
+{
+  "display_name": "AGY QQ 值守自动开会话",
+  "description": "监听本地 D:\\dsh\\qq-bridge 的 dutyTransport；每次切到 AGY（05:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），保证上下文不超限。",
+  "command": "D:\\nodejs16\\node.exe",
+  "args": ["watcher.mjs"],
+  "restart_policy": "always",
+  "env": {
+    "AGY_BRIDGE_ROOT": "D:\\dsh\\qq-bridge",
+    "AGY_PROJECT_ID": "b95c8587-da33-48a1-a23a-dc49a11276c7",
+    "AGY_MODEL": "flash",
+    "AGY_POLL_MS": "10000",
+    "AGY_RESPAWN_COOLDOWN_MS": "180000"
+  }
+}

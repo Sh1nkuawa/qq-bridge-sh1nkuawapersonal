@@ -48,6 +48,7 @@ worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）
 | 3 | **心跳只按"任意人格"记** | 05:00 换班后旧人格 worker 还在每 7 秒轮询（永远 `idle:not-on-duty`），把"最近心跳"刷得很新 ⇒ 判定"值班者还在" ⇒ 新人格没人接 ⇒ **哑火且无日志** | 心跳改成 `Map<persona, at>`；fallback 只看**当前值班者**的心跳（`onDutyStale`） |
 | 4 | **worker 挂在长轮询时，入队立刻唤醒它** | 落盘改写还没做完，worker 已拿到 20446 字节全文 ⇒ 后台通知截断，等于没落盘 ✗ | `enqueue({notify:false})` → 落盘 + `setPrompt` → 才 `wake(persona)` |
 | 5 | **`agySweepTick` 调 `agyReleaseTurn` 是 ReferenceError** | 前者在模块作用域、后者在 `main()` 里；只有"超过重排上限"那条分支会踩到，被 catch 吞成 `sweep 失败` | 加模块级 `agyHooks.releaseTurn`，由 `main()` 注入 |
+| 6 | **自己发的消息没记回上下文** | 其他所有发送路径都会 `recordSentMessagesV2` + 更新 `lastAiReplyAt`，只有 AGY 的 `complete` 漏了 ⇒ 下一轮 prompt 的【最近对话】里没有自己刚说的话、「你上次发言 N 分钟前」永远不对、心情/回复检查全基于陈旧状态 | `complete` 发送成功后补记录（实测 20:50 那条已进 `recentMessages`、`lastAiReplyAt` 同步） |
 
 顺带修的：
 - **`status` 多传的字段被静默丢掉**（`agyTransport.status()` 只认自己那几个具名参数）⇒ 扩展字段改为在端点里显式并进去
