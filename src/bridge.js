@@ -11351,6 +11351,14 @@ async function main() {
     // 唤醒不再推进 DSH 会话，而是入队等 Antigravity worker 认领。
     // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
     if (String(cfg.transport ?? 'dsh') === 'agy') {
+      // ── #1 fallback：worker 掉线就别硬等，回落 DSH（否则群里会"哑火"，而且没人告诉你 ✗）──
+      // 判定：从没见过心跳（worker 从未启动）或心跳超过 5 分钟没更新。
+      // 只有把 transport 设成 agy 且 transportFallback=false 时才强制不走 DSH。
+      const stale = !agyLastWorkerSeenAt || (Date.now() - agyLastWorkerSeenAt > 5 * 60 * 1000);
+      if (stale && cfg.transportFallback !== false) {
+        log(`[agy] 值班 worker 离线（${agyLastWorkerSeenAt ? Math.round((Date.now() - agyLastWorkerSeenAt) / 1000) + 's 没心跳' : '从未上报心跳'}）→ 本次回落 DSH`);
+        // 落到下面的 DSH 分支（不 return）
+      } else {
       const persona = readRoleState().role || 'default';
       const turn = agyTransport.enqueue({
         persona,
@@ -11360,6 +11368,7 @@ async function main() {
       });
       log(`[agy] 唤醒入队 ${turn.turnId}（${persona} / ${key} / ${turn.reason}）等 worker 认领`);
       return { ok: true, via: 'agy', turnId: turn.turnId };
+      }
     }
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
     // Recheck queued wakes at dispatch time: no model call while paused/disabled
