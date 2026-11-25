@@ -33,6 +33,7 @@ import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickN
 import { createSerialQueue } from './serialize.js';
 import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
+import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill } from './agy-prompt.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -957,7 +958,55 @@ function normalizeIdList(value) {
 // ── 配置 ────────────────────────────────────────────────────────────────────
 // ── AGY 传输层（config.transport === "agy" 时启用）────────────────────────────
 const agyTransport = createAgyTransport();
-let agyLastWorkerSeenAt = 0;
+// ⚠️ 心跳必须**按 persona 记**（2026-11-25 观察出来的坑）：
+// 05:00 换班后，旧人格的 worker 还在每 7 秒轮询（拿到的永远是 idle:not-on-duty），
+// 如果只记"最近一次心跳"，桥接就会以为"值班者还在"，于是既不回落 DSH、也不清掉
+// 新人格没人认领的回合 ⇒ 群里彻底哑火，而日志一片安静 ✗。
+const agyWorkerSeenByPersona = new Map();    // persona -> 最近一次 wait/claim/complete 的时间
+let agyLastWorkerSeenAt = 0;                 // 任意人格的最近心跳（status 用）
+let agyLastCompleteAt = 0;
+const AGY_WORKER_STALE_MS = 5 * 60 * 1000;   // 值班者 5 分钟没心跳 = 掉线
+const AGY_UNCLAIMED_DROP_MS = 5 * 60 * 1000; // 没人认领超过 5 分钟的回合 = 该清掉了
+
+/** 记一次 worker 心跳（wait 的 204 / idle 也算 —— 那是"人还在"的证明 ✓）。 */
+function agyNoteWorkerSeen(persona) {
+  const at = Date.now();
+  agyLastWorkerSeenAt = at;
+  const p = String(persona ?? '').trim();
+  if (p) agyWorkerSeenByPersona.set(p, at);
+  return at;
+}
+
+/** 某个 persona 的最近心跳（0 = 从没见过）。 */
+function agyWorkerSeenAtFor(persona) {
+  return agyWorkerSeenByPersona.get(String(persona ?? '').trim()) || 0;
+}
+
+/**
+ * 当前值班者。**角色卡是唯一真相**，persona-schedule.json 里的 onDuty 只是桥接写出去的镜像。
+ * 为什么不让 onDuty 说话：一旦它和角色卡不一致（手动切角色、配置改 rotation、老文件残留），
+ * worker 会全部拿到 not-on-duty ⇒ 哑火，而且排查起来毫无线索 ✗。
+ */
+function currentDutyPersona() {
+  try {
+    const role = readRoleState()?.role;
+    if (role) return String(role);
+  } catch { /* ignore */ }
+  return 'default';
+}
+
+/** 值班者掉线？（该 persona 没有心跳）—— fallback 与清队列共用这一个判断。 */
+function agyDutyStale(persona) {
+  const seen = agyWorkerSeenAtFor(persona);
+  return !seen || Date.now() - seen > AGY_WORKER_STALE_MS;
+}
+
+/**
+ * main() 内部的收尾逻辑（模块级定时器够不到 main 的作用域）。
+ * ⚠️ 2026-11-25 发现：原来 agySweepTick() 直接调 main 里的 agyReleaseTurn() ⇒
+ * 那条分支一跑就是 ReferenceError（被 catch 吞成"sweep 失败"）✗。
+ */
+const agyHooks = { releaseTurn: null };
 
 /** 每分钟回收超时租约；丢弃的回合要顺手释放"会话繁忙"（AGY 侧 2026-11-25 指出：之前根本没调 sweep ✗）。 */
 function agySweepTick() {
@@ -967,7 +1016,21 @@ function agySweepTick() {
         log(`[agy] 租约超时，回合 ${item.turnId} 已重排（attempts=${item.attempts}）`);
       } else if (item.error === 'requeued-too-many') {
         log(`[agy] 租约超时且超过重排上限，回合 ${item.turnId} 丢弃`);
-        if (item.key) agyReleaseTurn(String(item.key), { dropped: true });
+        if (item.key) agyHooks.releaseTurn?.(String(item.key), { dropped: true });
+      }
+    }
+    // 值班者掉线 / 换班后新值班者没起来：挂太久又没人认领的回合必须清掉。
+    // 不清的后果：pendingWakeKeys 永远 busy ⇒ 后续所有唤醒都被"会话繁忙"挡掉 ⇒ 哑火。
+    // 清掉也不丢消息：这些回合没被标已读，下一条唤醒（会回落 DSH）照样带着它们。
+    const duty = currentDutyPersona();
+    if (agyDutyStale(duty)) {
+      const dropped = agyTransport.dropUnclaimed({ persona: duty, olderThanMs: AGY_UNCLAIMED_DROP_MS });
+      const seen = agyWorkerSeenAtFor(duty);
+      for (const turn of dropped) {
+        log(`[agy] 值班者「${duty}」${seen ? Math.round((Date.now() - seen) / 1000) + 's 没心跳' : '从未上报心跳'}`
+          + ` → 回合 ${turn.turnId} 挂了 ${Math.round(AGY_UNCLAIMED_DROP_MS / 60000)} 分钟没人认领，已丢弃`
+          + '（消息留在未读，等下一条唤醒回落 DSH）');
+        agyHooks.releaseTurn?.(String(turn.key), { dropped: true });
       }
     }
   } catch (error) {
@@ -978,7 +1041,25 @@ try {
   const t = setInterval(agySweepTick, 60 * 1000);
   if (typeof t.unref === 'function') t.unref();
 } catch { /* ignore */ }
-let agyLastCompleteAt = 0;
+
+// AGY prompt 的组装片段在 src/agy-prompt.js（纯函数，单独有测试）
+
+/**
+ * 清理过期的 prompt 落盘文件（state/agy-context-*.md）。
+ * 只在真的要落盘时顺手扫一次：不扫的话 state/ 会一天天堆这个（每来一条长唤醒就是一个文件）。
+ */
+const AGY_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000;
+function pruneAgyContextFiles(nowAt = Date.now()) {
+  try {
+    for (const name of fs.readdirSync(STATE_DIR)) {
+      if (!name.startsWith('agy-context-') || !name.endsWith('.md')) continue;
+      const full = path.join(STATE_DIR, name);
+      try {
+        if (nowAt - fs.statSync(full).mtimeMs > AGY_CONTEXT_TTL_MS) fs.unlinkSync(full);
+      } catch { /* 单个文件失败不影响其它 */ }
+    }
+  } catch { /* 目录读不到就算了 */ }
+}
 
 function loadConfig() {
   const p = path.join(ROOT, 'config.json');
@@ -4715,14 +4796,18 @@ async function main() {
               sendJson({ ok: false, error: `角色「${name}」不存在（roles/${name}.md）` }, 400);
               return;
             }
-            writeRoleState(name, rs.mode);
             // 换角色卡 ⇒ 重建会话（和 05:00 自动轮换保持一致；否则旧人格的历史会串进来 ✗）
-            const rebuiltRoles = rebuildSessionsForRoleSwitch();
+            // 顺手同步 onDuty 镜像 + 清掉 AGY 旧人格没人认领的回合（与自动轮换同一条路径 ✓）
+            // ⚠️ 不要在这里先 writeRoleState：applyPersonaSwitch 要用**切换前**的角色卡判断
+            // "旧人格"该清哪些回合（先写就把 prev 覆盖成新名字了 ✗）
+            const switchedRoles = applyPersonaSwitch(name);
             log(`控制台：角色已设置为 ${name}`
-              + (rebuiltRoles.length ? `（已重建会话：${rebuiltRoles.join('、')}）` : '（当前没有活跃会话）'));
-            sendJson({ ok: true, role: name, rebuilt: rebuiltRoles });
+              + (switchedRoles.rebuilt.length ? `（已重建会话：${switchedRoles.rebuilt.join('、')}）` : '（当前没有活跃会话）')
+              + (switchedRoles.dropped.length ? `（已清掉旧人格未认领回合 ${switchedRoles.dropped.length} 个）` : ''));
+            sendJson({ ok: true, role: name, rebuilt: switchedRoles.rebuilt, droppedTurns: switchedRoles.dropped.length });
           } else {
             writeRoleState(null, rs.mode);
+            writePersonaState({ ...readPersonaState(), onDuty: null });
             log('控制台：角色已清除');
             sendJson({ ok: true, role: null });
           }
@@ -4746,24 +4831,35 @@ async function main() {
           return;
         }
         const action = url.pathname.slice('/api/agy/'.length);
-        const dutyOf = () => {
-          try {
-            const sch = readJsonSafe(path.join(STATE_DIR, 'persona-schedule.json'), {});
-            return sch?.onDuty || readRoleState().role || null;
-          } catch { return readRoleState().role ?? null; }
-        };
+        // 值班者 = 角色卡（唯一真相）；onDuty 是写出去的镜像，不参与判定（见 currentDutyPersona 注释）
+        const dutyOf = () => currentDutyPersona();
         try { agySweepTick(); } catch { /* ignore */ }
         if (req.method === 'GET' && action === 'status') {
-          sendJson(agyTransport.status({
-            onDuty: dutyOf(),
-            lastWorkerSeenAt: agyLastWorkerSeenAt || null,
-            lastCompleteAt: agyLastCompleteAt || null
-          }));
+          const duty = dutyOf();
+          const dutySeenAt = agyWorkerSeenAtFor(duty);
+          sendJson({
+            ...agyTransport.status({
+              onDuty: duty,
+              lastWorkerSeenAt: agyLastWorkerSeenAt || null,
+              lastCompleteAt: agyLastCompleteAt || null
+            }),
+            // ⚠️ status() 只认它自己那几个具名参数，多传的字段会被**静默丢掉** ✗
+            // （2026-11-25 踩过：日志里一切正常，HTTP 响应里却没这几个字段）
+            // 所以扩展字段必须在这里显式并进去。
+            // 值班者自己有没有心跳 —— 只看 lastWorkerSeenAt 是会被"旧人格还在轮询"骗的 ✗
+            onDutyWorkerSeenAt: dutySeenAt || null,
+            onDutyStale: agyDutyStale(duty),
+            workerSeenByPersona: Object.fromEntries(agyWorkerSeenByPersona)
+          });
           return;
         }
         if (req.method === 'GET' && action === 'wait') {
           const persona = String(url.searchParams.get('persona') ?? '').trim();
           if (!persona) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          // ⚠️ 心跳要在**开始等之前**记一次（2026-11-25 实测踩到）：
+          // worker 一次长轮询会挂 60~90 秒，这期间请求已经到达，但如果只在 wait 返回后记心跳，
+          // 桥接重启后几十秒内来的唤醒会以为"从未上报心跳"⇒ 白白回落 DSH ✗
+          agyNoteWorkerSeen(persona);
           const got = await agyTransport.wait({
             persona,
             workerId: String(url.searchParams.get('workerId') ?? ''),
@@ -4771,9 +4867,9 @@ async function main() {
             onDuty: dutyOf()
           });
           // 204 = 正常空闲：**也算心跳** ✓ 否则空闲长轮询会被误判成"值班者掉线"（AGY 侧 2026-11-25 指出）
-          agyLastWorkerSeenAt = Date.now();
+          // idle:not-on-duty 同样算心跳 —— 那个 worker 活着，只是还没轮到它
+          agyNoteWorkerSeen(persona);
           if (!got) { res.writeHead(204); res.end(); return; }
-          agyLastWorkerSeenAt = Date.now();
           sendJson(got);
           return;
         }
@@ -4785,7 +4881,7 @@ async function main() {
             workerId: agyBody.workerId,
             onDuty: dutyOf()
           });
-          if (r.ok) agyLastWorkerSeenAt = Date.now();
+          if (r.ok) agyNoteWorkerSeen(r.turn?.persona ?? agyBody.persona);
           sendJson(r.ok ? { ok: true, turn: r.turn, leaseUntil: r.leaseUntil } : { ok: false, error: r.error }, r.http ?? 200);
           return;
         }
@@ -4823,8 +4919,11 @@ async function main() {
             }
           }
           agyLastCompleteAt = Date.now();
+          agyNoteWorkerSeen(r.turn.persona);
           // ⭐ 必须释放繁忙标记，否则这一轮结束后所有新唤醒都会被挡住（AGY 侧联调发现 ✗）
-          agyReleaseTurn(r.turn.key);
+          // 已读水位用**这个回合自己**的快照水位（turn.readThroughSeq）：
+          // AGY 那边没有 qq_mark_read，桥接必须在收尾时代为提交，否则未读会一轮轮堆积 ✗
+          agyReleaseTurn(r.turn.key, { throughSeq: r.turn.readThroughSeq });
           log(`[agy] 回合完成 ${r.turn.turnId}（${r.turn.persona}）发送 ${sent} 条，失败 ${failed} 条`);
           sendJson({ ok: true, sent, failed });
           return;
@@ -10426,7 +10525,7 @@ async function main() {
    * —— AGY 模式下模型没有 qq_set_wake_config 这类工具，提醒会造成噪音。
    * 2026-11-25 联调发现：complete 后不放行 ⇒ 后续 @ 全被 isConversationBusyV2 挡住、enqueued 停在 1 ✗
    */
-  function agyReleaseTurn(key, { dropped = false } = {}) {
+  function agyReleaseTurn(key, { dropped = false, throughSeq = null } = {}) {
     try {
       pendingWakeKeys.delete(key);
       disarmPendingWakeLease(key);
@@ -10437,18 +10536,29 @@ async function main() {
       const st = getSocialV2State(key);
       // #2 提交已读水位：AGY 模式下模型没有 qq_mark_read 工具 ⇒ 由桥接在收尾时代为提交，
       // 否则未读会一直堆积、下次唤醒又看到一堆旧消息（AGY 侧 2026-11-25 指出）。
+      //
+      // ⚠️ 2026-11-25 观察出来的坑：这里原来**无参**调 readThroughSeqV2(st)，
+      // 而它只认"模型真的看过的 seq"（st.modelSeenSeqs）—— AGY 那边从来没有工具调用，
+      // 这个集合永远是空的 ⇒ 水位永远 0 ⇒ 这行日志从来没出现过，未读只增不减 ✗。
+      // 修法：用**这个回合自己塞进 prompt 的快照水位**（turn.readThroughSeq）。
+      // dropped 的回合不标已读：那些消息没人处理过，留在未读里，下一条唤醒还要用 ✓
       try {
-        const seq = readThroughSeqV2(st);
-        if (Number.isSafeInteger(seq) && seq > 0) {
+        const explicit = Number.isSafeInteger(throughSeq) && throughSeq > 0 ? throughSeq : null;
+        const seq = dropped ? null : (explicit ?? readThroughSeqV2(st));
+        if (seq) {
           const marked = acknowledgeMessagesV2(st, seq);
-          if (marked > 0) log(`[agy] ${key} 收尾已读：${marked} 条（水位 ${seq}）`);
+          if (marked > 0) {
+            log(`[agy] ${key} 收尾已读：${marked} 条（水位 ${seq}）`);
+            // 必须立刻落盘：未读水位只在内存里改的话，桥接一重启就"复活"这些消息 ✗
+            try { saveSocialV2State(); } catch { /* ignore */ }
+          }
         }
       } catch (error) {
         log(`[agy] 提交已读水位失败 ${key}：${error?.message ?? error}`);
       }
       try { ensureWakeableV2(st, { key }); } catch { /* ignore */ }
       if (dropped) {
-        log(`[agy] ${key} 回合被丢弃（超过重排上限）→ 已释放繁忙标记，等下一条消息`);
+        log(`[agy] ${key} 回合被丢弃 → 已释放繁忙标记（消息未标已读，等下一条消息重来）`);
         return;
       }
       // 繁忙期间被暂存的唤醒原因：按最高优先级补排一次（对齐 turn/end 的收尾）
@@ -10469,6 +10579,9 @@ async function main() {
       log(`[agy] 释放繁忙标记失败 ${key}：${error?.message ?? error}`);
     }
   }
+
+  // 模块级 agySweepTick() 需要一个能调到这里的作用域入口（见文件上方 agyHooks 注释）
+  agyHooks.releaseTurn = (key, opts) => agyReleaseTurn(key, opts);
 
   function personaModelFor(roleName) {
     const table = cfg.personaSchedule?.personas;
@@ -11400,22 +11513,56 @@ async function main() {
     // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
     if (String(cfg.transport ?? 'dsh') === 'agy') {
       // ── #1 fallback：worker 掉线就别硬等，回落 DSH（否则群里会"哑火"，而且没人告诉你 ✗）──
-      // 判定：从没见过心跳（worker 从未启动）或心跳超过 5 分钟没更新。
+      // 判定必须**按值班者的人格**看心跳：旧人格的 worker 还在轮询时会一直刷新
+      // "最近心跳"，只看它会得出"值班者还在"的错结论 ⇒ 05:00 换班后哑火 ✗
       // 只有把 transport 设成 agy 且 transportFallback=false 时才强制不走 DSH。
-      const stale = !agyLastWorkerSeenAt || (Date.now() - agyLastWorkerSeenAt > 5 * 60 * 1000);
-      if (stale && cfg.transportFallback !== false) {
-        log(`[agy] 值班 worker 离线（${agyLastWorkerSeenAt ? Math.round((Date.now() - agyLastWorkerSeenAt) / 1000) + 's 没心跳' : '从未上报心跳'}）→ 本次回落 DSH`);
+      const duty = currentDutyPersona();
+      const dutySeenAt = agyWorkerSeenAtFor(duty);
+      if (agyDutyStale(duty) && cfg.transportFallback !== false) {
+        log(`[agy] 值班者「${duty}」掉线（${dutySeenAt ? Math.round((Date.now() - dutySeenAt) / 1000) + 's 没心跳' : '从未上报心跳'}）→ 本次回落 DSH`);
         // 落到下面的 DSH 分支（不 return）
       } else {
-      const persona = readRoleState().role || 'default';
-      const turn = agyTransport.enqueue({
-        persona,
-        key,
-        reason: opts.wakeReason ?? (opts.silent ? 'silent' : 'prompt'),
-        prompt: promptText
-      });
-      log(`[agy] 唤醒入队 ${turn.turnId}（${persona} / ${key} / ${turn.reason}）等 worker 认领`);
-      return { ok: true, via: 'agy', turnId: turn.turnId };
+        // ⭐ 消息快照必须拼进 prompt：AGY 那边的 agent **没有任何 QQ 工具**
+        // （没有 MCP、没有 qq_get_unread_messages），它唯一能看到的群消息就是这里塞的这一份。
+        // 2026-11-25 观察发现原来漏了这一段 ⇒ 模型只看到"未读 N 条"和最后 30 个字，
+        // 回什么全凭猜（这就是两轮 sent:0 的原因）✗
+        let snapshot = null;
+        if (opts.wakeReason) {
+          try { snapshot = buildWakeSnapshotV2(key, { force: true }); } catch (error) {
+            log(`[agy] 生成消息快照失败 ${key}：${error?.message ?? error}`);
+          }
+        }
+        // 拼装（快照 + 值守覆盖说明）在 src/agy-prompt.js，有离线测试钉住
+        const agyPrompt = composeAgyPrompt(promptText, snapshot);
+        // notify:false —— 先别叫醒正在长轮询的 worker：等落盘改写完再叫，
+        // 否则它拿到的是改写前的全文（2026-11-25 实测就是这样漏了 20446 字节的 prompt ✗）
+        const turn = agyTransport.enqueue({
+          persona: duty,
+          key,
+          reason: opts.wakeReason ?? (opts.silent ? 'silent' : 'prompt'),
+          prompt: agyPrompt,
+          readThroughSeq: snapshot ? snapshot.readThroughSeq : null,
+          notify: false
+        });
+        // #4 prompt 落盘：Antigravity 的后台通知约 10KB 会截断，长 prompt 必须换成"短提示 + 文件路径"
+        const bytes = Buffer.byteLength(String(turn.prompt ?? ''), 'utf8');
+        if (needsSpill(turn.prompt)) {
+          try {
+            const file = agyContextFilePath(STATE_DIR, turn.turnId);
+            pruneAgyContextFiles();   // 顺手清掉 24 小时前的旧文件
+            fs.writeFileSync(file, turn.prompt, 'utf8');
+            const short = agySpillPromptText(file, turn, bytes);
+            const put = agyTransport.setPrompt({ turnId: turn.turnId, prompt: short });
+            if (put.ok) log(`[agy] prompt ${bytes} 字节 > ${AGY_PROMPT_SPILL_BYTES}，已落盘 state/agy-context-${turn.turnId}.md（worker 收到的是短提示）`);
+            else log(`[agy] prompt 落盘后改写失败（${put.error ?? '未知'}）：${turn.turnId}`);
+          } catch (error) {
+            log(`[agy] prompt 落盘失败 ${turn.turnId}：${error?.message ?? error}`);
+          }
+        }
+        // 改写完了才叫醒 worker ✓（顺序不能换）
+        agyTransport.wake(duty);
+        log(`[agy] 唤醒入队 ${turn.turnId}（${duty} / ${key} / ${turn.reason} / ${bytes} 字节）等 worker 认领`);
+        return { ok: true, via: 'agy', turnId: turn.turnId };
       }
     }
     if (!isSessionAllowedInCurrentMode(key)) throw new Error(`当前模式不允许会话 ${key}`);
@@ -12864,9 +13011,11 @@ async function main() {
     return before - st.unread.length;
   }
 
-  function buildWakeSnapshotV2(key) {
+  // force=true：AGY 模式专用 —— 那边没有工具，消息只能靠 prompt 带过去，
+  // 所以不受 inlineWakeMessages / 工具开关影响（开关是为 DSH 路线准备的）。
+  function buildWakeSnapshotV2(key, { force = false } = {}) {
     const context = cfg.socialV2?.context ?? {};
-    if (context.inlineWakeMessages === false || (!v2ToolEnabled('getUnread') && !v2ToolEnabled('getRecent'))) return null;
+    if (!force && (context.inlineWakeMessages === false || (!v2ToolEnabled('getUnread') && !v2ToolEnabled('getRecent')))) return null;
     const st = getSocialV2State(key);
     const bounded = (name, fallback, min, max) => {
       const value = Number(context[name] ?? fallback);
@@ -13538,6 +13687,31 @@ async function main() {
     return rebuilt;
   }
 
+  /**
+   * 换人格的统一入口（05:00 自动轮换 + 控制台手动切换共用）：
+   *   ① 写角色卡（唯一真相）  ② 同步 persona-schedule.json 的 onDuty 镜像
+   *   ③ 重建 DSH 会话（防人格串味；AGY 模式下通常没有会话 ⇒ 天然是空操作）
+   *   ④ **AGY 模式**：清掉旧人格还没被认领的回合 —— 新值班者永远不会去取它们，
+   *      不清就会一直占着"会话繁忙"，把后续所有唤醒挡在门外（这就是哑火的另一个来源 ✗）。
+   * @returns {{prev: string|null, name: string, rebuilt: string[], dropped: Array<object>}}
+   */
+  function applyPersonaSwitch(name) {
+    const prev = readRoleState().role ?? null;
+    writeRoleState(name, readRoleState().mode);
+    writePersonaState({ ...readPersonaState(), onDuty: name });
+    const rebuilt = rebuildSessionsForRoleSwitch();
+    let dropped = [];
+    if (String(cfg.transport ?? 'dsh') === 'agy' && prev && prev !== name) {
+      try {
+        dropped = agyTransport.dropUnclaimed({ persona: prev });
+        for (const turn of dropped) agyReleaseTurn(String(turn.key), { dropped: true });
+      } catch (error) {
+        log(`[agy] 换班清队列失败：${error?.message ?? error}`);
+      }
+    }
+    return { prev, name, rebuilt, dropped };
+  }
+
   async function personaTick() {
     try {
       if (!personaTickSeen) { personaTickSeen = true; log('[persona] tick 首次执行（之后每分钟一次，只在到点/忙碌/出错时打日志）'); }
@@ -13575,14 +13749,13 @@ async function main() {
         return;
       }
 
-      // a. 换角色卡（保存即生效）
-      writeRoleState(plan.name, readRoleState().mode);
-      // b. 重建会话（换卡不换会话会人格串味 ✗）
-      const rebuilt = rebuildSessionsForRoleSwitch();
-      // c. 记下"今天切过了"（幂等：重启不会重复切）
-      writePersonaState({ lastSwitchedDay: plan.day, index: plan.index });
+      // a. 换角色卡（保存即生效）+ 同步值班者 + 重建会话 + AGY 清旧人格待办
+      const switched = applyPersonaSwitch(plan.name);
+      // b. 记下"今天切过了"（幂等：重启不会重复切）
+      writePersonaState({ ...readPersonaState(), lastSwitchedDay: plan.day, index: plan.index });
       log(`[persona] ${plan.day} ${sch.switchAt ?? '05:00'} 切换到「${plan.name}」`
-        + (rebuilt.length ? `（已重建会话：${rebuilt.join('、')}）` : '（当前没有活跃会话）'));
+        + (switched.rebuilt.length ? `（已重建会话：${switched.rebuilt.join('、')}）` : '（当前没有活跃会话）')
+        + (switched.dropped.length ? `（已清掉旧人格未认领回合 ${switched.dropped.length} 个）` : ''));
     } catch (error) {
       log(`[persona] 轮换检查失败：${error?.message ?? error}`);
     }

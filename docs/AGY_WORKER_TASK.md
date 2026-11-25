@@ -60,7 +60,7 @@ agy-plugin/
 
 | 坑 | 现象 | 做法 |
 |---|---|---|
-| **Antigravity 后台通知 ~10KB 截断** | 长 prompt 中间被裁掉 ✗ | 桥接已把 >8KB 的 prompt 落盘到 `state/agy-context-<turnId>.md` ✓ —— 你只需**按原文输出短提示 + 文件路径**，让模型自己 `view_file` 读 ✓ |
+| **Antigravity 后台通知 ~10KB 截断** | 长 prompt 中间被裁掉 ✗ | 桥接已把 >8KB 的 prompt 落盘到 `state/agy-context-<turnId>.md` ✓（2026-11-25 起真的生效）；worker 拿到的会是**短提示 + 文件路径**，让模型自己 `view_file` 读 ✓ |
 | **PowerShell 吞双引号** | `--batch '{"reply":[...]}'` 里的引号消失 ✗ | 优先 `--batch-stdin` + 这里 문서 `@' ... '@` 原样传 ✓（我们移植了他们的三层兜底思路 ✓）|
 | **同一回合被领两次** | 两条重复回复 ✗ | `claim` 返回 `409 already-claimed` ⇒ **立刻重新 `wait`** ✓，不要报错退出 |
 | **租约过期** | 长任务（看图/生图）超过 10 分钟 ✗ | 每 2~3 分钟 `POST /api/agy/touch` ✓ 续期 |
@@ -100,10 +100,14 @@ agy-plugin/
 
 ## 6. 现状（DSH 那边已经做完的）
 
-- ✅ `src/agy-transport.js`：队列 + 长轮询 + 租约 + 重排上限（17 组回归 ✓）
+- ✅ `src/agy-transport.js`：队列 + 长轮询 + 租约 + 重排上限 + 落盘改写 + 换班清队列（23 组回归 ✓）
+- ✅ `src/agy-prompt.js`：AGY 版 prompt 拼装（消息快照 / 值守覆盖说明 / 落盘短提示，11 组回归 ✓）
 - ✅ `bridge.js` 6 个端点已接（`status/wait/claim/touch/requeue/complete` ✓），
   由 `config.transport === "agy"` 控制 ✓（默认 `dsh` 不受影响 ✓）
 - ✅ `scripts/mock-agy-worker.mjs`：假 worker，可直接跑通协议 ✓
-- ⏳ **等你**：`scripts/agy-wait-wake.mjs` ✓、`scripts/agy-reply-and-wait.mjs` ✓、`agy-plugin/**` ✓
-- ⏳ 之后（不阻塞你）：把 `qq_speak` / 表情 / 生图 / 记忆封成 CLI ✓ —— 这一版**先不做** ✓，
-  先把"能聊"跑通 ✓
+- ✅ `scripts/agy-wait-wake.mjs` ✓、`scripts/agy-reply-and-wait.mjs` ✓、`agy-plugin/**` ✓
+- ⏳ **现在只差一件：把值守 worker 跑起来**（2026-11-25 18:47 之后它就停了，
+  桥接只能回落 DSH 顶着，等于还在花 API 钱 ⚠️）。起来之后不用改代码，
+  照 `agy-plugin/agents/qq-chat-worker.md` 的循环跑就行 ✓
+- ⏳ 之后（不阻塞你）：把 `qq_speak` / 表情 / 生图 / 记忆封成 CLI ✓ —— 前三个已有
+  （`scripts/agy-tools.mjs` 的 `voice` / `sticker` / `memory-*`），生图还没做 ✓

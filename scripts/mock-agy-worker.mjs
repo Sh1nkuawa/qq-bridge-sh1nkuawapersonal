@@ -6,6 +6,9 @@
 //   node scripts/mock-agy-worker.mjs --persona 小鲸鱼 --reply "第一条" --reply "第二条"
 //   node scripts/mock-agy-worker.mjs --status
 //
+// 验证用（不往群里发任何东西）：
+//   node scripts/mock-agy-worker.mjs --persona 小鲸鱼 --silent --dump-prompt state\mock-prompt.txt
+//
 // 它做的事：status → wait（长轮询）→ claim → 「假装想了 1 秒」→ complete → 记日志
 // 钉在 state/agy-worker.log（与真 worker 同格式，方便用同一套日志看）
 
@@ -28,6 +31,8 @@ const persona = argOf('persona', '小鲸鱼');
 const workerId = argOf('workerId', `mock-${persona}-${process.pid}`);
 const rounds = Number(argOf('rounds', '1')) || 1;
 const repliesArg = manyOf('reply');
+const silent = process.argv.includes('--silent');
+const dumpPromptTo = argOf('dump-prompt', null);
 const LOG = 'D:/dsh/qq-bridge/state/agy-worker.log';
 
 const log = (event, extra = {}) => {
@@ -73,6 +78,11 @@ for (let i = 1; i <= rounds; i += 1) {
 
   const turn = w.body;
   console.log(`  取到 ${turn.turnId}（${turn.key} / ${turn.reason}）prompt ${String(turn.prompt).length} 字符`);
+  if (dumpPromptTo) {
+    // 只给桥接侧自检用：把 worker 真正拿到的 prompt 原样落盘（不写日志、不含令牌以外的隐私）
+    fs.writeFileSync(dumpPromptTo, String(turn.prompt ?? ''), 'utf8');
+    console.log(`  prompt 已落盘 → ${dumpPromptTo}`);
+  }
 
   const c = await postJson('/api/agy/claim', { turnId: turn.turnId, persona, workerId });
   log('claim', { turnId: turn.turnId, ok: c.body?.ok ?? false, http: c.http });
@@ -80,7 +90,7 @@ for (let i = 1; i <= rounds; i += 1) {
 
   await new Promise((r) => setTimeout(r, 1000)); // 假装在"想"
 
-  const replies = repliesArg.length ? repliesArg : [`[mock] 收到，这是第 ${i} 轮`];
+  const replies = silent ? [] : (repliesArg.length ? repliesArg : [`[mock] 收到，这是第 ${i} 轮`]);
   const done = await postJson('/api/agy/complete', { turnId: turn.turnId, persona, workerId, replies, meta: { mock: true } });
   log('complete', { turnId: turn.turnId, ok: done.body?.ok ?? false, sent: done.body?.sent ?? 0, failed: done.body?.failed ?? 0, http: done.http });
 }

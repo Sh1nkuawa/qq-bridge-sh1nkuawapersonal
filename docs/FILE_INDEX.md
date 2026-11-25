@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **352** 个被跟踪文件（其中 350 个文本文件、合计 **76,254** 行） —— 文件自带说明 **328**、人工补写 **23**、待补 **1**。
+统计：共 **353** 个被跟踪文件（其中 351 个文本文件、合计 **76,757** 行） —— 文件自带说明 **329**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -66,11 +66,12 @@
 | --- | ---: | --- | --- |
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
-| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 237 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
-| [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 109 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
+| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 280 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 145 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 194 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 195 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -221,7 +222,7 @@
 | [`list-affinity.mjs`](../scripts/list-affinity.mjs) | 89 | list-affinity.mjs —— 只读列出某个会话的**全员好感度**（owner 巡检 / 回答"现在大家多少分"用） | 文件自带 |
 | [`make-config.mjs`](../scripts/make-config.mjs) | 48 | 从 config.example.json 生成 config.json（已存在则跳过、绝不覆盖） | 人工补写 |
 | [`meme-flow-test.mjs`](../scripts/meme-flow-test.mjs) | 125 | 本地表情包链路自检（不依赖桥接进程）。 | 文件自带 |
-| [`mock-agy-worker.mjs`](../scripts/mock-agy-worker.mjs) | 87 | mock-agy-worker.mjs —— 假 worker：不依赖 Antigravity，用来验证桥接侧 AGY 端点 | 文件自带 |
+| [`mock-agy-worker.mjs`](../scripts/mock-agy-worker.mjs) | 97 | mock-agy-worker.mjs —— 假 worker：不依赖 Antigravity，用来验证桥接侧 AGY 端点 | 文件自带 |
 | [`patch-dsh-at-file-settings.mjs`](../scripts/patch-dsh-at-file-settings.mjs) | 38 | Reproducible compatibility patch for the pinned dsh-at-file 0.7.0 git build. | 文件自带 |
 | [`patch-dsh-base64.mjs`](../scripts/patch-dsh-base64.mjs) | 140 | !/usr/bin/env node | 文件自带 |
 | [`patch-snowluma-sdk.mjs`](../scripts/patch-snowluma-sdk.mjs) | 48 | 修复 @snowluma 系列 npm 包的发布打包 bug：dist 内的相对导入缺少 .js 扩展名， | 文件自带 |
@@ -295,7 +296,7 @@
 | [`test-admin-routes.mjs`](../scripts/test-admin-routes.mjs) | 108 | 群管理路由验收（不会真的禁言；公告只走"起草→校验→作废"，不发布）。 | 文件自带 |
 | [`test-affinity.mjs`](../scripts/test-affinity.mjs) | 126 | 好感度引擎单测：node scripts/test-affinity.mjs | 文件自带 |
 | [`test-agent-preset-patches.mjs`](../scripts/test-agent-preset-patches.mjs) | 123 | 钉住 DSH 0.1.7 preset 装配的「防漂移」契约（纯离线，不需要 DSH 在跑）： | 文件自带 |
-| [`test-agy-transport.mjs`](../scripts/test-agy-transport.mjs) | 185 | AGY 传输层的离线回归：队列、长轮询、租约、重排上限、persona 分区、丢弃 | 文件自带 |
+| [`test-agy-transport.mjs`](../scripts/test-agy-transport.mjs) | 260 | AGY 传输层的离线回归：队列、长轮询、租约、重排上限、persona 分区、丢弃 | 文件自带 |
 | [`test-arknights-command.mjs`](../scripts/test-arknights-command.mjs) | 51 | arknights-command 纯函数回归（触发命令判定 + 状态描述）：不联网、不碰 MAA/QQ。 | 文件自带 |
 | [`test-arknights-daily.mjs`](../scripts/test-arknights-daily.mjs) | 301 | arknights-daily 执行器的离线回归：不联网、不起 MAA、不杀进程（全部注入假实现）。 | 文件自带 |
 | [`test-audit-bridge.mjs`](../scripts/test-audit-bridge.mjs) | 440 | test-audit 子模块：桥接行为审计（跑在 audit-bridge-harness 的虚拟网关上） | 人工补写 |
@@ -410,7 +411,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
-| [`agy-transport.js`](../src/agy-transport.js) | 233 | AGY 传输层：唤醒队列 + 租约 + 重排（纯逻辑，不碰 bridge.js 内部） | 文件自带 |
+| [`agy-transport.js`](../src/agy-transport.js) | 285 | AGY 传输层：唤醒队列 + 租约 + 重排（纯逻辑，不碰 bridge.js 内部） | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
@@ -418,7 +419,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,404 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,577 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

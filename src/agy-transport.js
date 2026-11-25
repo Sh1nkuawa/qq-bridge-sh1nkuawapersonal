@@ -56,8 +56,16 @@ export function createAgyTransport({
     }
   }
 
-  /** 入队。返回 turn（含 prompt）。队列超长时丢最旧的（与 DSH 路线一致）。 */
-  function enqueue({ persona, key, reason = 'replyCheck', prompt = '', readThroughSeq = null, meta = null } = {}) {
+  /**
+   * 入队。返回 turn（含 prompt）。队列超长时丢最旧的（与 DSH 路线一致）。
+   *
+   * `notify: false` —— **先别叫醒正在等活的 worker**。
+   * 为什么需要：桥接要在入队后把超长 prompt 落盘并改写成"短提示 + 路径"，
+   * 但 worker 通常正挂在长轮询上，enqueue 立刻唤醒它的话，它拿到的是改写前的全文 ✗
+   * （2026-11-25 实测：20446 字节的 prompt 就是这么漏给 worker 的）。
+   * 用法：enqueue({ notify:false }) → setPrompt(...) → wake(persona)。
+   */
+  function enqueue({ persona, key, reason = 'replyCheck', prompt = '', readThroughSeq = null, meta = null, notify = true } = {}) {
     const at = now();
     const turn = {
       turnId: makeTurnId(at),
@@ -79,12 +87,56 @@ export function createAgyTransport({
     }
     turns.set(turn.turnId, turn);
     stats.enqueued += 1;
-    notifyWaiters(turn.persona);
+    if (notify) notifyWaiters(turn.persona);
     return snapshot(turn);
+  }
+
+  /** 叫醒正在等这个 persona 的 worker（配合 enqueue({notify:false}) 用）。 */
+  function wake(persona) {
+    notifyWaiters(String(persona));
   }
 
   function snapshot(turn) {
     return turn ? { ...turn, prompt: turn.prompt } : null;
+  }
+
+  /**
+   * 改写队列里某个回合的 prompt（桥接用来把超长 prompt 换成"短提示 + 落盘路径"）。
+   * 只允许改**还没被认领**的回合：已认领的回合 worker 手里已经拿着旧 prompt 了，
+   * 再改只会让两边不一致 —— 那种情况直接报错，让调用方自己决定。
+   */
+  function setPrompt({ turnId, prompt } = {}) {
+    const turn = turns.get(String(turnId ?? ''));
+    if (!turn) return { ok: false, http: 404, error: AGY_ERRORS.TURN_NOT_FOUND };
+    if (turn.workerId) return { ok: false, http: 409, error: AGY_ERRORS.ALREADY_CLAIMED };
+    turn.prompt = String(prompt ?? '');
+    return { ok: true, turn: snapshot(turn) };
+  }
+
+  /**
+   * 丢弃某人格下**还没被认领**的回合（可选只丢"老于 olderThanMs"的）。
+   * 用途：① 05:00 换班后，旧人格的待办新值班者永远不会来取；
+   *      ② 值班者掉线时，挂着没人认领的回合会把会话一直锁成 busy ⇒ 后续唤醒全被挡。
+   * 返回被丢弃的回合数组（调用方负责释放 busy / 日志）。
+   */
+  function dropUnclaimed({ persona = null, olderThanMs = 0, now: at = null } = {}) {
+    const t = at == null ? now() : Number(at);
+    const minAge = Math.max(0, Number(olderThanMs) || 0);
+    const targets = [...turns.values()].filter((turn) => !turn.workerId
+      && (persona == null || turn.persona === String(persona))
+      && t - Number(turn.createdAt || 0) >= minAge);
+    const dropped = [];
+    for (const turn of targets) {
+      turns.delete(turn.turnId);
+      const list = queues.get(turn.persona);
+      if (list) {
+        const idx = list.findIndex((x) => x.turnId === turn.turnId);
+        if (idx >= 0) list.splice(idx, 1);
+      }
+      stats.dropped += 1;
+      dropped.push(turn);
+    }
+    return dropped;
   }
 
   /** 长轮询取活：有活立即返回；否则挂起到 timeoutMs 返回 null。 */
@@ -229,5 +281,5 @@ export function createAgyTransport({
     waiters.clear();
   }
 
-  return { enqueue, wait, claim, complete, requeue, touch, sweep, status, hasWork, pending, reset, snapshot };
+  return { enqueue, wait, claim, complete, requeue, touch, sweep, status, hasWork, pending, reset, snapshot, setPrompt, dropUnclaimed, wake };
 }

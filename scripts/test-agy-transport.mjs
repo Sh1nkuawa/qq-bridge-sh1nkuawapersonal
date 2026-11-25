@@ -174,12 +174,87 @@ ok('status 给出队列/租约/统计', () => {
   assert.equal(st.version, 1);
 });
 
-ok('persona 分区互不串（小鲸鱼的活不会被猫娘取走）', async () => {
+await acount('persona 分区互不串（小鲸鱼的活不会被猫娘取走）', async () => {
   const t = mk();
   t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'A' });
   const got = await t.wait({ persona: '猫娘侍从', timeoutMs: 50 });
   assert.equal(got, null, '猫娘不该拿到小鲸鱼的活');
   assert.equal(t.pending('小鲸鱼'), 1);
+});
+
+console.log('\n长 prompt 落盘与换班清理（2026-11-25 新增）：');
+
+await acount('★ setPrompt 能改未认领回合的 prompt（落盘后用）', async () => {
+  const t = mk();
+  const turn = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: '长'.repeat(20000) });
+  const r = t.setPrompt({ turnId: turn.turnId, prompt: '短提示 + 文件路径' });
+  assert.equal(r.ok, true);
+  assert.equal(r.turn.prompt, '短提示 + 文件路径');
+  // worker 取到的必须是改过的版本（否则落盘等于白做）
+  const got = await t.wait({ persona: '小鲸鱼', timeoutMs: 100 });
+  assert.equal(got.prompt, '短提示 + 文件路径');
+});
+
+ok('★★ setPrompt 不能改已认领的回合（worker 手里已经是旧 prompt）', () => {
+  const t = mk();
+  const turn = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'x' });
+  t.claim({ turnId: turn.turnId, workerId: 'w1' });
+  const r = t.setPrompt({ turnId: turn.turnId, prompt: 'y' });
+  assert.equal(r.ok, false);
+  assert.equal(r.http, 409);
+  assert.equal(r.error, AGY_ERRORS.ALREADY_CLAIMED);
+});
+
+ok('★ setPrompt 不存在的回合 → 404', () => {
+  const t = mk();
+  const r = t.setPrompt({ turnId: 't-nope', prompt: 'y' });
+  assert.equal(r.http, 404);
+  assert.equal(r.error, AGY_ERRORS.TURN_NOT_FOUND);
+});
+
+ok('★★ 换班：dropUnclaimed 只丢指定人格的未认领回合（已认领/别人不动）', () => {
+  const t = mk();
+  const old1 = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'a' });
+  const old2 = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'b' });
+  const other = t.enqueue({ persona: '猫娘侍从', key: 'g', prompt: 'c' });
+  const claimed = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'd' });
+  t.claim({ turnId: claimed.turnId, workerId: 'w1' });
+  const dropped = t.dropUnclaimed({ persona: '小鲸鱼' });
+  const ids = dropped.map((x) => x.turnId).sort();
+  assert.deepEqual(ids, [old1.turnId, old2.turnId].sort());
+  assert.equal(t.pending('小鲸鱼'), 0, '旧人格的待办应该清空');
+  assert.equal(t.pending('猫娘侍从'), 1, '别的人格不能被误伤');
+  assert.equal(t.claim({ turnId: other.turnId, persona: '猫娘侍从', workerId: 'w2' }).ok, true, '别的人格的回合应仍可认领');
+  // 被认领的那条仍在（worker 手里还有活，让它自然地 complete/超时）
+  assert.equal(t.touch({ turnId: claimed.turnId, workerId: 'w1' }).ok, true);
+});
+
+ok('★★ 值班者掉线：dropUnclaimed 只丢"老于阈值"的回合', () => {
+  let clock = 100_000;
+  const t = createAgyTransport({ now: () => clock });
+  const oldTurn = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'old' });
+  clock += 60_000;
+  const fresh = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'fresh' });
+  const dropped = t.dropUnclaimed({ persona: '小鲸鱼', olderThanMs: 30_000 });
+  assert.equal(dropped.length, 1);
+  assert.equal(dropped[0].turnId, oldTurn.turnId);
+  assert.equal(t.pending('小鲸鱼'), 1, '新鲜的回合不能被误丢');
+  assert.ok(fresh.turnId);
+});
+
+await acount('★★ enqueue({notify:false}) 不叫醒 worker；改写后再 wake 拿到的是**改写后**的 prompt', async () => {
+  const t = mk();
+  // worker 已经挂在长轮询上（真实 worker 常态）
+  const pending = t.wait({ persona: '小鲸鱼', timeoutMs: 5000 });
+  await new Promise((r) => setTimeout(r, 10));
+  const turn = t.enqueue({ persona: '小鲸鱼', key: 'g', prompt: 'X'.repeat(20000), notify: false });
+  // 改写（模拟桥接落盘后换成短提示）
+  t.setPrompt({ turnId: turn.turnId, prompt: '短提示：请读 state/agy-context-xxx.md' });
+  assert.equal(t.pending('小鲸鱼'), 1, '入队了但还没叫醒');
+  t.wake('小鲸鱼');
+  const got = await pending;
+  assert.equal(got.turnId, turn.turnId);
+  assert.equal(got.prompt, '短提示：请读 state/agy-context-xxx.md', 'worker 必须拿到改写后的短提示，而不是 20KB 原文 ✗');
 });
 
 console.log(`\n全部通过：${n} 项断言组`);

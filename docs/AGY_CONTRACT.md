@@ -131,13 +131,28 @@ QQ ⇄ SnowLuma ⇄ 桥接（我们）
   "transport": "agy",
   "onDuty": "小鲸鱼",
   "queue": { "小鲸鱼": 0, "猫娘侍从": 1 },
+  "claimed": 0,
   "lastWorkerSeenAt": 1794809500000,
+  "onDutyWorkerSeenAt": 1794809500000,
+  "onDutyStale": false,
+  "workerSeenByPersona": { "小鲸鱼": 1794809500000 },
   "lastCompleteAt": 1794809000000,
   "leaseSec": 600,
   "version": 1
 }
 ```
-worker 每轮可打这一条做自检 ✓（`lastWorkerSeenAt` 超过 5 分钟 = 值班者可能掉线 ✓）。
+worker 每轮可打这一条做自检 ✓
+
+| 字段 | 含义 |
+|---|---|
+| `lastWorkerSeenAt` | **任意**人格的最近心跳（旧字段，保留兼容） |
+| `onDutyWorkerSeenAt` | **当前值班者**的最近心跳（`null` = 从没见过） |
+| `onDutyStale` | 值班者是否算掉线（>5 分钟没心跳）—— fallback 就是看这个 |
+| `workerSeenByPersona` | 每个 persona 各自的最近心跳 |
+
+> ⚠️ 只看 `lastWorkerSeenAt` 会被骗：05:00 换班后旧人格的 worker 还在每 7 秒轮询（永远拿到
+> `idle: not-on-duty`），它会把"最近心跳"一直刷新 ⇒ 看起来"值班者还在"，其实新值班者根本没起来 ✗。
+> 所以判定**必须按当前值班者的 persona** 看。
 
 ### 3.6 `POST /api/agy/touch` — 续租（可选）
 
@@ -162,19 +177,41 @@ worker 每轮可打这一条做自检 ✓（`lastWorkerSeenAt` 超过 5 分钟 =
 
 **`prompt` 是最终文本，worker 原样交给 agent 即可** ✓（不要自己截断 ✗、不要自己加前缀 ✗）。
 
+`prompt` 里包含的东西（2026-11-25 起 ✓）：
+
+1. 人格卡摘要、心情、双态判定（答题态/闲扯态）、生日、关系面板、黑话表 —— 全部来自 `buildWakePromptV2()`
+2. **【本次消息快照】** —— 本轮要给模型看的未读消息（JSON，含 `readThroughSeq`）。
+   ⚠️ AGY 那边的 agent **没有任何 QQ 工具**（没有 MCP），群消息**只能**靠这一段带过去；
+   没有它模型只会看到"未读 N 条"，回什么全靠猜 ✗
+3. **【AGY 值守模式】** —— 明确告诉模型：上面提到的 `qq_*` 工具在你这边**不存在**，不要调用；
+   你只要把这一轮要说的话写成 `replies` 数组交给 `agy-reply-and-wait.mjs` ✓
+   （不写这段实测会空转十几分钟然后回 0 条 ✗）
+
+`readThroughSeq` 就是这个回合的已读水位：worker `complete` 之后，桥接会**自动**按它把已读水位
+提交掉（AGY 侧没有 `qq_mark_read`）。所以 worker 不需要、也没办法自己标已读 ✓
+
 > ⚠️ 若 `prompt` 超过 **8KB**（Antigravity 后台通知约 10KB 会截断 ✗），桥接会**自动**把长内容落到
-> `state/agy-context-<turnId>.md`，并把 `prompt` 换成"短提示 + 该文件路径" ✓。worker 只需照原文输出 ✓。
+> `state/agy-context-<turnId>.md`，并把 `prompt` 换成"短提示 + 该文件路径 +【AGY 值守模式】" ✓。
+> worker 只需照原文输出，agent 会 `view_file` 读那个文件 ✓ —— 注意**落盘路径就在 prompt 里**，
+> 不用自己拼。<br>桥接侧自检日志会打：`[agy] prompt N 字节 > 8192，已落盘 …`。
 
 ---
 
 ## 5. 值班（persona）语义
 
-- 桥接维护 `current-on-duty`（`state/persona-schedule.json` 里的 `onDuty` 字段）✓
-- **每天 05:00（北京时间）** 只改这一个字段 ✓ —— **不写角色卡、不重建会话** ✓
+- **角色卡是唯一真相**：`state/current-role.json` 的 `role` 就是当前值班者 ✓
+- `state/persona-schedule.json` 的 `onDuty` 只是桥接写出去的**镜像**（方便人看），不参与判定 ✓
+  —— 让镜像参与判定会出事故：文件一残留旧值，worker 全部拿到 `not-on-duty` ⇒ 哑火且无日志线索 ✗
+- **每天 05:00（北京时间）** 换班：写角色卡 + 同步 `onDuty` + 重建 DSH 会话（AGY 模式下通常没有会话）
+  + **清掉旧人格还没被认领的回合**（新值班者永远不会去取它们；不清就永远占着"会话繁忙" ✗）
+- 手动切换（`POST /api/role`）与 05:00 自动轮换走**同一条路径** ✓
 - 非值班 worker：`wait` 返回 `idle: true, reason: "not-on-duty"` ✓，**继续轮询** ✓
-- 值班者掉线（`lastWorkerSeenAt` > 5 分钟）→ 桥接按 `config.transport.fallback` 处理：
-  - `"dsh"`（默认）→ 该回合回落给 DSH 处理 ✓（保证不哑火 ✓）
+  （它的轮询同时是"我还活着"的心跳，但**只记在它自己的人格名下**）
+- 值班者掉线（该 persona 的 `onDutyWorkerSeenAt` > 5 分钟）：
+  - `transportFallback: "dsh"`（默认）→ 该回合回落给 DSH 处理 ✓（保证不哑火 ✓）
   - `"none"` → 只在日志与 `status` 里告警 ✓
+  - 同时 sweep 会把"挂了 5 分钟没人认领"的回合清掉并释放繁忙标记（消息**不标已读**，
+    下一条唤醒回落 DSH 时还带着它们 ✓）
 
 ---
 
@@ -217,6 +254,12 @@ worker 每轮可打这一条做自检 ✓（`lastWorkerSeenAt` 超过 5 分钟 =
 5. 手写一个 **不存在的 turnId** → `404` ✓，worker 不崩 ✓
 6. 人为让 worker 卡 11 分钟 → 回合被**重排** ✓（`attempts:1` ✓），且**没有半成品发到群里** ✓
 
+> 2026-11-25 追加的三条（都是"看着跑了其实没生效"那一类）：
+>
+> 7. turn 的 `prompt` 里**真的有【本次消息快照】**，且 JSON 里的消息就是群里那几条 ✓
+> 8. `prompt` >8KB 时 worker 拿到的是**短提示 + 落盘路径**，落盘的 `.md` 里有完整上下文 ✓
+> 9. `complete` 之后日志出现 `收尾已读：N 条（水位 M）`，且 `unread` 真的变少（重启后不复活）✓
+
 ---
 
 ## 9. 禁止事项（违反 = 返工 ✗）
@@ -234,4 +277,4 @@ worker 每轮可打这一条做自检 ✓（`lastWorkerSeenAt` 超过 5 分钟 =
 
 | 日期 | 提出方 | 内容 | 状态 |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-11-25 | 桥接侧 | **v1.1 无协议变更，只加字段/行为**：`status` 增加 `onDutyWorkerSeenAt` / `onDutyStale` / `workerSeenByPersona`；`turn.readThroughSeq` 现在真的会填（worker `complete` 后桥接自动提交已读）；`prompt` 必带【本次消息快照】+【AGY 值守模式】；>8KB 自动落盘 `state/agy-context-<turnId>.md`；05:00 换班会清掉旧人格未认领的回合 | ✅ 已上线（worker 无需改代码） |
