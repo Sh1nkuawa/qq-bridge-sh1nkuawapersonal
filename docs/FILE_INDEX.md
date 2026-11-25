@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **335** 个被跟踪文件（其中 333 个文本文件、合计 **73,203** 行） —— 文件自带说明 **312**、人工补写 **23**、待补 **0**。
+统计：共 **336** 个被跟踪文件（其中 334 个文本文件、合计 **73,526** 行） —— 文件自带说明 **313**、人工补写 **23**、待补 **0**。
 
 ## （仓库根）
 
@@ -46,9 +46,10 @@
 | --- | ---: | --- | --- |
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
+| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 237 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 192 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 193 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -386,7 +387,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,168 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,253 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

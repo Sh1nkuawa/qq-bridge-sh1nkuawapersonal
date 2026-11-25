@@ -32,6 +32,7 @@ import { synthesizeJapanese } from './tts.js';
 import { birthdayPromptLine, loadBirthdays, markSent, saveBirthdays, shouldTickNow, todaysBirthdays } from './birthday.js';
 import { createSerialQueue } from './serialize.js';
 import { indexOfRole, shouldSwitch } from './persona-schedule.js';
+import { createAgyTransport } from './agy-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -954,6 +955,11 @@ function normalizeIdList(value) {
 }
 
 // ── 配置 ────────────────────────────────────────────────────────────────────
+// ── AGY 传输层（config.transport === "agy" 时启用）────────────────────────────
+const agyTransport = createAgyTransport();
+let agyLastWorkerSeenAt = 0;
+let agyLastCompleteAt = 0;
+
 function loadConfig() {
   const p = path.join(ROOT, 'config.json');
   const file = readJsonSafe(p, null, true);
@@ -4707,7 +4713,86 @@ async function main() {
           sendJson({ ok: true, roleMode: mode });
           return;
         }
-        // ── 人格管理 ──────────────────────────────────────────────────────────
+        // ── AGY 传输层（契约 v1：docs/AGY_CONTRACT.md）──────────────────────────
+      // 设计：prompt 仍由 buildWakePromptV2 拼好塞进队列，worker 只做「取 → 交给 agent → 送回」。
+      // config.transport 默认 "dsh"，只有显式设成 "agy" 才启用这些端点 ✓
+      if (url.pathname.startsWith('/api/agy/')) {
+        if (String(cfg.transport ?? 'dsh') !== 'agy') {
+          sendJson({ ok: false, error: 'transport-not-agy' }, 409);
+          return;
+        }
+        const action = url.pathname.slice('/api/agy/'.length);
+        const dutyOf = () => {
+          try {
+            const sch = readJsonSafe(path.join(STATE_DIR, 'persona-schedule.json'), {});
+            return sch?.onDuty || readRoleState().role || null;
+          } catch { return readRoleState().role ?? null; }
+        };
+        if (req.method === 'GET' && action === 'status') {
+          sendJson(agyTransport.status({ onDuty: dutyOf() }));
+          return;
+        }
+        if (req.method === 'GET' && action === 'wait') {
+          const persona = String(url.searchParams.get('persona') ?? '').trim();
+          if (!persona) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          const got = await agyTransport.wait({
+            persona,
+            workerId: String(url.searchParams.get('workerId') ?? ''),
+            timeoutMs: Number(url.searchParams.get('timeoutMs')) || 90000,
+            onDuty: dutyOf()
+          });
+          if (!got) { res.writeHead(204); res.end(); return; }
+          agyLastWorkerSeenAt = Date.now();
+          sendJson(got);
+          return;
+        }
+        const agyBody = await readBody();
+        if (req.method === 'POST' && action === 'claim') {
+          const r = agyTransport.claim({
+            turnId: agyBody.turnId,
+            persona: agyBody.persona,
+            workerId: agyBody.workerId,
+            onDuty: dutyOf()
+          });
+          if (r.ok) agyLastWorkerSeenAt = Date.now();
+          sendJson(r.ok ? { ok: true, turn: r.turn, leaseUntil: r.leaseUntil } : { ok: false, error: r.error }, r.http ?? 200);
+          return;
+        }
+        if (req.method === 'POST' && action === 'touch') {
+          const r = agyTransport.touch({ turnId: agyBody.turnId, workerId: agyBody.workerId });
+          sendJson(r.ok ? { ok: true, leaseUntil: r.leaseUntil } : { ok: false, error: r.error }, r.http ?? 200);
+          return;
+        }
+        if (req.method === 'POST' && action === 'requeue') {
+          const r = agyTransport.requeue({ turnId: agyBody.turnId, reason: agyBody.reason, note: agyBody.note });
+          log(`[agy] 回合退回 ${agyBody.turnId}（${agyBody.reason ?? 'manual'}）` + (r.attempts ? ` attempts=${r.attempts}` : ''));
+          sendJson(r.ok ? { ok: true, attempts: r.attempts } : { ok: false, error: r.error }, r.http ?? 200);
+          return;
+        }
+        if (req.method === 'POST' && action === 'complete') {
+          const replies = Array.isArray(agyBody.replies) ? agyBody.replies.map((x) => String(x ?? '')).filter(Boolean) : [];
+          const r = agyTransport.complete({ turnId: agyBody.turnId, workerId: agyBody.workerId });
+          if (!r.ok) { sendJson({ ok: false, error: r.error }, r.http ?? 200); return; }
+          let sent = 0; let failed = 0;
+          if (replies.length) {
+            try {
+              await sendMessagesV2(r.turn.key, replies, [], agyBody.replyToMessageId ?? null);
+              sent = replies.length;
+            } catch (error) {
+              failed = replies.length;
+              log(`[agy] 发送失败 ${r.turn.key}：${error?.message ?? error}`);
+            }
+          }
+          agyLastCompleteAt = Date.now();
+          log(`[agy] 回合完成 ${r.turn.turnId}（${r.turn.persona}）发送 ${sent} 条，失败 ${failed} 条`);
+          sendJson({ ok: true, sent, failed });
+          return;
+        }
+        sendJson({ ok: false, error: 'unknown-agy-action' }, 404);
+        return;
+      }
+
+      // ── 人格管理 ──────────────────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/api/roles') {
           const rs = readRoleState();
           const summaries = roleSummaries();

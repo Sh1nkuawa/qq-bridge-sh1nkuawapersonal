@@ -190,3 +190,4 @@ docs/
 - docs/SHARE.md —— 把这个项目交给朋友用：三种给法、绝对不能给的东西、他要准备什么、启动顺序、语音版权注意、六个常见坑。
 
 - `docs/AGY_CONTRACT.md` —— **AGY 传输层契约**（v1）：桥接 ↔ Antigravity worker 的端点、Turn 结构、租约与重排语义、值班（persona）约定、错误码、日志格式、验收清单、双方目录边界。写这个是为了让"大脑换成 worker"时**人格/心情/双态/生日全部保留**（提示词仍由 `buildWakePromptV2` 拼，worker 只负责取→交给 agent→送回）。
+- docs/AGY_WORKER_TASK.md —— 交给 Antigravity agent 的任务包：要交付哪些文件、四个已知坑（10KB 截断/引号丢失/重复认领/租约过期）、六条验收、卡住时怎么在 AGY_CONTRACT §10 登记变更。
