@@ -34,6 +34,7 @@ import { createSerialQueue } from './serialize.js';
 import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
 import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill } from './agy-prompt.js';
+import { normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport } from './persona-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -1559,11 +1560,15 @@ function loadConfig() {
               if (!v || typeof v !== 'object') continue;
               const provider = typeof v.provider === 'string' && v.provider.trim() ? v.provider.trim() : '';
               const model = typeof v.model === 'string' && v.model.trim() ? v.model.trim() : '';
-              if (!provider && !model) continue;
+              // 传输层也按人格配（owner 2026-11-25：小鲸鱼交给 DSH，猫娘交给 AGY）
+              // ⚠️ 同样是白名单式重建：不在这里显式搬，persona.transport 永远是 undefined ✗
+              const transport = normalizePersonaTransport(v.transport);
+              if (!provider && !model && !transport) continue;
               out[String(name)] = {
                 provider,
                 model,
-                effort: typeof v.effort === 'string' && v.effort.trim() ? v.effort.trim() : ''
+                effort: typeof v.effort === 'string' && v.effort.trim() ? v.effort.trim() : '',
+                transport
               };
             }
           }
@@ -4837,6 +4842,7 @@ async function main() {
         if (req.method === 'GET' && action === 'status') {
           const duty = dutyOf();
           const dutySeenAt = agyWorkerSeenAtFor(duty);
+          const dutyTransport = personaTransportOf(duty);
           sendJson({
             ...agyTransport.status({
               onDuty: duty,
@@ -4849,13 +4855,28 @@ async function main() {
             // 值班者自己有没有心跳 —— 只看 lastWorkerSeenAt 是会被"旧人格还在轮询"骗的 ✗
             onDutyWorkerSeenAt: dutySeenAt || null,
             onDutyStale: agyDutyStale(duty),
-            workerSeenByPersona: Object.fromEntries(agyWorkerSeenByPersona)
+            workerSeenByPersona: Object.fromEntries(agyWorkerSeenByPersona),
+            // 按人格分流的现状：dutyTransport = 这一位现在实际走哪边，
+            // personaTransport = 每个人格的去向（小鲸鱼 dsh / 猫娘侍从 agy）
+            dutyTransport,
+            personaTransport: personaRoutingTable({
+              globalTransport: cfg.transport,
+              personas: cfg.personaSchedule?.personas,
+              rotation: cfg.personaSchedule?.rotation
+            })
           });
           return;
         }
         if (req.method === 'GET' && action === 'wait') {
           const persona = String(url.searchParams.get('persona') ?? '').trim();
           if (!persona) { sendJson({ ok: false, error: 'bad-request' }, 400); return; }
+          // 这位人格被配置成走 DSH ⇒ AGY 这边永远不会有它的活，直接告诉它别等了 ✓
+          // （worker 侧对任何 idle 都是"歇一下再轮询"，理由字符串只是给人看的）
+          if (personaTransportOf(persona) !== 'agy') {
+            agyNoteWorkerSeen(persona);
+            sendJson({ ok: true, idle: true, reason: 'persona-on-dsh', onDuty: dutyOf(), transport: 'dsh' });
+            return;
+          }
           // ⚠️ 心跳要在**开始等之前**记一次（2026-11-25 实测踩到）：
           // worker 一次长轮询会挂 60~90 秒，这期间请求已经到达，但如果只在 wait 返回后记心跳，
           // 桥接重启后几十秒内来的唤醒会以为"从未上报心跳"⇒ 白白回落 DSH ✗
@@ -10583,6 +10604,33 @@ async function main() {
   // 模块级 agySweepTick() 需要一个能调到这里的作用域入口（见文件上方 agyHooks 注释）
   agyHooks.releaseTurn = (key, opts) => agyReleaseTurn(key, opts);
 
+  /**
+   * 某个人格这一轮该走哪条传输层（'agy' | 'dsh'）。
+   * 规则在 src/persona-transport.js（纯函数 + 离线测试）：
+   * 全局开 agy 之后，persona 可以单独写 transport 来"钉死"自己走哪边 ✓
+   * ⚠️ 必须定义在 main() 里：`cfg` 是这里的局部变量，模块作用域看不见它 ✗
+   * （2026-11-25 踩过：放到模块级后 test-audit-bridge 直接 `cfg is not defined`，
+   *   生产里则是每次唤醒都 ReferenceError —— 而且只在真的唤醒时才炸）
+   */
+  function personaTransportOf(persona) {
+    return resolvePersonaTransport({
+      globalTransport: cfg.transport,
+      personas: cfg.personaSchedule?.personas,
+      persona
+    });
+  }
+
+  /** 路由说明只在"这个人格第一次被判定为走 DSH"时打一次，避免每次唤醒刷屏 ✓ */
+  const agyRoutingNoted = new Set();
+  function notePersonaRouting(persona, transport) {
+    const name = String(persona ?? '');
+    if (transport === 'agy') { agyRoutingNoted.delete(name); return; }
+    if (agyRoutingNoted.has(name)) return;
+    agyRoutingNoted.add(name);
+    log(`[agy] 值班者「${name}」按 persona 配置走 DSH（不启用 AGY）`
+      + '—— 想切回改 config.personaSchedule.personas["' + name + '"].transport 即可');
+  }
+
   function personaModelFor(roleName) {
     const table = cfg.personaSchedule?.personas;
     const hit = table && typeof table === 'object' ? table[String(roleName ?? '')] : null;
@@ -11508,15 +11556,21 @@ async function main() {
 
   // 实际的 DSH prompt 投递（不再直接对外暴露，统一走 promptQueues 串行队列）。
   async function deliverPromptNow(key, promptText, opts = {}) {
-    // ── AGY 传输层（config.transport === "agy"）────────────────────────────────
-    // 唤醒不再推进 DSH 会话，而是入队等 Antigravity worker 认领。
-    // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
-    if (String(cfg.transport ?? 'dsh') === 'agy') {
+    // ── 传输层：用不用 AGY **按值班者的人格**决定 ─────────────────────────────
+    // 全局 config.transport = "agy" 只是"允许用 AGY"；具体这一位走哪边看
+    // config.personaSchedule.personas[名字].transport（owner 2026-11-25：
+    // 小鲸鱼交给 DSH，猫娘交给 AGY）。规则与兜底见 src/persona-transport.js ✓
+    const dutyPersona = currentDutyPersona();
+    const dutyTransport = personaTransportOf(dutyPersona);
+    notePersonaRouting(dutyPersona, dutyTransport);
+    if (dutyTransport === 'agy') {
+      // 唤醒不再推进 DSH 会话，而是入队等 Antigravity worker 认领。
+      // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
       // ── #1 fallback：worker 掉线就别硬等，回落 DSH（否则群里会"哑火"，而且没人告诉你 ✗）──
       // 判定必须**按值班者的人格**看心跳：旧人格的 worker 还在轮询时会一直刷新
       // "最近心跳"，只看它会得出"值班者还在"的错结论 ⇒ 05:00 换班后哑火 ✗
       // 只有把 transport 设成 agy 且 transportFallback=false 时才强制不走 DSH。
-      const duty = currentDutyPersona();
+      const duty = dutyPersona;
       const dutySeenAt = agyWorkerSeenAtFor(duty);
       if (agyDutyStale(duty) && cfg.transportFallback !== false) {
         log(`[agy] 值班者「${duty}」掉线（${dutySeenAt ? Math.round((Date.now() - dutySeenAt) / 1000) + 's 没心跳' : '从未上报心跳'}）→ 本次回落 DSH`);

@@ -205,6 +205,37 @@ worker 每轮可打这一条做自检 ✓
 - **每天 05:00（北京时间）** 换班：写角色卡 + 同步 `onDuty` + 重建 DSH 会话（AGY 模式下通常没有会话）
   + **清掉旧人格还没被认领的回合**（新值班者永远不会去取它们；不清就永远占着"会话繁忙" ✗）
 - 手动切换（`POST /api/role`）与 05:00 自动轮换走**同一条路径** ✓
+
+### 5.1 按人格分流传输层（2026-11-25 起 ✓）
+
+"用不用 AGY"不是全局开关，而是**看值班者是谁**：
+
+```json
+{
+  "transport": "agy",
+  "personaSchedule": {
+    "rotation": ["小鲸鱼", "猫娘侍从"],
+    "personas": {
+      "小鲸鱼":   { "provider": "deepseek-official", "model": "deepseek-flash", "transport": "dsh" },
+      "猫娘侍从": { "provider": "google", "model": "gemini-4-hydrogen", "transport": "agy" }
+    }
+  }
+}
+```
+
+| 规则（顺序即优先级） | 结果 |
+|---|---|
+| 全局 `transport` 不是 `agy` | 一律 `dsh`（persona 写 `agy` 也不越过全局开关） |
+| persona 显式写了 `dsh` / `agy` | 听它的 |
+| 没写 / 写错 | 跟随全局 |
+
+- 判定实现在 `src/persona-transport.js`（纯函数，`scripts/test-persona-transport.mjs` 10 组回归 ✓）
+- `status` 里能直接看到现状：`dutyTransport`（这一位现在走哪边）、`personaTransport`（每个人格的去向）
+- **被分流到 DSH 的人格**：AGY 这边永远不会有它的 turn；它的 worker `wait` 会拿到
+  `200 + {idle: true, reason: "persona-on-dsh", transport: "dsh"}` —— 那是"这位不归你管"，
+  worker 照常歇几秒再轮询即可（或者干脆别起这个 worker）✓
+- 分流到 AGY 的人格掉线时**仍然**按下面的 fallback 回落 DSH ✓
+
 - 非值班 worker：`wait` 返回 `idle: true, reason: "not-on-duty"` ✓，**继续轮询** ✓
   （它的轮询同时是"我还活着"的心跳，但**只记在它自己的人格名下**）
 - 值班者掉线（该 persona 的 `onDutyWorkerSeenAt` > 5 分钟）：
@@ -221,6 +252,7 @@ worker 每轮可打这一条做自检 ✓
 |---|---|---|
 | 204 | —（空体） | 立刻再 `wait` ✓ |
 | 200 | `idle:true, reason:"not-on-duty"` | 5~10 秒后再 `wait` ✓ |
+| 200 | `idle:true, reason:"persona-on-dsh"` | 这一位人格被配置成走 DSH（见 §5.1）⇒ 别等它，歇一下再轮询 ✓ |
 | 400 | `bad-request` | 修参数，**别重试同样请求** |
 | 403 | `not-on-duty` / `bad-token` | 重新 `wait` / 检查令牌 |
 | 404 | `turn-not-found` | 重新 `wait` ✓ |
@@ -278,3 +310,4 @@ worker 每轮可打这一条做自检 ✓
 | 日期 | 提出方 | 内容 | 状态 |
 |---|---|---|---|
 | 2026-11-25 | 桥接侧 | **v1.1 无协议变更，只加字段/行为**：`status` 增加 `onDutyWorkerSeenAt` / `onDutyStale` / `workerSeenByPersona`；`turn.readThroughSeq` 现在真的会填（worker `complete` 后桥接自动提交已读）；`prompt` 必带【本次消息快照】+【AGY 值守模式】；>8KB 自动落盘 `state/agy-context-<turnId>.md`；05:00 换班会清掉旧人格未认领的回合 | ✅ 已上线（worker 无需改代码） |
+| 2026-11-25 | 桥接侧 | **v1.2 按人格分流**：`config.personaSchedule.personas[名字].transport` 可把某个人格钉到 `dsh` 或 `agy`（owner：小鲸鱼走 DSH、猫娘走 AGY）。`status` 增加 `dutyTransport` / `personaTransport`；`wait` 新增 idle 理由 `persona-on-dsh` | ✅ 已上线（worker 无需改代码；见到 `persona-on-dsh` 就是"这位不归你管"） |

@@ -8,12 +8,31 @@
 ## 1. 现状（一句话）
 
 ```
-transport = "agy" ✓   v1.1 修完 5 个"看起来跑了、其实没生效"的坑 ✓   套件 76/76 ✓   commit 503f6ce
-worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）⇒ 现在靠 fallback 回落 DSH 撑着
+按人格分流已上线 ✓  小鲸鱼 → DSH（照旧花钱，owner 的选择）   猫娘侍从 → AGY（省钱的才是它）
+transport = "agy" ✓   v1.1 修完 5 个"看起来跑了、其实没生效"的坑 ✓   套件 77/77 ✓   commit 见 git log
+worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）
 ```
 
-> 待办第一件事就是**把 worker 叫起来**：它一停，每次唤醒都回落 DSH，等于没省钱（而且日志里只有一行
-> `值班者「小鲸鱼」掉线` 别当没事 ✓）。
+> ⚠️ 现在的实际效果：值班的是**小鲸鱼 ⇒ 走 DSH ⇒ 仍然花 API 钱**。AGY 只有到
+> **猫娘侍从**当班（05:00 换班 / 控制台手动切）才真正开始省。worker 停着的话，
+> 猫娘当班时也会回落 DSH（日志 `值班者「猫娘侍从」掉线`）—— 所以**换班前把 worker 叫起来**才有意义 ✓
+
+> 待办第一件事就是**给猫娘侍从起 worker**：它只服务猫娘（小鲸鱼的活被分流到 DSH，
+> worker 会拿到 `idle: persona-on-dsh`，别当成故障 ✓）。
+
+### 1.0 按人格分流（owner 2026-11-25 追加）
+
+```json
+"personaSchedule": { "personas": {
+  "小鲸鱼":   { "transport": "dsh" },
+  "猫娘侍从": { "transport": "agy" }
+}}
+```
+
+- 规则：全局 `transport` 不是 `agy` ⇒ 一律 DSH；persona 显式写了就听它的；没写就跟随全局
+- 实现：`src/persona-transport.js`（纯函数，10 组回归 ✓）+ `deliverPromptNow` 开头按值班者判定
+- `status` 能直接看：`dutyTransport`（这一位现在走哪边）、`personaTransport`（每个人格的去向）
+- 想改：只改 `config.json` 的 `personas[名字].transport` 并重启（**不用改代码** ✓）
 
 链路：`QQ → 桥接 → buildWakePromptV2 + 消息快照 + AGY 值守说明 → 队列 → worker 取/回 → sendMessagesV2 → QQ`
 
@@ -58,7 +77,8 @@ worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）�
 |---|---|
 | `src/agy-transport.js` | 队列 + 长轮询 + 租约 + 重排 + `setPrompt` / `dropUnclaimed` / `wake`（**纯逻辑**，23 组回归 ✓ 改它必须先跑 `test-agy-transport.mjs`） |
 | `src/agy-prompt.js` | **新**：AGY prompt 的拼装片段（快照块 / 值守覆盖说明 / 落盘短提示 / 8KB 阈值）—— 11 组回归 ✓ |
-| `src/bridge.js` | 6 个 `/api/agy/*` 端点、`agyReleaseTurn()`、`agySweepTick()`、`deliverPromptNow` 的 agy 分叉 + fallback、`applyPersonaSwitch()`、按 persona 的心跳 |
+| `src/persona-transport.js` | **新**：按人格分流（小鲸鱼 dsh / 猫娘 agy）的纯判定 + 路由表 —— 10 组回归 ✓ |
+| `src/bridge.js` | 6 个 `/api/agy/*` 端点、`agyReleaseTurn()`、`agySweepTick()`、`deliverPromptNow`（分流 + 快照 + 落盘 + fallback）、`applyPersonaSwitch()`、按 persona 的心跳 |
 | `scripts/mock-agy-worker.mjs` | 假 worker（不依赖 Antigravity 测协议 ✓）；新增 `--silent`（`replies:[]`）与 `--dump-prompt <path>` 用于**不打扰群里**的验证 |
 | `scripts/agy-*.mjs` | **AGY 侧写的**（不要改 ✗）：`agy-lib` / `agy-wait-wake` / `agy-reply-and-wait` / `agy-self-test` / `agy-status` / `agy-touch` |
 | `scripts/agy-tools.mjs` | **我写的**：`memory-list` / `memory-add` / `sticker` / `voice`（替代 AGY 模式下调不到的 MCP 工具） |
@@ -81,6 +101,12 @@ worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）�
 6. **推送**：`git push` 偶发 `Connection reset` ✗ —— 先试 git 配置的代理（9674）✓，失败再 `-c http.proxy= -c https.proxy=` 直连 ✓。
 7. **`log()` 会把绝对路径打码成 `***`** —— 落盘日志里看不到文件路径是**正常**的，路径在 prompt/文件系统里 ✓。
 8. **改完任何 `src/**` 都要重跑 `node scripts/gen-file-index.mjs`** ✗ —— 否则 `test-foldermap-facts` 红 ✓。
+9. **`cfg` 是 `main()` 里的局部变量** ✗✗ —— 模块作用域的函数**不能**引用它（我会写成 `cfg?.x`，
+   可选链救不了未声明的标识符 ✗）。2026-11-25 把 `personaTransportOf` 放到模块级，`test-audit-bridge`
+   直接 `cfg is not defined`；生产里则是**每次唤醒都 ReferenceError**，而且只在真的唤醒时才炸。
+   放 `main()` 里面、或把值当参数传进去 ✓
+10. **`test-dsh-auth.mjs` 偶发红** —— 它真的去打本地 DSH 铸 Cookie；全量跑时偶尔和别的用例撞车。
+   单独跑 `node scripts/run-offline-tests.mjs dsh-auth` 通常就绿 ✓（别当成自己改坏了）
 
 ---
 
@@ -88,10 +114,11 @@ worker 侧：**离线中**（Antigravity 窗口 18:47 之后就没再轮询）�
 
 ```powershell
 cd D:\dsh\qq-bridge
-node scripts/mock-agy-worker.mjs --status                    # transport / 队列 / 心跳（看 onDutyStale）
+node scripts/mock-agy-worker.mjs --status                    # transport / 队列 / 心跳 / dutyTransport / personaTransport
 node scripts/test-agy-transport.mjs                           # 23 组协议回归
 node scripts/test-agy-prompt.mjs                              # 11 组 prompt 拼装回归
-node scripts/run-offline-tests.mjs                            # 全量 76/76
+node scripts/test-persona-transport.mjs                       # 10 组"谁走 DSH / 谁走 AGY"分流回归
+node scripts/run-offline-tests.mjs                            # 全量 77/77
 Get-Content state\bridge.log -Encoding UTF8 | Select-String '\[agy\]' | Select-Object -Last 15
 ```
 
@@ -125,9 +152,9 @@ Invoke-RestMethod -Method Post -ContentType 'application/json' `
 
 | # | 事 | 备注 |
 |---|---|---|
-| 1 | **把 AGY worker 叫起来** ✗ | 18:47 之后它就没轮询过（日志停在 `complete t-202611251836-0001`）。**现在全靠 DSH fallback 顶着 = 一直在花 API 钱** ⚠️ |
-| 2 | **观察一晚** | 看 `[agy] 值班者「X」掉线（Ns 没心跳）→ 本次回落 DSH`（正常兜底）/ `收尾已读：N 条` ✓（#2 生效）/ `prompt N 字节 > 8192`（落盘生效） |
-| 3 | **明天的 05:00** | 看换班日志 + 猫娘侍从有没有 worker；换班瞬间旧人格未认领回合应被清掉 |
+| 1 | **给猫娘侍从起 AGY worker** ✗ | 小鲸鱼的活已经分流到 DSH（worker 拿到 `persona-on-dsh`，正常）；**只有猫娘当班时 AGY 才真的省钱**，而它现在没有 worker ⇒ 猫娘一当班就回落 DSH |
+| 2 | **观察一晚** | 看 `[agy] 值班者「X」掉线（Ns 没心跳）→ 本次回落 DSH`（正常兜底）/ `[agy] 值班者「小鲸鱼」按 persona 配置走 DSH`（分流生效，每人格只打一次）/ `收尾已读：N 条` / `prompt N 字节 > 8192` |
+| 3 | **明天的 05:00** | 换成猫娘侍从之后：`status` 的 `dutyTransport` 应该变成 `agy`；有 worker 就进队列，没有就回落 DSH（不哑火 ✓） |
 | 4 | 生图 / 拍一拍 / 黑话提交 CLI | 价值低，按需（`agy-tools.mjs` 里加子命令即可） |
 | 5 | **唤醒频率限制会直接丢消息** ⚠️ | `maxWakePerMinute: 1`：一分钟内的第二条 `@` 会被**跳过**（不是延迟），群里看起来就是"不理人"。要改就得改成"延后到窗口结束再试"，别直接丢 |
 
@@ -139,7 +166,9 @@ Invoke-RestMethod -Method Post -ContentType 'application/json' `
 - **只有我 commit/push** ✓
 - 它反馈问题 → 我改 → 我重启桥接 → 它续测（已经跑过三轮，很顺 ✓）
 - 卡住时的唯一通道：`state/agy-worker.log` ✓（我看不到它的窗口 ✗）
-- 这一轮**不需要它改代码**：协议 v1 没变，只是桥接侧把该给的东西给全了 ✓
+- 这一轮**不需要它改代码**：协议仍是 v1（只加了字段和一个 idle 理由）✓
+  ⚠️ 唯一要它知道的新情况：小鲸鱼的人格被分流到 DSH，它的 worker 轮 `小鲸鱼` 时会一直拿到
+  `idle: persona-on-dsh` —— **那是正常的**，不是被踢下线 ✓
 
 ---
 

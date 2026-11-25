@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **355** 个被跟踪文件（其中 353 个文本文件、合计 **76,966** 行） —— 文件自带说明 **331**、人工补写 **23**、待补 **1**。
+统计：共 **355** 个被跟踪文件（其中 353 个文本文件、合计 **77,097** 行） —— 文件自带说明 **331**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -21,7 +21,7 @@
 | [`.gitignore`](../.gitignore) | 81 | 忽略清单：config.json / state/ / audio/ / node_modules 等本机数据与依赖 | 人工补写 |
 | [`.npmrc`](../.npmrc) | 1 | npm 行为设置（本仓库用于安装源/缓存相关开关） | 人工补写 |
 | [`群公告.md`](../群公告.md) | 67 | 【小鲸鱼使用说明】持续更新 | 文件自带（正文首句） |
-| [`config.example.json`](../config.example.json) | 544 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
+| [`config.example.json`](../config.example.json) | 558 | 运行配置模板（真实 config.json 不入库）。每一项的语义见 README「配置」一节 | 人工补写 |
 | [`INSTALL_NOTES.md`](../INSTALL_NOTES.md) | 2,288 | qq-bridge 安装记录（本机 D:\dsh\qq-bridge） | 文件自带（标题） |
 | [`LICENSE`](../LICENSE) | 149 | MIT 许可证正文 | 人工补写 |
 | [`NOTICE.md`](../NOTICE.md) | 43 | 第三方组件与许可声明（含 SnowLuma EULA 相关的合规说明） | 人工补写 |
@@ -66,12 +66,12 @@
 | --- | ---: | --- | --- |
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
-| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 280 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 153 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 313 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 182 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 195 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 196 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -421,7 +421,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,577 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,631 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

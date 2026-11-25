@@ -539,6 +539,20 @@
     "rotation": [
       "小鲸鱼",
       "猫娘侍从"
-    ]
+    ],
+    "personas": {
+      "小鲸鱼": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash",
+        "effort": "max",
+        "transport": "dsh"
+      },
+      "猫娘侍从": {
+        "provider": "google",
+        "model": "gemini-4-hydrogen",
+        "effort": "auto",
+        "transport": "agy"
+      }
+    }
   }
 }
