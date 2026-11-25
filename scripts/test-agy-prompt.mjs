@@ -45,7 +45,14 @@ ok('★★ 快照块里不能出现 qq_mark_read / qq_set_wake_config 当"要调
   const block = formatAgySnapshotBlock(SNAP);
   // 允许出现名字（用来说明"不能调"），但不允许出现"请调用/传给"这类祈使句
   assert.ok(!/请调用\s*qq_/.test(block), '不能叫模型去调 qq_* 工具');
-  assert.ok(block.includes('不需要也不能调用 qq_mark_read'), '要明确禁止调已读工具');
+  assert.ok(block.includes('qq_mark_read'), '要明确提到已读不用管');
+});
+
+ok('★★ 看图：换成"用 message-images 落盘再看"，不能再写"看不到图"', () => {
+  const block = formatAgySnapshotBlock(SNAP);
+  assert.ok(!block.includes('看不到图'), '旧说法（看不到图）必须清掉，AGY 侧已经能看图 ✗');
+  assert.ok(block.includes('agy-api.mjs message-images'), '要给出真正的看图命令');
+  assert.ok(block.includes('别假装看过'), '仍要禁止编造图片内容');
 });
 
 ok('★ partial=true 要说清"下一轮再给"，别让模型这轮追问', () => {
@@ -57,7 +64,7 @@ ok('★ partial=true 要说清"下一轮再给"，别让模型这轮追问', () 
 console.log('\n值守覆盖说明：');
 
 ok('★★ 覆盖说明必须禁止调 qq_* 工具，并给出 replies 数组的出口', () => {
-  assert.ok(AGY_MODE_OVERRIDE.includes('没有任何 QQ 工具'));
+  assert.ok(AGY_MODE_OVERRIDE.includes('没有 MCP 的 qq_* 工具'));
   assert.ok(AGY_MODE_OVERRIDE.includes('agy-reply-and-wait.mjs'));
   assert.ok(AGY_MODE_OVERRIDE.includes('空数组'));
   for (const tool of ['qq_wait_for_messages', 'qq_mark_read', 'qq_set_wake_config', 'qq_send_message']) {
@@ -65,10 +72,18 @@ ok('★★ 覆盖说明必须禁止调 qq_* 工具，并给出 replies 数组的
   }
 });
 
-ok('覆盖说明里提到用 CLI 发语音/表情（AGY 侧真的能跑的命令）', () => {
-  assert.ok(AGY_MODE_OVERRIDE.includes('agy-tools.mjs sticker'));
-  assert.ok(AGY_MODE_OVERRIDE.includes('agy-tools.mjs voice'));
-  assert.ok(AGY_MODE_OVERRIDE.includes('agy-tools.mjs memory-add'));
+ok('★★ v1.3：必须告诉它 agy-api.mjs 这条真正的扩展通道（否则行为闭环做不到）', () => {
+  // AGY 侧 2026-11-25 在契约 §10 申请：prompt 要同步成"有 CLI，只是没有 MCP 工具"
+  assert.ok(!AGY_MODE_OVERRIDE.includes('没有任何 QQ 工具'), '旧说法会和新 CLI 打架 ✗');
+  assert.ok(AGY_MODE_OVERRIDE.includes('agy-api.mjs'));
+  for (const sub of ['prompt', 'active-members', 'wait-reply', 'wait-sleep', 'wake-config', 'message-images']) {
+    assert.ok(AGY_MODE_OVERRIDE.includes(`agy-api.mjs ${sub}`), `要点名 ${sub} 子命令`);
+  }
+});
+
+ok('覆盖说明里给出真正的 CLI 入口（不是旧的 agy-tools 记忆/表情那套）', () => {
+  assert.ok(AGY_MODE_OVERRIDE.includes('agy-api.mjs'));
+  assert.ok(AGY_MODE_OVERRIDE.includes('docs/AGY_FEATURE_GAPS.md'), '指针要给，免得 prompt 里堆 44 条命令');
 });
 
 console.log('\n拼装顺序：');

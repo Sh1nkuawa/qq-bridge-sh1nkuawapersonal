@@ -19,6 +19,8 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 
 const TEST_TOKEN = 'test-secret-token-never-log-me-9f8e7d6c';
+const TEST_SESSION_TOKEN = 'test-session-agent-token-never-log-me-1a2b3c';
+const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-worker-selftest-'));
 const testLogPath = path.join(tmpDir, 'agy-worker.log');
 
@@ -55,9 +57,51 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(obj));
   };
   const url = new URL(req.url, 'http://127.0.0.1');
+  if (url.pathname === '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary' && req.method === 'POST') {
+    if (req.headers['x-codeium-csrf-token'] !== 'mock-ls-csrf-secret') return sendJson({ ok: false, error: 'bad-csrf' }, 403);
+    return sendJson({
+      response: {
+        groups: [{
+          displayName: 'Gemini Models',
+          description: 'Gemini 4 Hydrogen',
+          buckets: [
+            { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0.75, resetTime: new Date(Date.now() + 3600000).toISOString() },
+            { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.9, resetTime: new Date(Date.now() + 86400000 * 3).toISOString() }
+          ]
+        }]
+      }
+    });
+  }
   const supplied = String(url.searchParams.get('token') ?? req.headers['x-console-token'] ?? '');
   if (supplied !== TEST_TOKEN) {
     return sendJson({ ok: false, error: 'bad-token' }, 403);
+  }
+  // 模拟桥接鉴权规矩（AGY_FEATURE_GAPS §0）：/api/agy/* 带 x-agent-token 一律 403
+  if (url.pathname.startsWith('/api/agy/') && req.headers['x-agent-token']) {
+    return sendJson({ ok: false, error: 'agent-token-forbidden-on-agy' }, 403);
+  }
+  // 模拟 /api/socialV2/* 与 /api/images/* 端点供 agy-api.mjs 测试
+  if (url.pathname === '/api/socialV2/prompt' && req.method === 'GET') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    return sendJson({ ok: true, key: url.searchParams.get('key'), prompt: '完整角色卡：猫娘侍从测试全文' });
+  }
+  if (url.pathname === '/api/socialV2/wake-config' && req.method === 'POST') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    const body = await readReqBody(req);
+    return sendJson({ ok: true, key: body.key, wakeConfig: body.config });
+  }
+  if (url.pathname === '/api/socialV2/wait' && req.method === 'POST') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    const body = await readReqBody(req);
+    return sendJson({ ok: true, key: body.key, purpose: body.purpose, quiet: true, newMessages: [] });
+  }
+  if (url.pathname === '/api/images/message' && req.method === 'GET') {
+    if (req.headers['x-agent-token'] !== TEST_SESSION_TOKEN) return sendJson({ ok: false, error: 'bad-agent-token' }, 403);
+    return sendJson({
+      ok: true,
+      messageId: url.searchParams.get('messageId'),
+      images: [{ index: 1, kind: 'image', mimeType: 'image/png', data: TINY_PNG_B64 }]
+    });
   }
   if (!url.pathname.startsWith('/api/agy/')) {
     return sendJson({ ok: false, error: 'not-found' }, 404);
@@ -474,10 +518,90 @@ try {
     assert.ok(Date.now() - t0 < 3000, '应立即退出，不应等待 5000ms 休眠');
   });
 
-  // 14. Log format & secret redaction check
-  await test('14. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
+  // 14. agy-api.mjs: prefix auth guard + wake-config --dive + wait-reply + prompt
+  await test('14. agy-api.mjs 分前缀鉴权（/api/agy 不带 agent token，/api/socialV2 双带）与收尾闭环', async () => {
+    // 即使传了 --session，访问 /api/agy/status 也绝不能带 x-agent-token（否则会 403）
+    const agyCall = await runScript('agy-api.mjs', [
+      'get', '--path', '/api/agy/status', '--session', TEST_SESSION_TOKEN
+    ]);
+    assert.equal(agyCall.status, 0, `stdout=${agyCall.stdout} stderr=${agyCall.stderr}`);
+    assert.equal(JSON.parse(agyCall.stdout).transport, 'agy');
+
+    // wake-config --dive
+    const wc = await runScript('agy-api.mjs', [
+      'wake-config', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--dive'
+    ]);
+    assert.equal(wc.status, 0, `stdout=${wc.stdout} stderr=${wc.stderr}`);
+    const wcData = JSON.parse(wc.stdout);
+    assert.equal(wcData.ok, true);
+    assert.equal(wcData.wakeConfig.mode, 'diving');
+    assert.equal(wcData.wakeConfig.infinite, true);
+
+    // wait-reply
+    const wr = await runScript('agy-api.mjs', [
+      'wait-reply', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--quiet-ms', '10000'
+    ]);
+    assert.equal(wr.status, 0, wr.stderr);
+    assert.equal(JSON.parse(wr.stdout).purpose, 'reply');
+
+    // prompt（完整角色卡）
+    const pr = await runScript('agy-api.mjs', [
+      'prompt', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN
+    ]);
+    assert.equal(pr.status, 0, pr.stderr);
+    assert.ok(JSON.parse(pr.stdout).prompt.includes('完整角色卡'));
+  });
+
+  // 15. agy-api.mjs: message-images PNG decode + cleanup-frames
+  await test('15. agy-api.mjs message-images 自动落盘 PNG 供 read_file 看图并支持 cleanup-frames', async () => {
+    const imgRes = await runScript('agy-api.mjs', [
+      'message-images', '--key', 'group:541026885', '--session', TEST_SESSION_TOKEN, '--message-id', 'selftest999'
+    ]);
+    assert.equal(imgRes.status, 0, `stdout=${imgRes.stdout} stderr=${imgRes.stderr}`);
+    const data = JSON.parse(imgRes.stdout);
+    assert.equal(data.ok, true);
+    assert.equal(data.savedFiles.length, 1);
+    const savedPath = data.savedFiles[0].path;
+    assert.ok(fs.existsSync(savedPath), `未落盘: ${savedPath}`);
+    const buf = fs.readFileSync(savedPath);
+    assert.deepEqual([...buf.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], '落盘文件不是合法 PNG');
+
+    const clean = await runScript('agy-api.mjs', ['cleanup-frames']);
+    assert.equal(clean.status, 0, clean.stderr);
+    assert.equal(fs.existsSync(savedPath), false, 'cleanup-frames 未删除临时图片');
+  });
+
+  // 16. agy-api.mjs: agy-quota reads local Antigravity LS quota summary
+  await test('16. agy-api.mjs agy-quota 读取 Antigravity 5h/周剩余额度且不泄漏 CSRF', async () => {
+    const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'agy-api.mjs'), 'agy-quota'], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        ANTIGRAVITY_LS_ADDRESS: `127.0.0.1:${port}`,
+        ANTIGRAVITY_CSRF_TOKEN: 'mock-ls-csrf-secret',
+        AGY_LOG_PATH: testLogPath
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const out = [];
+    const err = [];
+    child.stdout.on('data', (c) => out.push(c));
+    child.stderr.on('data', (c) => err.push(c));
+    const code = await new Promise((resolve) => child.on('close', resolve));
+    const stdout = Buffer.concat(out).toString('utf8');
+    assert.equal(code, 0, `stdout=${stdout} stderr=${Buffer.concat(err).toString('utf8')}`);
+    const data = JSON.parse(stdout);
+    assert.equal(data.ok, true);
+    assert.equal(data.groups[0].buckets[0].remainingPct, 75);
+    assert.ok(data.summary.includes('75.0%'));
+  });
+
+  // 17. Log format & secret redaction check
+  await test('17. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
     const rawLog = fs.readFileSync(testLogPath, 'utf8');
     assert.ok(!rawLog.includes(TEST_TOKEN), '日志泄漏了测试令牌！');
+    assert.ok(!rawLog.includes(TEST_SESSION_TOKEN), '日志泄漏了会话令牌！');
+    assert.ok(!rawLog.includes('mock-ls-csrf-secret'), '日志泄漏了 LS CSRF 令牌！');
     assert.ok(!rawLog.includes('测试行A1234567890'), '日志泄漏了 prompt 内容！');
     const lines = rawLog.trim().split('\n');
     assert.ok(lines.length >= 8, `日志条目过少: ${lines.length}`);

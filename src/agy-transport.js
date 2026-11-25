@@ -15,6 +15,18 @@ export const AGY_ERRORS = {
   EMPTY_REPLIES: 'empty-replies-disallowed'
 };
 
+/**
+ * `complete.atUserId` 的规范化：只接受 QQ 号形态（4~12 位数字），其余一律当"没传" ✓
+ * 为什么要在这里做：QQ 号会直接进 OneBot 的 `at` 段，脏值（对象/数组/带 @ 的字符串）
+ * 要么让发送失败、要么 @ 到错误的人 ✗。返回字符串或 null。
+ */
+export function normalizeAtUserId(value) {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  if (!/^\d{5,12}$/.test(s)) return null;
+  return s;
+}
+
 export function createAgyTransport({
   leaseMs = 10 * 60 * 1000,
   maxAttempts = 2,
@@ -190,7 +202,7 @@ export function createAgyTransport({
   }
 
   /** 回话成功：出队、清租约。返回 turn（调用方负责真正发 QQ）。 */
-  function complete({ turnId, workerId = null } = {}) {
+  function complete({ turnId, workerId = null, atUserId = null } = {}) {
     const turn = turns.get(String(turnId ?? ''));
     if (!turn) return { ok: false, http: 404, error: AGY_ERRORS.TURN_NOT_FOUND };
     if (!turn.workerId) return { ok: false, http: 409, error: AGY_ERRORS.TURN_NOT_CLAIMED };
@@ -199,6 +211,8 @@ export function createAgyTransport({
     }
     turns.delete(turn.turnId);
     stats.completed += 1;
+    // @某人（契约 §10 · AGY 侧 2026-11-25 申请）：只认 QQ 号形态，脏值当没传 ✓
+    turn.atUserId = normalizeAtUserId(atUserId);
     return { ok: true, turn };
   }
 

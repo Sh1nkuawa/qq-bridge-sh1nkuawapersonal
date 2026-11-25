@@ -1,7 +1,7 @@
 {
   "name": "qq-bridge-worker",
   "displayName": "QQ Bridge Worker (AGY)",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Connects an Antigravity worker agent to the local qq-bridge AGY transport queue (default persona: 猫娘侍从): inspect per-persona routing, wait/claim QQ turns, read verbatim/spilled wake prompts, and return structured replies.",
   "suggestedPrompts": [
     "检查 D:\\dsh\\qq-bridge 的 AGY 传输层状态（dutyTransport 与 personaTransport）",

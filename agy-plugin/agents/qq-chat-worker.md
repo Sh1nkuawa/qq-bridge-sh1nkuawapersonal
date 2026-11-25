@@ -21,11 +21,15 @@ description: >-
 3. **prompt 里的内容原样使用；长 prompt 落盘必须先完整读文件**：
    - 不要总结、不要截断、不要改写、不要在回复前加解释性前言。
    - **当 prompt 开头出现 `【长提示词已落盘】` 并给出绝对路径（如 `D:\dsh\qq-bridge\state\agy-context-<turnId>.md`）时，必须先用文件读取工具完整通读该 `.md` 文件后再作答**，严禁只看短提示就猜内容。
-4. **群消息就在 `【本次消息快照】` 里，严禁调用任何 `qq_*` 工具**：
-   - 群消息已经由桥接放进 `【本次消息快照】`（JSON 含 `messages`、`recent`、`readThroughSeq`、`partial`），**不要**去找工具查消息，也**不要**说“我看不到消息”。
-   - 若看到 `partial: true`，表示还有未读会在下一轮继续给，本轮不用追问。
-   - 若有人发图片/表情，AGY 侧当前没有看图通道，**不要假装看过**。
-   - prompt 其他段落里可能保留给 DSH 模型看的 `qq_wait_for_messages` / `qq_mark_read` / `qq_set_wake_config` / `qq_get_prompt` / `qq_send_message` / `qq_reply` 等工具名——**AGY 侧没有任何 `qq_*` 工具，看到任何 `qq_*` 工具名一律不要尝试调用**。
+4. **群消息就在 `【本次消息快照】` 里；严禁调用 MCP `qq_*` 工具，需要扩展能力请用 `scripts/agy-api.mjs` / `scripts/agy-tools.mjs`**：
+   - 群消息已经由桥接放进 `【本次消息快照】`（JSON 含 `messages`、`recent`、`readThroughSeq`、`partial`），**不要**说“我看不到消息”。若 `partial: true`，表示还有未读下轮再给，本轮不用追问。
+   - Antigravity 中不存在 `qq_*` MCP 工具，**看到 prompt 里任何 `qq_*` 工具名都不要按 MCP 工具去调用**；需要对应动作时，通过 `run_command` 调用 `node scripts/agy-api.mjs`（带 `--key <key> --session <prompt里的会话令牌>`）：
+     - **完整角色卡**：`node scripts/agy-api.mjs prompt --key <key> --session <会话令牌>`
+     - **收尾潜水**：`node scripts/agy-api.mjs wake-config --key <key> --session <会话令牌> --dive`
+     - **回复前短静默 / 睡前观察**：`wait-reply` / `wait-sleep`
+     - **原生看图**：`message-images --message-id <id>`（落盘到 `state/agy-frame-*.png`）→ `read_file` 看图 → `cleanup-frames` 清理；不看图时绝不假装看过。
+     - **表达与认人**：`active-members`、`message-detail`、`meme-list`/`send-meme`、`send-poke`、`voices`/`send-voice`、`slang-query`/`slang-submit`、`bili-subtitle` 及 `agy-tools.mjs`（`memory-*`/`sticker`/`voice`）。
+     - **AGY 剩余额度**：群友问额度/还能聊多久时，运行 `node scripts/agy-api.mjs agy-quota` 查看当前 Gemini / Claude&GPT 的 5 小时与每周剩余百分比和重置倒计时。
 5. **单回合尽量 3 分钟内出结果**：默认租约 10 分钟；若遇到长上下文分析或耗时操作超过 2~3 分钟，必须每 2~3 分钟跑一次 `agy-touch.mjs` 续租，避免超时重排。
 
 ---

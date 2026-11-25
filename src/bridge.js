@@ -4894,6 +4894,50 @@ async function main() {
           sendJson(got);
           return;
         }
+        // ── 只读 OneBot 查询（契约 §3.7 · AGY 侧 2026-11-25 在 §10 申请）──────────
+        // 为什么必须由桥接做：qq_list_groups / qq_get_group_members / qq_get_group_msg_history
+        // 这三个 MCP 工具是**直连 OneBot** 的，没有 HTTP 端点 ⇒ AGY 侧拿不到 ✗
+        // 安全边界：① 只放三个只读动作（白名单，不做"任意 action 透传" ✗）
+        //          ② 群号必须过白名单（allowed）③ 只接受 GET，不接受任何写参数
+        if (req.method === 'GET' && action === 'onebot') {
+          const ONEBOT_READ_ACTIONS = new Set(['get_group_list', 'get_group_member_list', 'get_group_msg_history']);
+          const passthrough = String(url.searchParams.get('action') ?? '').trim();
+          if (!ONEBOT_READ_ACTIONS.has(passthrough)) {
+            sendJson({ ok: false, error: 'action-not-allowed', allowed: [...ONEBOT_READ_ACTIONS] }, 400);
+            return;
+          }
+          const rawGroup = String(url.searchParams.get('groupId') ?? url.searchParams.get('group_id') ?? '').trim();
+          const groupId = /^\d+$/.test(rawGroup) ? Number(rawGroup) : 0;
+          try {
+            if (passthrough === 'get_group_list') {
+              const data = await bot.request('get_group_list', {});
+              const list = (Array.isArray(data) ? data : (data?.data ?? []))
+                .filter((g) => g && allowed('group', g.group_id, cfg))
+                .map((g) => ({ group_id: g.group_id, group_name: g.group_name }));
+              sendJson({ ok: true, action: passthrough, data: list });
+              return;
+            }
+            if (!(groupId > 0)) { sendJson({ ok: false, error: 'groupId 必填且为正整数' }, 400); return; }
+            if (!allowed('group', groupId, cfg)) { sendJson({ ok: false, error: `群 ${groupId} 不在白名单` }, 403); return; }
+            if (passthrough === 'get_group_member_list') {
+              const data = await bot.request('get_group_member_list', { group_id: groupId });
+              const list = (Array.isArray(data) ? data : (data?.data ?? []))
+                .map((m) => ({ user_id: m?.user_id, nickname: m?.nickname, card: m?.card }));
+              sendJson({ ok: true, action: passthrough, data: list });
+              return;
+            }
+            const rawSeq = String(url.searchParams.get('messageSeq') ?? url.searchParams.get('message_seq') ?? '').trim();
+            const params = { group_id: groupId };
+            if (/^\d+$/.test(rawSeq) && Number(rawSeq) > 0) params.message_seq = Number(rawSeq);
+            const data = await bot.request('get_group_msg_history', params);
+            sendJson({ ok: true, action: passthrough, data });
+            return;
+          } catch (error) {
+            // 常见原因：SnowLuma 没实现该动作 / 群没加入 / OneBot 掉线
+            sendJson({ ok: false, error: `查询失败：${error?.message ?? error}` }, 502);
+            return;
+          }
+        }
         const agyBody = await readBody();
         if (req.method === 'POST' && action === 'claim') {
           const r = agyTransport.claim({
@@ -4927,12 +4971,13 @@ async function main() {
         }
         if (req.method === 'POST' && action === 'complete') {
           const replies = Array.isArray(agyBody.replies) ? agyBody.replies.map((x) => String(x ?? '')).filter(Boolean) : [];
-          const r = agyTransport.complete({ turnId: agyBody.turnId, workerId: agyBody.workerId });
+          // atUserId：让这一条回复真正 @ 到人（契约 §10 · AGY 侧 2026-11-25 申请）
+          const r = agyTransport.complete({ turnId: agyBody.turnId, workerId: agyBody.workerId, atUserId: agyBody.atUserId ?? agyBody.at ?? null });
           if (!r.ok) { sendJson({ ok: false, error: r.error }, r.http ?? 200); return; }
           let sent = 0; let failed = 0;
           if (replies.length) {
             try {
-              const sentList = await sendMessagesV2(r.turn.key, replies, [], agyBody.replyToMessageId ?? null);
+              const sentList = await sendMessagesV2(r.turn.key, replies, [], agyBody.replyToMessageId ?? null, r.turn.atUserId ?? null);
               sent = replies.length;
               // ⚠️ 自己发的消息必须记回上下文（2026-11-25 实测漏了）：
               // 其他所有发送路径（控制台/工具发送/send-burst）都会 recordSentMessagesV2 + 更新

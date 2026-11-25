@@ -1,5 +1,10 @@
 # AGY 侧能力缺口矩阵（2026-11-25）
 
+> **状态更新（2026-11-25 22:0x）**：AGY 侧已落地 `scripts/agy-api.mjs`（20+ 子命令，覆盖下面几乎全部 🟡）
+> 并在契约 §10 申请的三条已全部由桥接侧上线（v1.3）：
+> `complete.atUserId`（@人）、`GET /api/agy/onebot`（群列表/成员/历史只读）、prompt 措辞同步（不再说"没有工具/看不到图"）。
+> 所以本文档现在主要当**能力索引/对照表**看，不再是待办清单；剩下的开放项见 §3 末尾。
+>
 > 给 Antigravity 那边的 agent：这是「DSH 模式下模型能做的事」逐条对照「AGY 侧现在能不能做」。
 > 三个标记：**✅ 已有** / **🟡 桥接端点有、AGY 缺 CLI（最省力的活儿）** / **🔴 桥接侧也没有（要协商）**。
 > 工具名是 DSH 的 MCP 工具名；参数照 `src/mcp-snowluma-safe.js` 里同名工具的定义（那里有 JSON schema + 它调哪个端点）。
@@ -37,6 +42,9 @@
 ---
 
 ## 2. 🟡 端点现成、只缺一个 CLI（建议全部补，工作量很小）
+
+> **2026-11-25 22:0x：这一整节已由 AGY 侧的 `scripts/agy-api.mjs` 补齐**（20+ 子命令）✓
+> 保留表格是为了让双方都知道"每个能力对应哪个端点"，方便对账/排错。
 
 ### 2.1 行为闭环 —— **这三条最重要，因为 prompt 现在明确要求它做，而它做不到** ✗
 
@@ -93,12 +101,15 @@
 
 ## 3. 🔴 桥接侧也没有（先登记，不要自己实现）
 
+> **2026-11-25 22:0x 更新：前三项已上线 v1.3；第四项（看图）AGY 侧已用 `message-images` + 原生读图解决。**
+> 这一段保留下来当"当初为什么没有"的说明。
+
 | 能力 | 现状 | 建议 |
 |---|---|---|
-| **@某人**（发出去时真正 @ 到人） | `complete` 只有 `replyToMessageId`，没有 `atUserId` ✗ | 桥接加一个字段就行（一行）；要先在 `AGY_CONTRACT.md` §10 登记 |
-| **余额查询**（`qq_get_balance`） | 桥接**没有** HTTP 端点：余额是在 MCP 里现算的 | 桥接加 `GET /api/socialV2/balance`，AGY 侧再加 CLI |
-| **群列表 / 群成员列表 / 群历史**（`qq_list_groups` / `qq_get_group_members` / `qq_get_group_history`） | 这三个工具**直接打 OneBot**，没有 HTTP 端点 ✗ | 桥接加只读端点（`/api/agy/onebot?action=...` 白名单式） |
-| **看图**（多模态） | 端点能拿到字节，但 prompt 里只有 `[图片]` 标记；模型本身看不见图 | 见 §4.1 |
+| **@某人** | ✅ **v1.3 已加**：`complete` 支持 `atUserId`（5~12 位数字，只作用于第一条 replies，脏值静默丢弃） | AGY 侧：`agy-reply-and-wait.mjs` 的 batch JSON 里加 `"atUserId": 123456789` 即可（需 AGY 侧补解析）|
+| **群列表 / 群成员 / 群历史** | ✅ **v1.3 已加**：`GET /api/agy/onebot?action=get_group_list\|get_group_member_list\|get_group_msg_history&groupId=…&messageSeq=…`（只读白名单 + 群白名单）| AGY 侧：`agy-api.mjs onebot --action …` 之类子命令即可 |
+| **余额查询** | ❌ **不做了**：AGY 人格跑在 Gemini 上，报 DeepSeek 余额本来就不对路；AGY 侧已用本机 `agy-quota` 查 Antigravity 额度 ✓ | 除非以后要"跨人格统一口径"，再谈 |
+| **看图**（多模态） | ✅ **AGY 侧已解决**：`message-images` 把帧落到 `state/agy-frame-*`，再用原生文件读取看图（prompt 已改口，不再说"看不到图"）| 桥接侧不再需要做视觉转述 ✓ |
 
 ---
 
@@ -106,16 +117,10 @@
 
 ### 4.1 看图
 
-现在 prompt 里写的是"你这轮看不到图（AGY 侧没有读图通道），不要假装看过"。
-**可能不用改桥接就能解决**，值得先试：
-
-1. `GET /api/images/message?key=…&messageId=…`（⚠️ 带 `x-agent-token`）拿字节
-2. 存成临时文件（比如 `state/agy-frame-<messageId>.png`，注意**别写进 state 之外**、用完删掉）
-3. 用 Antigravity 的文件读取/看图能力打开它
-
-如果 Antigravity 的 agent 能"看"图片文件 → 这条路成立，AGY 侧就能自己补齐看图；
-如果只能读文本 → 那必须桥接侧做**图片转述**（把图交给一个视觉模型描述后再塞 prompt），
-这条要先在 §10 登记、由桥接侧实现。
+**已解决（2026-11-25）**：AGY 侧做了 `agy-api.mjs message-images --message-id <id>`，
+把图片字节落到 `state/agy-frame-*`，再用 Antigravity 的原生文件读取看图 —— 这条路成立 ✓
+桥接侧的 prompt 也已经改口：不再说"你看不到图"，而是"图只有 `[图片]` 标记，要看就用 `message-images`"。
+（如果以后 Antigravity 的读图能力有变动，再回退到"桥接侧视觉转述"方案。）
 
 ### 4.2 长上下文
 
@@ -126,12 +131,17 @@ AGY 每次会话的上下文是有限的。建议：靠 payload 里已经有的�
 
 ## 5. 建议的动手顺序
 
-1. **wake-config + wait**（§2.1）—— prompt 现在要求但做不到，补齐后"潜水/等待"才闭环
-2. **prompt**（§2.2 第一条）—— 让它能看到完整角色卡
-3. **message-detail / active-members**（§2.2）—— 认人、@人
-4. **meme / poke / 语音库 / 生图**（§2.3）—— 表达方式对齐
-5. **管理类**（§2.4）—— 只有 bot 是管理员才有意义
-6. 🔴 **三项**（§3）—— 先在 `docs/AGY_CONTRACT.md` §10 登记，等桥接侧加端点
+> **2026-11-25 22:0x：1~5 已由 AGY 侧 `agy-api.mjs` 完成；6 里三项桥接侧已上线（v1.3），余额不做。**
+> 所以现在只剩"联调验证"：让 AGY 侧按 prompt 里的新指令跑几轮，确认 `wake-config`（真能潜水）、
+> `wait-reply`/`wait-sleep`（真能等）、`message-images`（真能看图）、`atUserId`（真能 @ 人）都落地。
+
+1. ✅ **wake-config + wait**（§2.1）
+2. ✅ **prompt**（§2.2 第一条，角色卡全文）
+3. ✅ **message-detail / active-members**（§2.2）
+4. ✅ **meme / poke / 语音库 / 生图**（§2.3）
+5. ✅ **管理类**（§2.4）
+6. ✅ **三项桥接侧改动**（§3）：`complete.atUserId`、`/api/agy/onebot`、prompt 措辞（v1.3）；
+   余额不做（AGY 侧用 `agy-quota`）
 
 ---
 

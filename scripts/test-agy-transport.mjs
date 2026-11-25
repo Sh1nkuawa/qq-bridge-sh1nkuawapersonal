@@ -257,4 +257,22 @@ await acount('★★ enqueue({notify:false}) 不叫醒 worker；改写后再 wak
   assert.equal(got.prompt, '短提示：请读 state/agy-context-xxx.md', 'worker 必须拿到改写后的短提示，而不是 20KB 原文 ✗');
 });
 
+ok('★★ complete 带 atUserId 会留在回合上（@人用）；脏值当没传', () => {
+  const t = mk();
+  const good = t.enqueue({ persona: 'p', key: 'g', prompt: 'x' });
+  t.claim({ turnId: good.turnId, workerId: 'w1' });
+  const r1 = t.complete({ turnId: good.turnId, workerId: 'w1', atUserId: '123456789' });
+  assert.equal(r1.ok, true);
+  assert.equal(r1.turn.atUserId, '123456789');
+
+  const dirty = t.enqueue({ persona: 'p', key: 'g', prompt: 'x' });
+  t.claim({ turnId: dirty.turnId, workerId: 'w1' });
+  const r2 = t.complete({ turnId: dirty.turnId, workerId: 'w1', atUserId: 'abc@123' });
+  assert.equal(r2.turn.atUserId, null, '脏值不能透传到 at 段');
+
+  const none = t.enqueue({ persona: 'p', key: 'g', prompt: 'x' });
+  t.claim({ turnId: none.turnId, workerId: 'w1' });
+  assert.equal(t.complete({ turnId: none.turnId, workerId: 'w1' }).turn.atUserId, null);
+});
+
 console.log(`\n全部通过：${n} 项断言组`);

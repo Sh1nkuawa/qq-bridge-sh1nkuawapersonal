@@ -102,6 +102,7 @@ QQ ⇄ SnowLuma ⇄ 桥接（我们）
   "workerId": "agy-小鲸鱼-4242",
   "replies": ["第一句", "第二句"],
   "replyToMessageId": -1234567890,
+  "atUserId": "123456789",
   "meta": { "rounds": 3, "note": "自由填写，仅记日志" }
 }
 ```
@@ -110,6 +111,7 @@ QQ ⇄ SnowLuma ⇄ 桥接（我们）
 |---|---|---|
 | `replies` | ✓ | **字符串数组** = 分条发送；空数组 = 只标已读、不说话 ✓ |
 | `replyToMessageId` | ✗ | 要引用某条消息时给（QQ messageId，可为负） |
+| `atUserId` | ✗ | **真的 @ 到某个人**（QQ 号，5~12 位数字）；只作用于**第一条** replies。脏值（非纯数字/长度不对）会被**静默丢弃**（当没传）——绝不把奇怪的值塞进 OneBot 的 at 段 ✗ |
 | `meta` | ✗ | 只进日志，不发给 QQ |
 
 响应：`{ "ok": true, "sent": 2, "failed": 0 }`
@@ -158,6 +160,28 @@ worker 每轮可打这一条做自检 ✓
 
 `{ "turnId": "..." }` → `{ "ok": true, "leaseUntil": ... }`
 
+### 3.7 `GET /api/agy/onebot` — 只读 OneBot 查询（2026-11-25 v1.3 新增）
+
+补齐那三个**直连 OneBot、原本没有 HTTP 端点**的只读工具：
+
+```
+GET /api/agy/onebot?action=get_group_list
+GET /api/agy/onebot?action=get_group_member_list&groupId=541026885
+GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53200
+```
+
+| 项 | 说明 |
+|---|---|
+| 允许的 action | **只有三个**：`get_group_list` / `get_group_member_list` / `get_group_msg_history`（白名单；其它 action → `400 action-not-allowed`）|
+| 鉴权 | 和其它 `/api/agy/*` 一样：**只认控制台令牌**（`?token=` 或 `x-console-token`）；**带 `x-agent-token` 会 403** ✗ |
+| 白名单 | 群号必须过 `config.allow`/`deny`；不在白名单 → `403` |
+| 返回 | `{ ok, action, data }`；`get_group_list` 已按白名单过滤，`get_group_member_list` 只留 `{user_id, nickname, card}` |
+| 写操作 | **一个都没有** ✓（禁言/改名/踢人/公告都有自己的端点，不在这里）|
+| 失败 | `502` + `error`（常见原因：SnowLuma 没实现该动作 / 群没加入 / OneBot 掉线）|
+
+> `get_group_msg_history` 是否可用取决于 SnowLuma 有没有实现这个动作 —— 没实现就是 502，
+> **不是**你参数传错了 ✓
+
 ---
 
 ## 4. Turn 对象
@@ -183,9 +207,10 @@ worker 每轮可打这一条做自检 ✓
 2. **【本次消息快照】** —— 本轮要给模型看的未读消息（JSON，含 `readThroughSeq`）。
    ⚠️ AGY 那边的 agent **没有任何 QQ 工具**（没有 MCP），群消息**只能**靠这一段带过去；
    没有它模型只会看到"未读 N 条"，回什么全靠猜 ✗
-3. **【AGY 值守模式】** —— 明确告诉模型：上面提到的 `qq_*` 工具在你这边**不存在**，不要调用；
-   你只要把这一轮要说的话写成 `replies` 数组交给 `agy-reply-and-wait.mjs` ✓
-   （不写这段实测会空转十几分钟然后回 0 条 ✗）
+3. **【AGY 值守模式】** —— 明确告诉模型：上面提到的 `qq_*` 是 DSH 侧的 MCP 工具，**不要调用**；
+   扩展动作（角色卡全文 / 等人 / 收尾潜水 / 看图 / 表情包 / 拍一拍…）改用 `scripts/agy-api.mjs`；
+   它只要把这一轮要说的话写成 `replies` 数组交给 `agy-reply-and-wait.mjs` ✓
+   （v1.3 起：不再说"你没有任何工具 / 看不到图"—— AGY 侧已经有 CLI 和看图通道了 ✓）
 
 `readThroughSeq` 就是这个回合的已读水位：worker `complete` 之后，桥接会**自动**按它把已读水位
 提交掉（AGY 侧没有 `qq_mark_read`）。所以 worker 不需要、也没办法自己标已读 ✓
@@ -311,3 +336,6 @@ worker 每轮可打这一条做自检 ✓
 |---|---|---|---|
 | 2026-11-25 | 桥接侧 | **v1.1 无协议变更，只加字段/行为**：`status` 增加 `onDutyWorkerSeenAt` / `onDutyStale` / `workerSeenByPersona`；`turn.readThroughSeq` 现在真的会填（worker `complete` 后桥接自动提交已读）；`prompt` 必带【本次消息快照】+【AGY 值守模式】；>8KB 自动落盘 `state/agy-context-<turnId>.md`；05:00 换班会清掉旧人格未认领的回合 | ✅ 已上线（worker 无需改代码） |
 | 2026-11-25 | 桥接侧 | **v1.2 按人格分流**：`config.personaSchedule.personas[名字].transport` 可把某个人格钉到 `dsh` 或 `agy`（owner：小鲸鱼走 DSH、猫娘走 AGY）。`status` 增加 `dutyTransport` / `personaTransport`；`wait` 新增 idle 理由 `persona-on-dsh` | ✅ 已上线（worker 无需改代码；见到 `persona-on-dsh` 就是"这位不归你管"） |
+| 2026-11-25 | AGY 侧 | **`POST /api/agy/complete` 增加可选 `atUserId` 字段**：透传给 `sendMessagesV2`，让群聊回复能真正 @ 到指定群友（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3）：脏值静默丢弃；只作用于第一条 replies |
+| 2026-11-25 | AGY 侧 | **新增只读 OneBot 白名单端点**（如 `GET /api/agy/onebot?action=get_group_list\|get_group_member_list\|get_group_msg_history`）：补齐群列表/群成员/群历史只读查询（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3，见 §3.7）：只放三个只读动作 + 群白名单 |
+| 2026-11-25 | AGY 侧 | **同步【AGY 值守模式】prompt 措辞**：AGY 侧已落地 `scripts/agy-api.mjs`（涵盖 `wake-config`/`wait-reply`/`wait-sleep`/`prompt`/表情包/拍一拍/**`message-images` 落盘配合 `read_file` 原生看图**、以及本机 **`agy-quota`** 查 Antigravity 5h/周剩余额度，不再需要桥接侧做视觉转述或 DeepSeek 余额代理）。建议将 prompt 中「看不到图 / 没有任何工具」改表述为「无 MCP `qq_*` 工具，需扩展动作/看图/收尾潜水时使用 `scripts/agy-api.mjs`」避免指令冲突 | ✅ 已上线（v1.3）：`src/agy-prompt.js` 已改成"没有 MCP 的 qq_* 工具 + 用 agy-api.mjs 扩展"；看图改为 `message-images` 落盘再读，不再说"看不到图"；余额不再代做（AGY 侧用 `agy-quota`）|

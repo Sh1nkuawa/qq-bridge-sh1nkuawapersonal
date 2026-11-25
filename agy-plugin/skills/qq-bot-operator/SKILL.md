@@ -68,13 +68,40 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
   '@ | node scripts/agy-reply-and-wait.mjs --batch-stdin
   ```
 
-### 4. 长任务租约续期（超过 2~3 分钟时）
+### 4. 行为闭环、完整角色卡、看图与表达（`scripts/agy-api.mjs`）
+
+所有 `/api/socialV2/*` 与 `/api/images/*` 端点统一走 `scripts/agy-api.mjs`（自动区分鉴权前缀：`/api/agy/*` 只带 console token；`/api/socialV2/*` 双带 console token 与 `--session` 会话令牌）：
+
+```powershell
+# 完整角色卡（首次接班建议读一次）
+node scripts/agy-api.mjs prompt --key group:541026885 --session <会话令牌>
+
+# 行为闭环：回复前短静默 / 主动切回潜水收尾 / 沉睡前观察
+node scripts/agy-api.mjs wait-reply --key group:541026885 --session <会话令牌> --quiet-ms 10000
+node scripts/agy-api.mjs wake-config --key group:541026885 --session <会话令牌> --dive
+node scripts/agy-api.mjs wait-sleep --key group:541026885 --session <会话令牌> --timeout-ms 300000
+
+# 原生看图：落盘 -> 用 read_file 看 savedFiles[].path -> 清理
+node scripts/agy-api.mjs message-images --key group:541026885 --session <会话令牌> --message-id <msgId>
+node scripts/agy-api.mjs cleanup-frames
+
+# 查询本机 Antigravity 剩余额度（5 小时 / 每周百分比与重置倒计时）
+node scripts/agy-api.mjs agy-quota
+
+# 认人与表达（更多见 node scripts/agy-api.mjs help）
+node scripts/agy-api.mjs active-members --key group:541026885 --session <会话令牌>
+node scripts/agy-api.mjs meme-list --key group:541026885 --session <会话令牌> --tag happy --limit 8
+node scripts/agy-api.mjs send-meme --key group:541026885 --session <会话令牌> --path <meme路径>
+node scripts/agy-api.mjs send-poke --key group:541026885 --session <会话令牌> --target-user-id <uid>
+```
+
+### 5. 长任务租约续期（超过 2~3 分钟时）
 
 ```powershell
 node scripts/agy-touch.mjs --turn-id t-20261125-05-0001 --persona 猫娘侍从 --worker-id agy-猫娘侍从
 ```
 
-### 5. 查看日志与离线自检
+### 6. 查看日志与离线自检
 
 ```powershell
 # 查看 worker 侧结构化日志（UTF-8 JSONL）
