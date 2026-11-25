@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **355** 个被跟踪文件（其中 353 个文本文件、合计 **77,097** 行） —— 文件自带说明 **331**、人工补写 **23**、待补 **1**。
+统计：共 **357** 个被跟踪文件（其中 355 个文本文件、合计 **77,247** 行） —— 文件自带说明 **333**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -71,7 +71,7 @@
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 196 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 197 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -355,6 +355,7 @@
 | [`test-owner-dm.mjs`](../scripts/test-owner-dm.mjs) | 59 | 验证「owner 私聊命令」链路（用控制台模拟器，不需要 owner 真的发消息）。 | 文件自带 |
 | [`test-persona-lines.mjs`](../scripts/test-persona-lines.mjs) | 105 | persona-lines.js 单元测试：桥接"替机器人说的话"（禁言播报 / 生图开始提示）。 | 文件自带 |
 | [`test-persona-schedule.mjs`](../scripts/test-persona-schedule.mjs) | 108 | 每日人格轮换的离线回归：窗口、忙碌延后、不补切、幂等、轮换顺序 | 文件自带 |
+| [`test-persona-transport.mjs`](../scripts/test-persona-transport.mjs) | 83 | 按人格分流传输层（小鲸鱼→DSH，猫娘→AGY）的离线回归 | 文件自带 |
 | [`test-preset-local-tools.mjs`](../scripts/test-preset-local-tools.mjs) | 260 | 铁律 L7 的注册期断言：仿真会话的 preset **不得包含本地执行能力**。 | 文件自带 |
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
@@ -442,6 +443,7 @@
 | [`mood.js`](../src/mood.js) | 390 | 自研「心情」引擎（2026-10-23）：替代 dsh-feiyu-mood 的判断部分，**保留它的 UI**。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
 | [`persona-schedule.js`](../src/persona-schedule.js) | 94 | 每日人格轮换：北京时间每天 05:00 换一次角色卡（owner 2026-11-15 拍板）。 | 文件自带 |
+| [`persona-transport.js`](../src/persona-transport.js) | 66 | 按人格（persona）决定这一轮用哪条传输层：DSH 会话 还是 AGY worker | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
 | [`quote-ref.js`](../src/quote-ref.js) | 114 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |

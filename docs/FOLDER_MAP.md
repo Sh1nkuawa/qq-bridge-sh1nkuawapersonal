@@ -192,5 +192,6 @@ docs/
 - `docs/AGY_CONTRACT.md` —— **AGY 传输层契约**（v1）：桥接 ↔ Antigravity worker 的端点、Turn 结构、租约与重排语义、值班（persona）约定、错误码、日志格式、验收清单、双方目录边界。写这个是为了让"大脑换成 worker"时**人格/心情/双态/生日全部保留**（提示词仍由 `buildWakePromptV2` 拼，worker 只负责取→交给 agent→送回）。
 - docs/AGY_WORKER_TASK.md —— 交给 Antigravity agent 的任务包：要交付哪些文件、四个已知坑（10KB 截断/引号丢失/重复认领/租约过期）、六条验收、卡住时怎么在 AGY_CONTRACT §10 登记变更。
 - docs/AGY_HANDOFF.md —— AGY 交接单：现状、关键文件地图、踩过的坑（含 2026-11-25 第二轮那 5 个"看着跑了其实没生效"）、不打扰群里的验证做法、待办、协作规则与禁止事项。新会话先读这份。
+- docs/AGY_SIDE_TASKS.md —— **给 Antigravity 那边 agent 的工单**（它可以不懂我们这边的上下文）：现在该起哪个 worker、prompt 改了什么（快照/值守覆盖说明/落盘）、新的 idle 理由 `persona-on-dsh`、租约与换班注意、验收清单、明确不许做的事。交接时直接把这个文件丢给他。
 - `src/agy-prompt.js` 与 `scripts/test-agy-prompt.mjs` —— AGY 版 prompt 的拼装层（消息快照 / 值守覆盖说明 / >8KB 落盘短提示）与它的离线回归。单独抽出来是因为**这段字符串拼错不会报错**，只会在群里表现为"答非所问/回 0 条"。
 - `src/persona-transport.js` 与 `scripts/test-persona-transport.mjs` —— 按人格分流传输层的纯判定（小鲸鱼走 DSH、猫娘走 AGY）：读 `config.personaSchedule.personas[名字].transport`，决定这一轮花不花 API 钱。错了同样**不会报错**，只会默默多花钱，所以也要回归钉住。
