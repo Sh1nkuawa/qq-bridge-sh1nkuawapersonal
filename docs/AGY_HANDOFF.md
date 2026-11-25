@@ -9,10 +9,27 @@
 
 ```
 按人格分流已上线 ✓  小鲸鱼 → DSH   猫娘侍从 → AGY（**已实测跑通** ✓ 见 §1.3）
-transport = "agy" ✓   v1.1 修完 6 个"看起来跑了、其实没生效"的坑 ✓   套件 77/77 ✓
+transport = "agy" ✓   v1.1 修完 6 个"看起来跑了、其实没生效"的坑 ✓
+v1.3 已对接 AGY 侧在契约 §10 登记的三条（@人 / 只读 OneBot / prompt 措辞）✓   套件 77/77 ✓
 当前值班：**猫娘侍从**（2026-11-25 20:40 手动切过去做实测；05:00 会自动切回小鲸鱼）
 worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
+
+### 1.5 v1.3（2026-11-25 22:0x）
+
+AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地：
+
+1. `POST /api/agy/complete` 增加可选 **`atUserId`**（真的 @ 到人）：5~12 位纯数字，脏值**静默丢弃**，
+   只作用于第一条 replies。规范化在 `src/agy-transport.js` 的 `complete()`，有回归 ✓
+2. 新增 **`GET /api/agy/onebot`**（见契约 §3.7）：白名单只有
+   `get_group_list` / `get_group_member_list` / `get_group_msg_history` 三个**只读**动作，
+   群号必须过 `config.allow/deny`，没有任何写操作。**实测三个都通**（`get_group_msg_history` 也能用 ✓）
+3. **prompt 措辞同步**：AGY 侧已落地 `scripts/agy-api.mjs`（20+ 子命令，涵盖 wake-config / wait /
+   prompt / 表情包 / 拍一拍 / 生图 / **`message-images` 落盘 + 原生读图** / `agy-quota`），
+   所以【AGY 值守模式】不再说"你没有任何工具 / 看不到图"（旧事实会和 CLI 打架 ✗），
+   改成"没有 MCP 的 qq_* 工具；扩展动作走 `node scripts/agy-api.mjs`"。
+   预算：覆盖说明 1007 字、落盘短提示 1341 字（< 2500 上限 ✓）
+4. 余额查询**不做**了：AGY 人格跑 Gemini，报 DeepSeek 余额本来就不对路，AGY 侧用 `agy-quota` ✓
 
 ### 1.3 2026-11-25 20:40–20:50 的 AGY 实测（真跑通了）
 
@@ -130,6 +147,10 @@ worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，�
    放 `main()` 里面、或把值当参数传进去 ✓
 10. **`test-dsh-auth.mjs` 偶发红** —— 它真的去打本地 DSH 铸 Cookie；全量跑时偶尔和别的用例撞车。
    单独跑 `node scripts/run-offline-tests.mjs dsh-auth` 通常就绿 ✓（别当成自己改坏了）
+11. **绝对不要用 PowerShell 的 `Get-Content -Raw | Set-Content` 去改源码** ✗✗
+    （2026-11-25 踩过：`bridge.js` 被按 GBK 整份重写，3521 行中文全乱码，`node --check` 直接报
+    "Invalid or unexpected token"。只能 `git checkout -- <file>` 回 HEAD 再重做改动。）
+    改代码只用编辑器/edit 工具；批量文本替换用 node 脚本（`fs.readFileSync`/`writeFileSync` 都是 UTF-8 ✓）
 
 ---
 

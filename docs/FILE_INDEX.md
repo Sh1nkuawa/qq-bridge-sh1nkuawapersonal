@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **361** 个被跟踪文件（其中 359 个文本文件、合计 **78,459** 行） —— 文件自带说明 **337**、人工补写 **23**、待补 **1**。
+统计：共 **362** 个被跟踪文件（其中 360 个文本文件、合计 **79,150** 行） —— 文件自带说明 **338**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -75,7 +75,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 341 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_FEATURE_GAPS.md`](../docs/AGY_FEATURE_GAPS.md) | 194 | AGY 侧能力缺口矩阵（2026-11-25） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 205 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 226 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 204 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
@@ -176,6 +176,7 @@
 | [`affinity-admin.mjs`](../scripts/affinity-admin.mjs) | 65 | 用 Node 调好感度接口（原生 UTF-8，避免 PowerShell 5.1 的 -Body 编码坑） | 文件自带 |
 | [`affinity-file-admin.mjs`](../scripts/affinity-file-admin.mjs) | 105 | 离线改好感度：直接改 state/social-v2.json（桥接没开时用；开着会被内存覆盖，请停桥上用或改用 HTTP 接口） | 文件自带 |
 | [`affinity-report.mjs`](../scripts/affinity-report.mjs) | 79 | 群友好感度报表（只读）：从运行中的桥接拉当前分数，附今日变动与最近原因。 | 文件自带 |
+| [`agy-api.mjs`](../scripts/agy-api.mjs) | 670 | agy-api.mjs —— AGY worker 通用桥接 API CLI（补齐 docs/AGY_FEATURE_GAPS.md 全部 🟡 能力与原生看图） | 文件自带 |
 | [`agy-lib.mjs`](../scripts/agy-lib.mjs) | 617 | agy-lib.mjs —— AGY worker 共享工具（认证、HTTP 超时、断线重连、日志脱敏、CLI 参数解析） | 文件自带 |
 | [`agy-reply-and-wait.mjs`](../scripts/agy-reply-and-wait.mjs) | 328 | agy-reply-and-wait.mjs —— 把 agent 写好的回复送回桥接，并可选顺手领下一个回合 | 文件自带 |
 | [`agy-self-test.mjs`](../scripts/agy-self-test.mjs) | 629 | agy-self-test.mjs —— AGY worker CLI 端到端契约自检（零外部依赖，不修改 config.json 或线上队列） | 文件自带 |
