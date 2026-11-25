@@ -8,6 +8,7 @@
 //   - wait 遇 ECONNRESET / 超时 / 5xx ⇒ 退避 2 秒后重新 wait，不退出、不僵死
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,36 @@ export const DEFAULT_RPC_TIMEOUT_MS = 10000;
 export const DEFAULT_WAIT_GRACE_MS = 5000;
 export const DEFAULT_ERROR_BACKOFF_MS = 2000;
 export const DEFAULT_LOG_ERROR_EVERY = 5;
+
+export function workerLockPath(persona) {
+  const safe = Buffer.from(String(persona ?? 'default'), 'utf8').toString('hex');
+  return path.join(os.tmpdir(), `agy-worker-active-${safe}.json`);
+}
+
+function touchWorkerLock(persona, workerId, startedAt) {
+  if (process.env.AGY_NO_LOCK === '1') return;
+  const p = workerLockPath(persona);
+  try {
+    fs.writeFileSync(p, JSON.stringify({
+      pid: process.pid,
+      workerId: String(workerId ?? ''),
+      persona: String(persona ?? ''),
+      startedAt,
+      updatedAt: Date.now()
+    }), 'utf8');
+  } catch { /* ignore */ }
+}
+
+function releaseWorkerLock(persona) {
+  if (process.env.AGY_NO_LOCK === '1') return;
+  const p = workerLockPath(persona);
+  try {
+    const cur = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (cur && Number(cur.pid) === process.pid) {
+      fs.unlinkSync(p);
+    }
+  } catch { /* ignore */ }
+}
 
 export function argOf(name, dflt = null, argv = process.argv.slice(2)) {
   const flag = `--${name}`;
@@ -285,6 +316,7 @@ export async function waitAndClaimOne({
   fetchGraceMs = DEFAULT_WAIT_GRACE_MS,
   afterTurnId = null,
   loop = false,
+  exitOnNotOnDuty = false,
   notOnDutySleepMs = 7000,
   errorBackoffMs = DEFAULT_ERROR_BACKOFF_MS,
   maxConsecutiveErrors = loop ? 0 : 5,
@@ -298,6 +330,8 @@ export async function waitAndClaimOne({
   let consecutiveErrors = 0;
   let lastErrSig = '';
   let claimRetries = 0;
+  const lockStartedAt = Date.now();
+  touchWorkerLock(persona, workerId, lockStartedAt);
 
   const markRecoveredIfNeeded = () => {
     if (consecutiveErrors > 0) {
@@ -314,8 +348,10 @@ export async function waitAndClaimOne({
     }
   };
 
-  while (true) {
-    try {
+  try {
+    while (true) {
+      touchWorkerLock(persona, workerId, lockStartedAt);
+      try {
       const t0 = Date.now();
       const w = await apiGet({
         baseUrl,
@@ -360,6 +396,10 @@ export async function waitAndClaimOne({
           // persona-on-dsh：该人格已被分流给 DSH，绝不死等（AGY_SIDE_TASKS §2.5 / §4.8）
           if (reason === 'persona-on-dsh') {
             return { status: 'idle', reason, http: 200, transport: w.body.transport ?? 'dsh' };
+          }
+          // --exit-on-not-on-duty：切班后立刻结束本轮值守并收工（交给 sidecar 下次切回 AGY 时开新会话）
+          if (exitOnNotOnDuty && reason === 'not-on-duty') {
+            return { status: 'idle', reason, http: 200, onDuty: w.body.onDuty ?? null };
           }
           // 避免非值班时高频刷屏（契约 §3.1 / §8.2：5~10 秒后再 wait）
           if (notOnDutySleepMs > 0) await sleep(notOnDutySleepMs);
@@ -457,6 +497,7 @@ export async function waitAndClaimOne({
           logPath,
           secretToken: token
         });
+        if (exitOnNotOnDuty) return { status: 'idle', reason: 'not-on-duty', http: 403 };
         if (notOnDutySleepMs > 0) await sleep(notOnDutySleepMs);
         if (!loop) return { status: 'idle', reason: 'not-on-duty', http: 403 };
         continue;
@@ -547,6 +588,9 @@ export async function waitAndClaimOne({
       }
       if (errorBackoffMs > 0) await sleep(errorBackoffMs);
     }
+  }
+  } finally {
+    releaseWorkerLock(persona);
   }
 }
 

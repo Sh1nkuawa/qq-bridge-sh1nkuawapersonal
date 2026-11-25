@@ -33,16 +33,15 @@ node scripts/agy-status.mjs --persona 猫娘侍从
 
 重点看：`onDuty`、`dutyTransport`、`personaTransport`、`onDutyWorkerSeenAt`、`onDutyStale`（别只看 `lastWorkerSeenAt`）。
 
-### 2. 领取一个回合
+### 2. 领取一个回合（推荐 `--loop --exit-on-not-on-duty` 零消耗等活）
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --timeout-ms 90000
+node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --loop --exit-on-not-on-duty --timeout-ms 90000
 ```
 
-- 返回 `IDLE`：204 正常空闲，可立刻再轮询（或加 `--loop` 持续待命）。
-- 返回 `IDLE not-on-duty`：归 AGY 管但当前未轮到该人格值班，脚本已休眠约 7 秒，继续轮询不要退出。
-- 返回 `IDLE persona-on-dsh`：该人格已被分流给 DSH，**不要死等**，换归属 AGY 的人格或收工。
+- 加 `--loop --exit-on-not-on-duty` 且**不设 `NotificationTimeoutSeconds`**：群里安静（`204`）时在 Node.js 内静默循环、**不唤醒模型（0 token）**；直到真正收到有原因的唤醒，或切班返回 `IDLE not-on-duty` / `IDLE persona-on-dsh` 时才退出。
+- 不加 `--loop` 时：单次超时返回 `IDLE`。
 - 返回 `AGY_TURN_META` + `AGY_PROMPT_BEGIN ... END`：已成功 `claim`，原样阅读（若含落盘路径则先完整读 `.md`）。
 
 ### 3. 提交回复（推荐 `--batch-stdin` + `@' ... '@` + UTF-8）

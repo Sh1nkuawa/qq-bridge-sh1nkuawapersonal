@@ -151,7 +151,8 @@ function runScript(scriptName, args = [], stdinText = null) {
         ...process.env,
         AGY_BRIDGE_URL: baseUrl,
         AGY_CONSOLE_TOKEN: TEST_TOKEN,
-        AGY_LOG_PATH: testLogPath
+        AGY_LOG_PATH: testLogPath,
+        AGY_NO_LOCK: '1'
       },
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -458,8 +459,23 @@ try {
     assert.equal(r.stdout.trim(), 'IDLE persona-on-dsh');
   });
 
-  // 13. Log format & secret redaction check
-  await test('13. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
+  // 13. --loop --exit-on-not-on-duty exits immediately on shift change
+  await test('13. --loop --exit-on-not-on-duty 在非值班时立即返回 IDLE not-on-duty 以便会话下班', async () => {
+    const t0 = Date.now();
+    const r = await runScript('agy-wait-wake.mjs', [
+      '--persona', '猫娘侍从',
+      '--loop',
+      '--exit-on-not-on-duty',
+      '--not-on-duty-sleep-ms', '5000',
+      '--timeout-ms', '2000'
+    ]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), 'IDLE not-on-duty');
+    assert.ok(Date.now() - t0 < 3000, '应立即退出，不应等待 5000ms 休眠');
+  });
+
+  // 14. Log format & secret redaction check
+  await test('14. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
     const rawLog = fs.readFileSync(testLogPath, 'utf8');
     assert.ok(!rawLog.includes(TEST_TOKEN), '日志泄漏了测试令牌！');
     assert.ok(!rawLog.includes('测试行A1234567890'), '日志泄漏了 prompt 内容！');

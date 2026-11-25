@@ -124,6 +124,7 @@ async function loadInput() {
 const baseUrl = resolveBaseUrl(argOf('base-url'));
 const shouldWaitNext = hasFlag('wait') && !hasFlag('no-wait');
 const loop = hasFlag('loop');
+const exitOnNotOnDuty = hasFlag('exit-on-not-on-duty');
 const timeoutMs = Number(argOf('timeout-ms', '90000')) || 90000;
 const fetchGraceMs = argOf('fetch-grace-ms') != null
   ? Number(argOf('fetch-grace-ms'))
@@ -298,6 +299,7 @@ if (!shouldWaitNext) {
     fetchGraceMs,
     afterTurnId: input.turnId,
     loop,
+    exitOnNotOnDuty,
     notOnDutySleepMs,
     errorBackoffMs,
     maxConsecutiveErrors,

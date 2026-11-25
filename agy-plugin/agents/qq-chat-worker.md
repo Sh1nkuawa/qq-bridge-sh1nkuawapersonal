@@ -46,12 +46,14 @@ node scripts/agy-status.mjs --persona 猫娘侍从
 - `dutyTransport`：当前值班者走 `"dsh"` 还是 `"agy"`。若为 `"dsh"`，说明当前不是 AGY 值班（例如需等 05:00 换班或由桥接侧切换），属正常状态。
 - `personaTransport`：每个人格对应的传输层（如 `{"小鲸鱼":"dsh","猫娘侍从":"agy"}`）。只起归属 `"agy"` 的人格 worker。
 
-### 第 1 步：领取一个回合
+### 第 1 步：零消耗挂起领取一个回合
+
+**必须带 `--loop --exit-on-not-on-duty`，且调用 `run_command` 时不要设置 `NotificationTimeoutSeconds`**：这样群里安静再久都由 Node.js 在后台自行消化 `204`（0 token 消耗），只有真正出现有原因的唤醒、或切班变为 `not-on-duty` / `persona-on-dsh` 时才退出唤醒模型。
 
 ```powershell
 Set-Location D:\dsh\qq-bridge
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --timeout-ms 90000
+node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --loop --exit-on-not-on-duty --timeout-ms 90000
 ```
 
 可能的结果：
@@ -94,7 +96,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 @'
 {"turnId":"<turnId>","persona":"猫娘侍从","workerId":"<workerId>","replies":["第一句","第二句"]}
-'@ | node scripts/agy-reply-and-wait.mjs --batch-stdin --wait --timeout-ms 90000
+'@ | node scripts/agy-reply-and-wait.mjs --batch-stdin --wait --loop --exit-on-not-on-duty --timeout-ms 90000
 ```
 
 - 05:00 换班瞬间若遇到 `404 turn-not-found` 或 `409 already-claimed`，属于桥接清理旧人格未领回合的正常现象，**不要重发同一个 `turnId`**，直接重新 `wait`。

@@ -36,6 +36,7 @@ const fetchGraceMs = argOf('fetch-grace-ms') != null
   : DEFAULT_WAIT_GRACE_MS;
 const afterTurnId = argOf('after-turn-id');
 const loop = hasFlag('loop');
+const exitOnNotOnDuty = hasFlag('exit-on-not-on-duty');
 const notOnDutySleepMs = argOf('not-on-duty-sleep-ms') != null
   ? Number(argOf('not-on-duty-sleep-ms'))
   : 7000;
@@ -70,6 +71,7 @@ async function runSupervisor() {
         fetchGraceMs,
         afterTurnId,
         loop,
+        exitOnNotOnDuty,
         notOnDutySleepMs,
         errorBackoffMs,
         maxConsecutiveErrors,

@@ -190,9 +190,10 @@ IDLE not-on-duty        ← 你归 AGY 管，但现在不是你的班
 
 - 在 `docs/AGY_CONTRACT.md` §10 里**登记一行**（日期 / 提出方 / 想怎样 / 为什么）✓
 - 桥接侧改完 → 重启 → 你在 `state/bridge.log` 里看到生效 → 续测 ✓
-- 目前**已知还没做的**（不用你提，桥接侧记着）：
-  1. 生图 / 拍一拍 / 黑话提交的 CLI（`agy-tools.mjs` 现在只有 `memory-*` / `sticker` / `voice`）
-  2. **AGY 侧看图**：现在 prompt 会老实说"看不到图"，要真能看就得桥接侧把图下载/转述后带进 prompt
+- **能力缺口全表在 [`docs/AGY_FEATURE_GAPS.md`](AGY_FEATURE_GAPS.md)**（2026-11-25 逐条对照过）：
+  哪些是"端点现成、只缺 CLI"（🟡，最省力），哪些是"桥接侧也没有、得先登记"（🔴）。
+  目前 🔴 只有三件：**@某人**（complete 缺 `atUserId`）、**余额查询**（没有 HTTP 端点）、
+  **群列表/群成员/群历史**（这三个工具直接打 OneBot）、外加**看图**（取决于 Antigravity 能不能读图片文件）。
 
 ---
 

@@ -48,16 +48,24 @@ if (-not (Test-Path $parentDir)) {
   New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
 }
 
-if (Test-Path $TargetDir) {
-  Remove-Item -Path $TargetDir -Recurse -Force
+if (-not (Test-Path $TargetDir)) {
+  New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 }
-New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 
+# 原地覆盖更新，避免正在运行的 sidecar 进程占用目录 CWD 导致 Remove-Item 报文件占用
 $ItemsToCopy = @("plugin.json", "mcp_config.json", "agents", "skills", "sidecars")
 foreach ($item in $ItemsToCopy) {
   $src = Join-Path $SourceDir $item
   if (Test-Path $src) {
-    Copy-Item -Path $src -Destination (Join-Path $TargetDir $item) -Recurse -Force
+    if (Test-Path $src -PathType Container) {
+      $dst = Join-Path $TargetDir $item
+      if (-not (Test-Path $dst)) {
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
+      }
+      Copy-Item -Path (Join-Path $src "*") -Destination $dst -Recurse -Force
+    } else {
+      Copy-Item -Path $src -Destination (Join-Path $TargetDir $item) -Force
+    }
   }
 }
 
