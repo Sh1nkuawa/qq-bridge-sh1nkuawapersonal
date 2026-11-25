@@ -70,10 +70,12 @@ node scripts/agy-wait-wake.mjs --persona 小鲸鱼 --timeout-ms 90000
 
 ### 第 3 步：送回回复并顺手等待下一回合
 
-**必须优先使用 PowerShell here-string（`@' ... '@`）配合 `--batch-stdin`**，防止 PowerShell 吞掉 JSON 中的双引号：
+**必须优先使用 PowerShell here-string（`@' ... '@`）配合 `--batch-stdin`**，并且**务必先将 `$OutputEncoding` 设为无 BOM UTF-8**（否则 Windows PowerShell 5.1 管道默认 ASCII 会把中文变成 `????`）：
 
 ```powershell
 Set-Location D:\dsh\qq-bridge
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 @'
 {"turnId":"<turnId>","persona":"小鲸鱼","workerId":"<workerId>","replies":["第一句","第二句"]}
 '@ | node scripts/agy-reply-and-wait.mjs --batch-stdin --wait --timeout-ms 90000

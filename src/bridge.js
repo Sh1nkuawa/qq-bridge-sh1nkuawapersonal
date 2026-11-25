@@ -4776,6 +4776,14 @@ async function main() {
         if (req.method === 'POST' && action === 'requeue') {
           const r = agyTransport.requeue({ turnId: agyBody.turnId, reason: agyBody.reason, note: agyBody.note });
           log(`[agy] 回合退回 ${agyBody.turnId}（${agyBody.reason ?? 'manual'}）` + (r.attempts ? ` attempts=${r.attempts}` : ''));
+          if (!r.ok && r.error === 'requeued-too-many') {
+            try {
+              const dead = agyTransport.snapshot ? null : null;
+              // 该回合已被丢弃 ⇒ 用 key 释放（turnId 已不在队列里，key 从退回前拿不到时就跳过）
+              const dk = r.turn?.key ?? agyBody.key;
+              if (dk) agyReleaseTurn(String(dk), { dropped: true });
+            } catch { /* ignore */ }
+          }
           sendJson(r.ok ? { ok: true, attempts: r.attempts } : { ok: false, error: r.error }, r.http ?? 200);
           return;
         }
@@ -4794,6 +4802,8 @@ async function main() {
             }
           }
           agyLastCompleteAt = Date.now();
+          // ⭐ 必须释放繁忙标记，否则这一轮结束后所有新唤醒都会被挡住（AGY 侧联调发现 ✗）
+          agyReleaseTurn(r.turn.key);
           log(`[agy] 回合完成 ${r.turn.turnId}（${r.turn.persona}）发送 ${sent} 条，失败 ${failed} 条`);
           sendJson({ ok: true, sent, failed });
           return;
@@ -10352,6 +10362,41 @@ async function main() {
    * 当前角色卡绑定的模型。没配 `personaSchedule.personas[角色名]` 就回落到 cfg.dsh.*。
    * 注意：这里**每次现读角色卡** ⇒ 手动切换/每日轮换都会立即生效（配合按模型串去重）。
    */
+  /**
+   * AGY 回合收尾：释放"会话繁忙"标记。
+   * 照抄 DSH turn/end 的收尾（bridge.js turn/end 分支），但**不发"未设置唤醒条件"提醒** ✗
+   * —— AGY 模式下模型没有 qq_set_wake_config 这类工具，提醒会造成噪音。
+   * 2026-11-25 联调发现：complete 后不放行 ⇒ 后续 @ 全被 isConversationBusyV2 挡住、enqueued 停在 1 ✗
+   */
+  function agyReleaseTurn(key, { dropped = false } = {}) {
+    try {
+      pendingWakeKeys.delete(key);
+      disarmPendingWakeLease(key);
+      activeWaits.delete(key);
+      wakeConfigUpdatedKeys.delete(key);
+      markReadCalledKeys.delete(key);
+      wakeConfigMissCount.delete(key);
+      const st = getSocialV2State(key);
+      try { ensureWakeableV2(st, { key }); } catch { /* ignore */ }
+      if (dropped) {
+        log(`[agy] ${key} 回合被丢弃（超过重排上限）→ 已释放繁忙标记，等下一条消息`);
+        return;
+      }
+      // 繁忙期间被暂存的唤醒原因：按最高优先级补排一次（对齐 turn/end 的收尾）
+      try {
+        const pr = st?.pendingWakeReasons;
+        const keys = pr && typeof pr === 'object' ? Object.keys(pr).filter((k) => pr[k]) : [];
+        if (keys.length) {
+          const top = keys.sort((a, b) => wakePriorityV2(b) - wakePriorityV2(a))[0];
+          log(`[agy] ${key} 回合释放后补排暂存唤醒（${top}）`);
+          scheduleWakeV2(key, top);
+        }
+      } catch { /* ignore */ }
+    } catch (error) {
+      log(`[agy] 释放繁忙标记失败 ${key}：${error?.message ?? error}`);
+    }
+  }
+
   function personaModelFor(roleName) {
     const table = cfg.personaSchedule?.personas;
     const hit = table && typeof table === 'object' ? table[String(roleName ?? '')] : null;

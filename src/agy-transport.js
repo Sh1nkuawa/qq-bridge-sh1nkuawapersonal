@@ -156,7 +156,7 @@ export function createAgyTransport({
     if (turn.attempts > maxAttempts) {
       turns.delete(id);
       stats.dropped += 1;
-      return { ok: false, http: 409, error: AGY_ERRORS.REQUEUED_TOO_MANY, attempts: turn.attempts };
+      return { ok: false, http: 409, error: AGY_ERRORS.REQUEUED_TOO_MANY, attempts: turn.attempts, turn };
     }
     const list = q(turn.persona);
     list.unshift(turn);

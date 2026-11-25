@@ -41,9 +41,11 @@ node scripts/agy-wait-wake.mjs --persona 小鲸鱼 --timeout-ms 90000
 
 ### 3. 提交回复（推荐 `--batch-stdin` + `@' ... '@`）
 
-PowerShell 命令行参数容易吞双引号，**务必优先使用 here-string 经标准输入传入 JSON**：
+PowerShell 命令行参数容易吞双引号，且 Windows PowerShell 5.1 管道默认 ASCII 会把中文变成 `????`，**务必先设 UTF-8 `$OutputEncoding` 再用 here-string 经标准输入传入 JSON**：
 
 ```powershell
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 @'
 {"turnId":"t-20261125-05-0001","persona":"小鲸鱼","workerId":"agy-小鲸鱼","replies":["第一句","第二句"]}
 '@ | node scripts/agy-reply-and-wait.mjs --batch-stdin

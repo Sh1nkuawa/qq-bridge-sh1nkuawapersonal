@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **351** 个被跟踪文件（其中 349 个文本文件、合计 **75,802** 行） —— 文件自带说明 **327**、人工补写 **23**、待补 **1**。
+统计：共 **351** 个被跟踪文件（其中 349 个文本文件、合计 **75,851** 行） —— 文件自带说明 **327**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -46,13 +46,13 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`qq-chat-worker.md`](../agy-plugin/agents/qq-chat-worker.md) | 93 | QQ Chat Worker（AGY 传输层值守指令） | 文件自带（标题） |
+| [`qq-chat-worker.md`](../agy-plugin/agents/qq-chat-worker.md) | 95 | QQ Chat Worker（AGY 传输层值守指令） | 文件自带（标题） |
 
 ## agy-plugin/skills/qq-bot-operator
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`SKILL.md`](../agy-plugin/skills/qq-bot-operator/SKILL.md) | 97 | QQ Bot Operator（AGY 传输层操作手册） | 文件自带（标题） |
+| [`SKILL.md`](../agy-plugin/skills/qq-bot-operator/SKILL.md) | 99 | QQ Bot Operator（AGY 传输层操作手册） | 文件自带（标题） |
 
 ## assets
 
@@ -417,7 +417,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,277 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,322 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
