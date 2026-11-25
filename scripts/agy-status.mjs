@@ -1,10 +1,11 @@
-// agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status）
+// agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status，10 秒硬超时）
 //
 // 用法：
 //   node scripts/agy-status.mjs
 //   node scripts/agy-status.mjs --persona 小鲸鱼 --base-url http://127.0.0.1:3100
 
 import {
+  DEFAULT_RPC_TIMEOUT_MS,
   apiGet,
   appendWorkerLog,
   argOf,
@@ -33,7 +34,7 @@ const res = await apiGet({
   baseUrl,
   token,
   pathname: '/api/agy/status',
-  timeoutMs: 15000
+  timeoutMs: DEFAULT_RPC_TIMEOUT_MS
 });
 
 if (logFlag || res.http !== 200) {

@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **351** 个被跟踪文件（其中 349 个文本文件、合计 **75,851** 行） —— 文件自带说明 **327**、人工补写 **23**、待补 **1**。
+统计：共 **351** 个被跟踪文件（其中 349 个文本文件、合计 **76,134** 行） —— 文件自带说明 **327**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -166,12 +166,12 @@
 | [`affinity-admin.mjs`](../scripts/affinity-admin.mjs) | 65 | 用 Node 调好感度接口（原生 UTF-8，避免 PowerShell 5.1 的 -Body 编码坑） | 文件自带 |
 | [`affinity-file-admin.mjs`](../scripts/affinity-file-admin.mjs) | 105 | 离线改好感度：直接改 state/social-v2.json（桥接没开时用；开着会被内存覆盖，请停桥上用或改用 HTTP 接口） | 文件自带 |
 | [`affinity-report.mjs`](../scripts/affinity-report.mjs) | 79 | 群友好感度报表（只读）：从运行中的桥接拉当前分数，附今日变动与最近原因。 | 文件自带 |
-| [`agy-lib.mjs`](../scripts/agy-lib.mjs) | 459 | agy-lib.mjs —— AGY worker 共享工具（认证、HTTP、日志脱敏、CLI 参数解析） | 文件自带 |
-| [`agy-reply-and-wait.mjs`](../scripts/agy-reply-and-wait.mjs) | 310 | agy-reply-and-wait.mjs —— 把 agent 写好的回复送回桥接，并可选顺手领下一个回合 | 文件自带 |
-| [`agy-self-test.mjs`](../scripts/agy-self-test.mjs) | 409 | agy-self-test.mjs —— AGY worker CLI 端到端契约自检（零外部依赖，不修改 config.json 或线上队列） | 文件自带 |
-| [`agy-status.mjs`](../scripts/agy-status.mjs) | 55 | agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status） | 文件自带 |
+| [`agy-lib.mjs`](../scripts/agy-lib.mjs) | 569 | agy-lib.mjs —— AGY worker 共享工具（认证、HTTP 超时、断线重连、日志脱敏、CLI 参数解析） | 文件自带 |
+| [`agy-reply-and-wait.mjs`](../scripts/agy-reply-and-wait.mjs) | 326 | agy-reply-and-wait.mjs —— 把 agent 写好的回复送回桥接，并可选顺手领下一个回合 | 文件自带 |
+| [`agy-self-test.mjs`](../scripts/agy-self-test.mjs) | 475 | agy-self-test.mjs —— AGY worker CLI 端到端契约自检（零外部依赖，不修改 config.json 或线上队列） | 文件自带 |
+| [`agy-status.mjs`](../scripts/agy-status.mjs) | 56 | agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status，10 秒硬超时） | 文件自带 |
 | [`agy-touch.mjs`](../scripts/agy-touch.mjs) | 64 | agy-touch.mjs —— 续租正在处理的回合（POST /api/agy/touch） | 文件自带 |
-| [`agy-wait-wake.mjs`](../scripts/agy-wait-wake.mjs) | 81 | agy-wait-wake.mjs —— 领一个 AGY 回合，并把 prompt 原样打印到标准输出 | 文件自带 |
+| [`agy-wait-wake.mjs`](../scripts/agy-wait-wake.mjs) | 132 | agy-wait-wake.mjs —— 领一个 AGY 回合，并把 prompt 原样打印到标准输出 | 文件自带 |
 | [`apply-allowlists.mjs`](../scripts/apply-allowlists.mjs) | 33 | 按核实过的号写入两个项目的白名单配置 | 文件自带 |
 | [`archive-dsh-sessions.mjs`](../scripts/archive-dsh-sessions.mjs) | 140 | 归档 DSH 会话：把不再使用的会话目录搬到 ~/.dsh/sessions-archive/ 下（**可逆**，不删任何东西）。 | 文件自带 |
 | [`arknights-daily.mjs`](../scripts/arknights-daily.mjs) | 14 | !/usr/bin/env node | 文件自带 |
@@ -409,7 +409,7 @@
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
 | [`affinity.js`](../src/affinity.js) | 329 | affinity.js — 群友好感度（关系）引擎：**纯函数**，不依赖桥接内存，方便单测。 | 文件自带 |
-| [`agy-transport.js`](../src/agy-transport.js) | 219 | AGY 传输层：唤醒队列 + 租约 + 重排（纯逻辑，不碰 bridge.js 内部） | 文件自带 |
+| [`agy-transport.js`](../src/agy-transport.js) | 233 | AGY 传输层：唤醒队列 + 租约 + 重排（纯逻辑，不碰 bridge.js 内部） | 文件自带 |
 | [`ark-image.mjs`](../src/ark-image.mjs) | 140 | 火山方舟 **Agent Plan**（视觉模型）生图后端。 | 文件自带 |
 | [`arknights-command.js`](../src/arknights-command.js) | 82 | 明日方舟日活：**触发命令的判定**（纯函数，可离线测试）。 | 文件自带 |
 | [`bili-auth.js`](../src/bili-auth.js) | 316 | B 站登录态管理：① cookie jar 滑动续期 ② 失效时扫码续期（给桥接用） | 文件自带 |
@@ -417,7 +417,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,322 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,347 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

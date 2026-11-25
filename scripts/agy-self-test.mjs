@@ -33,6 +33,8 @@ let onDuty = '小鲸鱼';
 let lastWorkerSeenAt = 0;
 let lastCompleteAt = 0;
 const sentBatches = [];
+let injectDropCount = 0;
+let injectHangCount = 0;
 
 function readReqBody(req) {
   return new Promise((resolve, reject) => {
@@ -67,6 +69,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && action === 'wait') {
+    if (injectDropCount > 0) {
+      injectDropCount -= 1;
+      req.socket.destroy();
+      return;
+    }
+    if (injectHangCount > 0) {
+      injectHangCount -= 1;
+      // 模拟服务端卡死不回包，验证客户端 fetch 硬超时 + 退避重试
+      return;
+    }
     const persona = String(url.searchParams.get('persona') ?? '').trim();
     if (!persona) return sendJson({ ok: false, error: 'bad-request' }, 400);
     const got = await transport.wait({
@@ -384,13 +396,63 @@ try {
     assert.deepEqual(ids, new Set([t1.turnId, t2.turnId]));
   });
 
-  // 10. Log format & secret redaction check
-  await test('10. 日志为合法单行 JSON，且严禁包含令牌或完整 prompt', async () => {
+  // 10. #7: ECONNRESET mid-wait recovery (bridge restart)
+  await test('10. #7 桥接重启掐断连接（ECONNRESET）时退避重试且自动恢复领活', async () => {
+    injectDropCount = 2;
+    const t = transport.enqueue({ persona: '小鲸鱼', key: 'group:541026885', prompt: '断线重连后领到的回合' });
+    const w = await runScript('agy-wait-wake.mjs', [
+      '--persona', '小鲸鱼',
+      '--loop',
+      '--timeout-ms', '2000',
+      '--error-backoff-ms', '100',
+      '--log-error-every', '2'
+    ]);
+    assert.equal(w.status, 0, w.stderr);
+    const parsed = parseTurnOutput(w.stdout);
+    assert.equal(parsed.meta.turnId, t.turnId);
+    assert.equal(parsed.prompt, '断线重连后领到的回合');
+
+    const c = await runScript(
+      'agy-reply-and-wait.mjs',
+      ['--batch-stdin'],
+      JSON.stringify({ turnId: t.turnId, persona: '小鲸鱼', workerId: parsed.meta.workerId, replies: [] })
+    );
+    assert.equal(c.status, 0);
+  });
+
+  // 11. #7: Stalled long-poll hard fetch timeout recovery
+  await test('11. #7 服务端假死挂起时触发 fetch 硬超时并自动重连领活', async () => {
+    injectHangCount = 1;
+    const t = transport.enqueue({ persona: '小鲸鱼', key: 'group:541026885', prompt: '超时重连后领到的回合' });
+    const w = await runScript('agy-wait-wake.mjs', [
+      '--persona', '小鲸鱼',
+      '--loop',
+      '--timeout-ms', '1000',
+      '--fetch-grace-ms', '300',
+      '--error-backoff-ms', '100',
+      '--log-error-every', '1'
+    ]);
+    assert.equal(w.status, 0, w.stderr);
+    const parsed = parseTurnOutput(w.stdout);
+    assert.equal(parsed.meta.turnId, t.turnId);
+
+    const c = await runScript(
+      'agy-reply-and-wait.mjs',
+      ['--batch-stdin'],
+      JSON.stringify({ turnId: t.turnId, persona: '小鲸鱼', workerId: parsed.meta.workerId, replies: [] })
+    );
+    assert.equal(c.status, 0);
+  });
+
+  // 12. Log format & secret redaction check
+  await test('12. 日志为合法单行 JSON，含断线/恢复事件且严禁包含令牌或完整 prompt', async () => {
     const rawLog = fs.readFileSync(testLogPath, 'utf8');
     assert.ok(!rawLog.includes(TEST_TOKEN), '日志泄漏了测试令牌！');
     assert.ok(!rawLog.includes('测试行A1234567890'), '日志泄漏了 prompt 内容！');
     const lines = rawLog.trim().split('\n');
-    assert.ok(lines.length >= 6, `日志条目过少: ${lines.length}`);
+    assert.ok(lines.length >= 8, `日志条目过少: ${lines.length}`);
+    let sawWaitError = false;
+    let sawRecovered = false;
     for (const line of lines) {
       const obj = JSON.parse(line);
       assert.equal(typeof obj.at, 'number');
@@ -399,7 +461,11 @@ try {
       assert.equal(typeof obj.event, 'string');
       assert.equal('token' in obj, false);
       assert.equal('prompt' in obj, false);
+      if (obj.event === 'error' && obj.where === 'wait') sawWaitError = true;
+      if (obj.event === 'recovered') sawRecovered = true;
     }
+    assert.ok(sawWaitError, '未记录 wait 断线 error 日志');
+    assert.ok(sawRecovered, '未记录断线后 recovered 恢复日志');
   });
 
   console.log(`\n[ALL PASS] ${passed}/${passed} 项 AGY worker 契约测试通过`);

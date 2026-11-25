@@ -958,6 +958,26 @@ function normalizeIdList(value) {
 // ── AGY 传输层（config.transport === "agy" 时启用）────────────────────────────
 const agyTransport = createAgyTransport();
 let agyLastWorkerSeenAt = 0;
+
+/** 每分钟回收超时租约；丢弃的回合要顺手释放"会话繁忙"（AGY 侧 2026-11-25 指出：之前根本没调 sweep ✗）。 */
+function agySweepTick() {
+  try {
+    for (const item of agyTransport.sweep()) {
+      if (item.requeued) {
+        log(`[agy] 租约超时，回合 ${item.turnId} 已重排（attempts=${item.attempts}）`);
+      } else if (item.error === 'requeued-too-many') {
+        log(`[agy] 租约超时且超过重排上限，回合 ${item.turnId} 丢弃`);
+        if (item.key) agyReleaseTurn(String(item.key), { dropped: true });
+      }
+    }
+  } catch (error) {
+    log(`[agy] sweep 失败：${error?.message ?? error}`);
+  }
+}
+try {
+  const t = setInterval(agySweepTick, 60 * 1000);
+  if (typeof t.unref === 'function') t.unref();
+} catch { /* ignore */ }
 let agyLastCompleteAt = 0;
 
 function loadConfig() {
@@ -4732,6 +4752,7 @@ async function main() {
             return sch?.onDuty || readRoleState().role || null;
           } catch { return readRoleState().role ?? null; }
         };
+        try { agySweepTick(); } catch { /* ignore */ }
         if (req.method === 'GET' && action === 'status') {
           sendJson(agyTransport.status({
             onDuty: dutyOf(),
@@ -10384,11 +10405,15 @@ async function main() {
       }
       // 繁忙期间被暂存的唤醒原因：按最高优先级补排一次（对齐 turn/end 的收尾）
       try {
-        const pr = st?.pendingWakeReasons;
-        const keys = pr && typeof pr === 'object' ? Object.keys(pr).filter((k) => pr[k]) : [];
-        if (keys.length) {
-          const top = keys.sort((a, b) => wakePriorityV2(b) - wakePriorityV2(a))[0];
-          log(`[agy] ${key} 回合释放后补排暂存唤醒（${top}）`);
+        // ⚠️ pendingWakeReasons 是**数组** [{reason,seq,at}]（AGY 侧 2026-11-25 指出：
+        // 我原来按对象用 Object.keys 读，取到的是 "0" ✗）
+        const pr = Array.isArray(st?.pendingWakeReasons)
+          ? st.pendingWakeReasons.splice(0)
+          : [];
+        const reasons = pr.map((x) => (typeof x === 'string' ? x : x?.reason)).filter(Boolean);
+        if (reasons.length) {
+          const top = reasons.sort((a, b) => wakePriorityV2(b) - wakePriorityV2(a))[0];
+          log(`[agy] ${key} 回合释放后补排暂存唤醒（${top}，共 ${reasons.length} 条）`);
           scheduleWakeV2(key, top);
         }
       } catch { /* ignore */ }

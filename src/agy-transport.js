@@ -42,6 +42,20 @@ export function createAgyTransport({
     return `t-${stamp}-${String(seq).padStart(4, '0')}`;
   }
 
+  /** 通知一个正在等这个 persona 的 worker（enqueue 与 requeue 共用）。 */
+  function notifyWaiters(persona) {
+    const list = queues.get(persona);
+    if (!list || !list.length) return;
+    for (const w of waiters) {
+      if (w.persona === persona) {
+        waiters.delete(w);
+        clearTimeout(w.timer);
+        w.resolve(snapshot(list[0]));
+        return;
+      }
+    }
+  }
+
   /** 入队。返回 turn（含 prompt）。队列超长时丢最旧的（与 DSH 路线一致）。 */
   function enqueue({ persona, key, reason = 'replyCheck', prompt = '', readThroughSeq = null, meta = null } = {}) {
     const at = now();
@@ -65,15 +79,7 @@ export function createAgyTransport({
     }
     turns.set(turn.turnId, turn);
     stats.enqueued += 1;
-    // 唤醒一个等着这个 persona 的 worker
-    for (const w of waiters) {
-      if (w.persona === turn.persona) {
-        waiters.delete(w);
-        clearTimeout(w.timer);
-        w.resolve(snapshot(turn));
-        break;
-      }
-    }
+    notifyWaiters(turn.persona);
     return snapshot(turn);
   }
 
@@ -161,6 +167,7 @@ export function createAgyTransport({
     const list = q(turn.persona);
     list.unshift(turn);
     stats.requeued += 1;
+    notifyWaiters(turn.persona);   // 重排后立刻叫醒等着这个 persona 的 worker ✓
     return { ok: true, turn: snapshot(turn), attempts: turn.attempts };
   }
 
@@ -172,7 +179,14 @@ export function createAgyTransport({
       if (turn.workerId && turn.leaseUntil && t > turn.leaseUntil) {
         stats.expired += 1;
         const r = requeue({ turnId: turn.turnId, reason: 'lease-expired' });
-        touched.push({ turnId: turn.turnId, requeued: r.ok, error: r.error ?? null, attempts: r.attempts ?? turn.attempts });
+        touched.push({
+          turnId: turn.turnId,
+          key: turn.key,
+          persona: turn.persona,
+          requeued: r.ok,
+          error: r.error ?? null,
+          attempts: r.attempts ?? turn.attempts
+        });
       }
     }
     return touched;

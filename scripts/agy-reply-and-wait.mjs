@@ -27,6 +27,10 @@
 
 import fs from 'node:fs';
 import {
+  DEFAULT_ERROR_BACKOFF_MS,
+  DEFAULT_LOG_ERROR_EVERY,
+  DEFAULT_RPC_TIMEOUT_MS,
+  DEFAULT_WAIT_GRACE_MS,
   apiPost,
   appendWorkerLog,
   argOf,
@@ -121,12 +125,21 @@ const baseUrl = resolveBaseUrl(argOf('base-url'));
 const shouldWaitNext = hasFlag('wait') && !hasFlag('no-wait');
 const loop = hasFlag('loop');
 const timeoutMs = Number(argOf('timeout-ms', '90000')) || 90000;
+const fetchGraceMs = argOf('fetch-grace-ms') != null
+  ? Number(argOf('fetch-grace-ms'))
+  : DEFAULT_WAIT_GRACE_MS;
 const notOnDutySleepMs = argOf('not-on-duty-sleep-ms') != null
   ? Number(argOf('not-on-duty-sleep-ms'))
   : 7000;
 const errorBackoffMs = argOf('error-backoff-ms') != null
   ? Number(argOf('error-backoff-ms'))
-  : 5000;
+  : DEFAULT_ERROR_BACKOFF_MS;
+const maxConsecutiveErrors = argOf('max-errors') != null
+  ? Number(argOf('max-errors'))
+  : (loop ? 0 : 5);
+const logErrorEvery = argOf('log-error-every') != null
+  ? Number(argOf('log-error-every'))
+  : DEFAULT_LOG_ERROR_EVERY;
 
 let input;
 try {
@@ -282,10 +295,13 @@ if (!shouldWaitNext) {
     persona: input.persona,
     workerId: input.workerId,
     timeoutMs,
+    fetchGraceMs,
     afterTurnId: input.turnId,
     loop,
     notOnDutySleepMs,
-    errorBackoffMs
+    errorBackoffMs,
+    maxConsecutiveErrors,
+    logErrorEvery
   });
 
   if (next.status === 'idle') {
