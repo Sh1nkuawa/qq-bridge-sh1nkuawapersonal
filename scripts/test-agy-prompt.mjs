@@ -63,13 +63,19 @@ ok('★ partial=true 要说清"下一轮再给"，别让模型这轮追问', () 
 
 console.log('\n值守覆盖说明：');
 
-ok('★★ 覆盖说明必须禁止调 qq_* 工具，并给出 replies 数组的出口', () => {
-  assert.ok(AGY_MODE_OVERRIDE.includes('没有 MCP 的 qq_* 工具'));
+ok('★★ 覆盖说明必须禁止调 qq_* / web_* 工具，并给出 replies 数组的出口', () => {
+  assert.ok(AGY_MODE_OVERRIDE.includes('没有 MCP 工具'));
   assert.ok(AGY_MODE_OVERRIDE.includes('agy-reply-and-wait.mjs'));
   assert.ok(AGY_MODE_OVERRIDE.includes('空数组'));
-  for (const tool of ['qq_wait_for_messages', 'qq_mark_read', 'qq_set_wake_config', 'qq_send_message']) {
+  for (const tool of ['qq_wait_for_messages', 'qq_mark_read', 'qq_set_wake_config', 'qq_send_message', 'web_search', 'web_fetch']) {
     assert.ok(AGY_MODE_OVERRIDE.includes(tool), `要逐个点名 ${tool}`);
   }
+});
+
+ok('★★ 联网：桥接没给通道，必须明确"别编搜索结果"（否则会瞎编链接）', () => {
+  assert.ok(AGY_MODE_OVERRIDE.includes('联网'));
+  assert.ok(AGY_MODE_OVERRIDE.includes('查不到'), '要允许它说查不到');
+  assert.ok(/不要编造搜索结果/.test(AGY_MODE_OVERRIDE), '必须禁止编造搜索结果/链接');
 });
 
 ok('★★ v1.3：必须告诉它 agy-api.mjs 这条真正的扩展通道（否则行为闭环做不到）', () => {

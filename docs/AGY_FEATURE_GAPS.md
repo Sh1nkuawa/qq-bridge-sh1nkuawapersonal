@@ -46,6 +46,34 @@
 > **2026-11-25 22:0x：这一整节已由 AGY 侧的 `scripts/agy-api.mjs` 补齐**（20+ 子命令）✓
 > 保留表格是为了让双方都知道"每个能力对应哪个端点"，方便对账/排错。
 
+### 2.0 全量对账：DSH 侧到底挂了哪些 MCP 工具（2026-11-25 22:2x 复核）
+
+DSH 侧不是只有 snowluma 一个 server —— **4 个 server、49 个工具**：
+
+| MCP server | 工具数 | 说明 |
+|---|---|---|
+| `mcp-snowluma-safe.js` | 46 | 主体：读消息 / 发言 / 表情 / 语音 / 记忆 / 黑话 / 管理 |
+| `mcp-qq-wait.js` | 1 | `qq_wait_for_messages`（等消息，AGY 侧拆成 wait-reply / wait-sleep）|
+| `mcp-web-search-safe.js` | 2 | **`web_search` / `web_fetch` —— AGY 侧完全没有** ⚠️ |
+| `mcp-host-server.js` | 1 | `snowluma_status`（网关是否在线；AGY 可用 `get --path /api/status` 粗查）|
+
+逐条对账后，**真正缺的只有下面这些**（其余 36 个都有专属子命令或由桥接自动完成）：
+
+| 工具 | 现状 | 严重度 |
+|---|---|---|
+| `web_search` / `web_fetch` | **桥接没有任何 HTTP 端点**（联网逻辑在 MCP server 里）；AGY 侧也没 CLI ⇒ **整块能力缺失** | 🔴 高（prompt 里的"搜一下热点"现在只能靠它自己说查不到）|
+| `qq_send_private_message` | 只能在回合的 key 内回复；不能主动私聊别人 | 🟡 低（目前没有这个需求）|
+| `qq_send_burst` | `complete.replies` 是多条**连发**，没有 DSH 那种"人类化随机间隔" | 🟡 低（观感差异，不是功能）|
+| `qq_get_unread_messages` / `qq_get_recent_messages` | 端点有（`/api/socialV2/unread|recent`），但 agy-api **没有子命令**；日常靠快照就够 | 🟡 低（补两个子命令即可）|
+| `qq_list_groups` / `qq_get_group_members` / `qq_get_group_history` | v1.3 的 `/api/agy/onebot` 已支持，但 agy-api **还没包装子命令**（现在只能 `get --path "/api/agy/onebot?action=…"`）| 🟡 低 |
+| `qq_memory_remove` / `qq_memory_clear` | 端点有（`/api/socialV2/memory-remove|clear`）；agy-tools 只有 list/add | 🟡 低 |
+| `qq_set_sticker_remark` | 端点有（`/api/socialV2/sticker-remark`），默认关闭 | 🟡 极低 |
+| `qq_get_balance` | 不做（AGY 侧用 `agy-quota` 查 Antigravity 额度）| — |
+| `qq_status` / `snowluma_status` | `get --path /api/status` 粗查 | 🟡 极低 |
+
+> 另外：DSH 侧的 `ask_user_question` / `todo_write` 是 **DSH 自己的 harness 工具**，不是桥接的 MCP；
+> AGY 有自己的会话管理，不需要对标。
+
 ### 2.1 行为闭环 —— **这三条最重要，因为 prompt 现在明确要求它做，而它做不到** ✗
 
 | 能力 | 端点 | 为什么重要 |

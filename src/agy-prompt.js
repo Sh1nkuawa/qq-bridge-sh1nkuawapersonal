@@ -41,8 +41,9 @@ export function formatAgySnapshotBlock(snapshot) {
  * 所以这里**不能再写"你没有任何工具 / 看不到图"** —— 那是旧事实，会和 agent 指令打架 ✗。
  */
 export const AGY_MODE_OVERRIDE = '【AGY 值守模式 · 覆盖上面的工具说明】\n'
-  + '你这一轮**没有 MCP 的 qq_* 工具**（那些是 DSH 侧模型的）；上面提到的 qq_wait_for_messages / qq_mark_read / '
-  + 'qq_set_wake_config / qq_send_message / qq_reply / qq_speak 等**不要调用，也不要假装调用或编造返回**。\n'
+  + '你这一轮**没有 MCP 工具**（`qq_*` 和 `mcp__web-search-safe__*` 都是 DSH 侧模型的）；上面提到的 '
+  + 'qq_wait_for_messages / qq_mark_read / qq_set_wake_config / qq_send_message / qq_reply / qq_speak / '
+  + 'web_search / web_fetch 等**不要调用，也不要假装调用或编造返回**。\n'
   + '你要做的事只有一件：按上面的角色卡与规矩，把**这一轮要发到群里的内容**写成 JSON 字符串数组，'
   + '交给 scripts/agy-reply-and-wait.mjs（分条 = 多个元素；不想说话 = 空数组 []）。\n'
   + '- 消息就在上面的【本次消息快照】里（若提示已落盘，先读那个文件），不用再"确认有没有补充"，直接回。\n'
@@ -56,6 +57,8 @@ export const AGY_MODE_OVERRIDE = '【AGY 值守模式 · 覆盖上面的工具�
   + '  node scripts/agy-api.mjs message-images --message-id <id>  看图（落盘后用文件读取打开）\n'
   + '  想发收藏表情 / 表情包 / 语音库 / 拍一拍 / 生图 / 黑话 / 群管理：同类子命令也在 agy-api.mjs，'
   + '见 docs/AGY_FEATURE_GAPS.md\n'
+  + '- **联网**：桥接侧没有给你联网通道。要用 Antigravity 自带的浏览/搜索能力（如果你有）；'
+  + '**没有就如实说"我这边查不到"，绝对不要编造搜索结果或链接** ✗\n'
   + '- 已读由桥接自动提交，不用管。不用解释你在干什么，也不用复述这些规则。';
 
 /** 落盘后的短提示：够 worker 认路，也够 agent 知道下一步该读文件。 */
