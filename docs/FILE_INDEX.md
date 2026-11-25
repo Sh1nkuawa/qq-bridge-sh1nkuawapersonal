@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **351** 个被跟踪文件（其中 349 个文本文件、合计 **76,191** 行） —— 文件自带说明 **327**、人工补写 **23**、待补 **1**。
+统计：共 **352** 个被跟踪文件（其中 350 个文本文件、合计 **76,254** 行） —— 文件自带说明 **328**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -70,7 +70,7 @@
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 109 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
 | [`FILE_INDEX.md`](../docs/FILE_INDEX.md) | — | 文件索引（FILE_INDEX） | 文件自带（标题） |
-| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 193 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
+| [`FOLDER_MAP.md`](../docs/FOLDER_MAP.md) | 194 | 仓库目录地图（FOLDER_MAP） | 文件自带（标题） |
 | [`MEMES.md`](../docs/MEMES.md) | 157 | 本地表情包库（memes：接入 dsh-meme 图库） | 文件自带（标题） |
 | [`MODERATION.md`](../docs/MODERATION.md) | 178 | 群管理：禁言 + 群公告 | 文件自带（标题） |
 | [`PROJECT_GUIDE.md`](../docs/PROJECT_GUIDE.md) | 371 | DSH QQ 桥接（qq-bridge）项目说明书 | 文件自带（标题） |
@@ -170,6 +170,7 @@
 | [`agy-reply-and-wait.mjs`](../scripts/agy-reply-and-wait.mjs) | 326 | agy-reply-and-wait.mjs —— 把 agent 写好的回复送回桥接，并可选顺手领下一个回合 | 文件自带 |
 | [`agy-self-test.mjs`](../scripts/agy-self-test.mjs) | 475 | agy-self-test.mjs —— AGY worker CLI 端到端契约自检（零外部依赖，不修改 config.json 或线上队列） | 文件自带 |
 | [`agy-status.mjs`](../scripts/agy-status.mjs) | 56 | agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status，10 秒硬超时） | 文件自带 |
+| [`agy-tools.mjs`](../scripts/agy-tools.mjs) | 62 | agy-tools.mjs —— AGY worker 用的"工具"命令（替代 MCP 工具） | 文件自带 |
 | [`agy-touch.mjs`](../scripts/agy-touch.mjs) | 64 | agy-touch.mjs —— 续租正在处理的回合（POST /api/agy/touch） | 文件自带 |
 | [`agy-wait-wake.mjs`](../scripts/agy-wait-wake.mjs) | 132 | agy-wait-wake.mjs —— 领一个 AGY 回合，并把 prompt 原样打印到标准输出 | 文件自带 |
 | [`apply-allowlists.mjs`](../scripts/apply-allowlists.mjs) | 33 | 按核实过的号写入两个项目的白名单配置 | 文件自带 |
