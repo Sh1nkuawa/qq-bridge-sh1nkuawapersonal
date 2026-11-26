@@ -202,3 +202,45 @@ IDLE not-on-duty        ← 你归 AGY 管，但现在不是你的班
 **把「猫娘侍从」的 worker 起来，等 01:00（或让桥接侧手动切班）开始领活；
 prompt 里现在什么都有了（快照 + 明确禁止调 qq_* 工具 + 长内容落盘路径），
 照着 prompt 说人话、用 `agy-reply-and-wait.mjs` 把话送回去就行 ✓**
+
+---
+
+## 8. v1.4 / v1.5 之后，**你们**要改的东西（2026-11-26 核对版）
+
+> 结论先说：**协议和脚本都不用改**，只有两处文案 + 一条行为约定。
+
+### 8.1 行为约定（唯一重要的）：模型/网络失败时**立刻 requeue**，别干等租约
+
+桥接侧新加了「AGY 降级」：回合**真的被丢弃**时（重排次数超限），桥接会把这个人格降级 10 分钟，
+并**立刻用 DSH 把那批消息补投出去**。触发条件是"丢了回合"，原因算 `tool-error` / `timeout` /
+`lease-expired` / 未知（`refusal` / `manual` 不算）。
+
+- ❌ 干等租约：`10 分钟 × 2` 才走到降级 ⇒ 群里最坏哑火 20 分钟
+- ✅ 失败就 `requeue`（`reason: "tool-error"`）：两次到上限 ⇒ **几十秒内**触发降级 + DSH 补投
+- 你们的 agent md 里已有 `requeue` 指引（第 89 行），补一句**"立刻退，不要等租约"**即可
+- 反过来：**成功了就别 requeue**（会把桥接往降级推）
+
+### 8.2 文案：`05:00` 全改成 `01:00`
+
+桥接侧把换班时间从 **05:00 改成 01:00**（owner：宿舍晚上断电，机器撑不到 5 点）。
+`dutyTransport` 的语义没变，**代码不用动**，但这几处人写的字要同步（否则看文档的人会蒙）：
+
+- `agy-plugin/agents/qq-chat-worker.md`：第 54 行「例如需等 05:00 …」、第 111 行「05:00 换班瞬间…」
+- `agy-plugin/sidecars/agy-duty-watcher/sidecar.json` 的 `description`：「05:00 换班或手动切班」
+- `agy-plugin/sidecars/agy-duty-watcher/watcher.mjs` 顶部注释第 5 行
+
+### 8.3 三个新行为，你们**不用做任何事**（知道就行）
+
+| 新增 | 对你们的影响 |
+|---|---|
+| 唤醒理由 `hotChat`（回复后 5 分钟滑动窗口，窗口内普通消息也会唤醒，最多 3 次/分钟） | 只是多了一种 `turn.reason`；正常回就行，**别问"为什么没 @ 也叫我"** ✓ |
+| AGY 降级（丢回合 ⇒ `dutyTransport` 变 `dsh` 10 分钟） | `duty-watcher` 看到 `dutyTransport !== "agy"` 就不会开会话 ✓ **天然兼容**，不用改 |
+| `status` 多字段（`degradedUntil` / `dutyTransport` / `onDutyStale` / `personaTransport`） | 可选：`agy-status.mjs` 的日志里带上 `degradedUntil`，排障时一眼看出"是不是被降级了" |
+
+### 8.4 已经对齐、不用再提的
+
+- `complete.atUserId`（@人）✅ 已上线，`agy-reply-and-wait.mjs` 也已解析
+- 只读 OneBot（群列表/成员/历史）✅ `agy-api.mjs onebot/group-*` 已接
+- `web_search` ⇒ 用你们自己的 `search_web`（prompt 已改口，`qq-chat-worker.md` 第 28 行也有）
+- 快照最新优先 + `skippedOlder` + 水位到 `maxShown` ⇒ 补读用 `recent --limit 30` / `unread --after-seq 0`
+- 热聊窗口 / 降级 / 换班时间：**都在桥接侧**，协议仍是 v1
