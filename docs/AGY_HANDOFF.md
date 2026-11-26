@@ -10,8 +10,9 @@
 ```
 按人格分流已上线 ✓  小鲸鱼 → DSH   猫娘侍从 → AGY（**已实测跑通** ✓ 见 §1.3）
 transport = "agy" ✓   v1.1 修完 6 个"看起来跑了、其实没生效"的坑 ✓
-v1.3 已对接 AGY 侧在契约 §10 登记的三条（@人 / 只读 OneBot / prompt 措辞）✓   套件 77/77 ✓
-当前值班：**猫娘侍从**（2026-11-25 20:40 手动切过去做实测；05:00 会自动切回小鲸鱼）
+v1.3 对接 §10 三条 ✓   v1.4 快照最新优先 ✓   v1.5 热聊窗口 + 链路降级 ✓   套件 78/78 ✓
+换班时间：**01:00**（2026-11-26 从 05:00 改过来 —— 宿舍断电撑不到 5 点，见 §1.2）
+当前值班：**猫娘侍从**（2026-11-25 20:40 手动切过去做实测；下一个 01:00 会自动切回小鲸鱼）
 worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
 
@@ -86,7 +87,7 @@ AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地�
 ### 1.4 AGY 侧新交付（他们的文件，我只负责提交 ✓）
 
 - `agy-plugin/sidecars/agy-duty-watcher/`（`sidecar.json` + `watcher.mjs`，312 行）：
-  每 10 秒读 `/api/agy/status`，**`dutyTransport` 切到 `agy`（05:00 换班或手动切班）或上一轮值守会话轮满下班时**，
+  每 10 秒读 `/api/agy/status`，**`dutyTransport` 切到 `agy`（01:00 换班或手动切班）或上一轮值守会话轮满下班时**，
   就在 `geminiqq` 项目里自动开一个干净会话当 worker（默认 Gemini 4 Hydrogen Medium），
   保证上下文不超限。它**只读** `config.json` / `state/console-token`，不改桥接侧文件 ✓
 - `agy-plugin/agents/qq-chat-worker.md`、`agy-plugin/skills/**`、`install.ps1`、`plugin.json` 同步更新
@@ -122,7 +123,7 @@ AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地�
 |---|---|---|---|
 | 1 | **prompt 里没有消息快照** | AGY 的 agent 没有任何 QQ 工具，只能看到"未读 8 条"+最后 30 字 ⇒ 两轮 `sent:0`、回得莫名其妙 | `deliverPromptNow` 的 agy 分叉里拼 `【本次消息快照】`（`buildWakeSnapshotV2(key,{force:true})`，force 绕过 DSH 专用的开关） |
 | 2 | **`收尾已读` 从来没触发** | `readThroughSeqV2(st)` 只认 `modelSeenSeqs`，AGY 没有工具调用 ⇒ 永远是 0 ⇒ 未读只增不减 | 回合入队时把快照水位存进 `turn.readThroughSeq`，`complete` 后按它 `acknowledgeMessagesV2` + `saveSocialV2State()` |
-| 3 | **心跳只按"任意人格"记** | 05:00 换班后旧人格 worker 还在每 7 秒轮询（永远 `idle:not-on-duty`），把"最近心跳"刷得很新 ⇒ 判定"值班者还在" ⇒ 新人格没人接 ⇒ **哑火且无日志** | 心跳改成 `Map<persona, at>`；fallback 只看**当前值班者**的心跳（`onDutyStale`） |
+| 3 | **心跳只按"任意人格"记** | 01:00 换班后旧人格 worker 还在每 7 秒轮询（永远 `idle:not-on-duty`），把"最近心跳"刷得很新 ⇒ 判定"值班者还在" ⇒ 新人格没人接 ⇒ **哑火且无日志** | 心跳改成 `Map<persona, at>`；fallback 只看**当前值班者**的心跳（`onDutyStale`） |
 | 4 | **worker 挂在长轮询时，入队立刻唤醒它** | 落盘改写还没做完，worker 已拿到 20446 字节全文 ⇒ 后台通知截断，等于没落盘 ✗ | `enqueue({notify:false})` → 落盘 + `setPrompt` → 才 `wake(persona)` |
 | 5 | **`agySweepTick` 调 `agyReleaseTurn` 是 ReferenceError** | 前者在模块作用域、后者在 `main()` 里；只有"超过重排上限"那条分支会踩到，被 catch 吞成 `sweep 失败` | 加模块级 `agyHooks.releaseTurn`，由 `main()` 注入 |
 | 6 | **自己发的消息没记回上下文** | 其他所有发送路径都会 `recordSentMessagesV2` + 更新 `lastAiReplyAt`，只有 AGY 的 `complete` 漏了 ⇒ 下一轮 prompt 的【最近对话】里没有自己刚说的话、「你上次发言 N 分钟前」永远不对、心情/回复检查全基于陈旧状态 | `complete` 发送成功后补记录（实测 20:50 那条已进 `recentMessages`、`lastAiReplyAt` 同步） |
@@ -134,18 +135,26 @@ AGY 侧在 `docs/AGY_CONTRACT.md` §10 登记了三条，桥接侧全部落地�
 - **`prompt` 组装抽成 `src/agy-prompt.js`**（纯函数）+ `scripts/test-agy-prompt.mjs`（11 组断言），
   因为这段字符串拼错**不会报错**，只会在群里表现为"答非所问"✗
 
-### 1.2 05:00 换班（原待办 #2）—— 已接线
+### 1.2 换班时间：01:00（2026-11-26 从 05:00 改过来）
 
-`personaTick` 现在走 `applyPersonaSwitch()`（控制台手动切角色也走同一条 ✓）：
+原定 `switchAt: "05:00"`，但**宿舍晚上断电，机器撑不到 5 点** ⇒ 05:00 那一刻桥接根本没在跑，
+按"当天跳过、绝不延迟到白天变脸"的规则，那天就**不会换班**。
+实测证据：2026-11-26 的 05:00 没有任何 `[persona] 切换到…` 日志，角色卡停在前一晚手动切的「猫娘侍从」。
+
+现在 `config.json` 改成 `switchAt: "01:00"`（`windowMinutes` 仍 30 ⇒ 01:00~01:30 之间到点就换；
+这段时间还没来电/还在重启就会错过当天，见下）。
+
+`personaTick` 走 `applyPersonaSwitch()`（控制台手动切角色也走同一条 ✓）：
 写角色卡 → 同步 `persona-schedule.json` 的 `onDuty` 镜像 → 重建 DSH 会话 → **AGY 模式清掉旧人格
 没被认领的回合**（新值班者永远不会来取，不清就永远占着"会话繁忙"）。
 
 - **角色卡是唯一真相**，`onDuty` 只是镜像。反过来让镜像说话会出事故：文件残留旧值 ⇒ worker 全拿
   `not-on-duty` ⇒ 哑火且没有日志线索。**实测**：手动把 `onDuty` 改成「猫娘侍从」，`status` 仍报
   `onDuty: 小鲸鱼` ✓
-- 真正的 05:00 还没跑过（今天 05:00 桥接没跑）。**明天 05:00 看这条日志**：
-  `[persona] 2026-11-26 05:00 切换到「猫娘侍从」…`
-  ⚠️ 换过去之后 AGY 那边必须有**猫娘侍从**的 worker，否则一直是 DSH 顶着（fallback 不会哑火 ✓）
+- 换到「猫娘侍从」之后 AGY 那边必须有**猫娘侍从**的 worker，否则一直 DSH 顶着（fallback 不会哑火 ✓）
+- 想验证有没有换：`[persona] 2026-11-27 01:00 切换到「…」…` 这行日志；以及 `status.onDuty` / `dutyTransport`
+- ⚠️ 如果 01:00 机器还在重启（断电后刚来电），当天的换班就会被跳过 —— 这是**故意**的
+  （宁可不动，也别白天突然换人格）。真错过了就手动 `POST /api/role` 切一次
 
 ---
 
@@ -241,7 +250,7 @@ Invoke-RestMethod -Method Post -ContentType 'application/json' `
 |---|---|---|
 | 1 | **给猫娘侍从起 AGY worker** ✗ | 小鲸鱼的活已经分流到 DSH（worker 拿到 `persona-on-dsh`，正常）；**只有猫娘当班时 AGY 才真的省钱**，而它现在没有 worker ⇒ 猫娘一当班就回落 DSH |
 | 2 | **观察一晚** | 看 `[agy] 值班者「X」掉线（Ns 没心跳）→ 本次回落 DSH`（正常兜底）/ `[agy] 值班者「小鲸鱼」按 persona 配置走 DSH`（分流生效，每人格只打一次）/ `收尾已读：N 条` / `prompt N 字节 > 8192` |
-| 3 | **明天的 05:00** | 换成猫娘侍从之后：`status` 的 `dutyTransport` 应该变成 `agy`；有 worker 就进队列，没有就回落 DSH（不哑火 ✓） |
+| 3 | **明天的 01:00** | 换成猫娘侍从之后：`status` 的 `dutyTransport` 应该变成 `agy`；有 worker 就进队列，没有就回落 DSH（不哑火 ✓） |
 | 4 | 生图 / 拍一拍 / 黑话提交 CLI | 价值低，按需（`agy-tools.mjs` 里加子命令即可） |
 | 5 | **唤醒频率限制会直接丢消息** ⚠️ | `maxWakePerMinute: 1`：一分钟内的第二条 `@` 会被**跳过**（不是延迟），群里看起来就是"不理人"。要改就得改成"延后到窗口结束再试"，别直接丢 |
 

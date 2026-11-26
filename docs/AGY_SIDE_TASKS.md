@@ -23,12 +23,12 @@ node scripts/agy-status.mjs --persona 猫娘侍从
 | `personaTransport` | 每个人格去哪儿 | `{"小鲸鱼":"dsh","猫娘侍从":"agy"}` |
 
 **当前实际状态（19:57）**：`onDuty=小鲸鱼`、`dutyTransport=dsh`。
-也就是说——**小鲸鱼的活全部走 DSH，AGY 这边今晚一条活都不会有**，直到明天 05:00 换班到猫娘侍从。
+也就是说——**小鲸鱼的活全部走 DSH，AGY 这边今晚一条活都不会有**，直到明天 01:00 换班到猫娘侍从。
 所以：**你现在把「猫娘侍从」的 worker 起来是"就位"**，它会一直拿到 `IDLE not-on-duty`，
 那是正常的，不是坏了 ✓
 
 > 想今晚就测 AGY 这条路？**别自己改 config**（那是桥接侧的文件 ✗）。
-> 让桥接侧（DSH 那边）把值班者切到猫娘侍从：`POST /api/role {"role":"猫娘侍从"}`，或者等 05:00 ✓
+> 让桥接侧（DSH 那边）把值班者切到猫娘侍从：`POST /api/role {"role":"猫娘侍从"}`，或者等 01:00 ✓
 
 ---
 
@@ -104,7 +104,7 @@ D:\dsh\qq-bridge\state\agy-context-t-202611251932-0001.md
 - 做法：**单回合尽量 3 分钟内出结果**；真的要看图/长任务，每 2~3 分钟跑一次
   `node scripts/agy-touch.mjs --turn-id <turnId> --persona 猫娘侍从 --worker-id <workerId>`
 
-### 2.4 05:00 换班会清掉旧人格的待办
+### 2.4 01:00 换班会清掉旧人格的待办
 
 - 换班时桥接会把**旧人格还没被认领的回合**直接丢掉（新值班者永远不会来取，留着只会把会话锁成 busy）
 - 所以你可能在换班那一刻拿到 `404 turn-not-found` / `409 already-claimed`：
@@ -140,7 +140,7 @@ IDLE not-on-duty        ← 你归 AGY 管，但现在不是你的班
 
 ## 3. 验收（你自己跑一遍，全 ✓ 就算接上了）
 
-> 前提：让桥接侧把值班者切到猫娘侍从（或等 05:00），否则你没有活可领。
+> 前提：让桥接侧把值班者切到猫娘侍从（或等 01:00），否则你没有活可领。
 
 1. `node scripts/agy-status.mjs --persona 猫娘侍从` → `dutyTransport: "agy"` ✓
 2. `node scripts/agy-wait-wake.mjs --persona 猫娘侍从` → 空转时稳定输出 `IDLE` /
@@ -199,6 +199,6 @@ IDLE not-on-duty        ← 你归 AGY 管，但现在不是你的班
 
 ## 7. 一句话总结
 
-**把「猫娘侍从」的 worker 起来，等 05:00（或让桥接侧手动切班）开始领活；
+**把「猫娘侍从」的 worker 起来，等 01:00（或让桥接侧手动切班）开始领活；
 prompt 里现在什么都有了（快照 + 明确禁止调 qq_* 工具 + 长内容落盘路径），
 照着 prompt 说人话、用 `agy-reply-and-wait.mjs` 把话送回去就行 ✓**

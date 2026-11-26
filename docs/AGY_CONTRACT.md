@@ -152,7 +152,7 @@ worker 每轮可打这一条做自检 ✓
 | `onDutyStale` | 值班者是否算掉线（>5 分钟没心跳）—— fallback 就是看这个 |
 | `workerSeenByPersona` | 每个 persona 各自的最近心跳 |
 
-> ⚠️ 只看 `lastWorkerSeenAt` 会被骗：05:00 换班后旧人格的 worker 还在每 7 秒轮询（永远拿到
+> ⚠️ 只看 `lastWorkerSeenAt` 会被骗：01:00 换班后旧人格的 worker 还在每 7 秒轮询（永远拿到
 > `idle: not-on-duty`），它会把"最近心跳"一直刷新 ⇒ 看起来"值班者还在"，其实新值班者根本没起来 ✗。
 > 所以判定**必须按当前值班者的 persona** 看。
 
@@ -243,9 +243,12 @@ POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
 - **角色卡是唯一真相**：`state/current-role.json` 的 `role` 就是当前值班者 ✓
 - `state/persona-schedule.json` 的 `onDuty` 只是桥接写出去的**镜像**（方便人看），不参与判定 ✓
   —— 让镜像参与判定会出事故：文件一残留旧值，worker 全部拿到 `not-on-duty` ⇒ 哑火且无日志线索 ✗
-- **每天 05:00（北京时间）** 换班：写角色卡 + 同步 `onDuty` + 重建 DSH 会话（AGY 模式下通常没有会话）
+- **每天 01:00（北京时间）** 换班：写角色卡 + 同步 `onDuty` + 重建 DSH 会话（AGY 模式下通常没有会话）
   + **清掉旧人格还没被认领的回合**（新值班者永远不会去取它们；不清就永远占着"会话繁忙" ✗）
-- 手动切换（`POST /api/role`）与 05:00 自动轮换走**同一条路径** ✓
+  - ⚠️ 2026-11-26 起从 **05:00 改成 01:00**（owner：宿舍晚上断电，机器撑不到 5 点 ⇒ 05:00 那次
+    桥接没在跑，按"当天跳过、绝不白天变脸"的规则整天都不会换班）
+  - 窗口：`windowMinutes`（默认 30）⇒ 01:00~01:30 之间到点就换；这段时间不在线就**跳过当天**
+- 手动切换（`POST /api/role`）与 01:00 自动轮换走**同一条路径** ✓
 
 ### 5.1 按人格分流传输层（2026-11-25 起 ✓）
 
@@ -391,7 +394,7 @@ POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
 
 | 日期 | 提出方 | 内容 | 状态 |
 |---|---|---|---|
-| 2026-11-25 | 桥接侧 | **v1.1 无协议变更，只加字段/行为**：`status` 增加 `onDutyWorkerSeenAt` / `onDutyStale` / `workerSeenByPersona`；`turn.readThroughSeq` 现在真的会填（worker `complete` 后桥接自动提交已读）；`prompt` 必带【本次消息快照】+【AGY 值守模式】；>8KB 自动落盘 `state/agy-context-<turnId>.md`；05:00 换班会清掉旧人格未认领的回合 | ✅ 已上线（worker 无需改代码） |
+| 2026-11-25 | 桥接侧 | **v1.1 无协议变更，只加字段/行为**：`status` 增加 `onDutyWorkerSeenAt` / `onDutyStale` / `workerSeenByPersona`；`turn.readThroughSeq` 现在真的会填（worker `complete` 后桥接自动提交已读）；`prompt` 必带【本次消息快照】+【AGY 值守模式】；>8KB 自动落盘 `state/agy-context-<turnId>.md`；01:00 换班会清掉旧人格未认领的回合 | ✅ 已上线（worker 无需改代码） |
 | 2026-11-25 | 桥接侧 | **v1.2 按人格分流**：`config.personaSchedule.personas[名字].transport` 可把某个人格钉到 `dsh` 或 `agy`（owner：小鲸鱼走 DSH、猫娘走 AGY）。`status` 增加 `dutyTransport` / `personaTransport`；`wait` 新增 idle 理由 `persona-on-dsh` | ✅ 已上线（worker 无需改代码；见到 `persona-on-dsh` 就是"这位不归你管"） |
 | 2026-11-25 | AGY 侧 | **`POST /api/agy/complete` 增加可选 `atUserId` 字段**：透传给 `sendMessagesV2`，让群聊回复能真正 @ 到指定群友（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3）：脏值静默丢弃；只作用于第一条 replies |
 | 2026-11-25 | AGY 侧 | **新增只读 OneBot 白名单端点**（如 `GET /api/agy/onebot?action=get_group_list\|get_group_member_list\|get_group_msg_history`）：补齐群列表/群成员/群历史只读查询（对应 `AGY_FEATURE_GAPS.md` §3） | ✅ 已上线（v1.3，见 §3.7）：只放三个只读动作 + 群白名单 |

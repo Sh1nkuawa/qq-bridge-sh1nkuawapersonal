@@ -961,7 +961,7 @@ function normalizeIdList(value) {
 // ── AGY 传输层（config.transport === "agy" 时启用）────────────────────────────
 const agyTransport = createAgyTransport();
 // ⚠️ 心跳必须**按 persona 记**（2026-11-25 观察出来的坑）：
-// 05:00 换班后，旧人格的 worker 还在每 7 秒轮询（拿到的永远是 idle:not-on-duty），
+// 01:00 换班后，旧人格的 worker 还在每 7 秒轮询（拿到的永远是 idle:not-on-duty），
 // 如果只记"最近一次心跳"，桥接就会以为"值班者还在"，于是既不回落 DSH、也不清掉
 // 新人格没人认领的回合 ⇒ 群里彻底哑火，而日志一片安静 ✗。
 const agyWorkerSeenByPersona = new Map();    // persona -> 最近一次 wait/claim/complete 的时间
@@ -1573,14 +1573,14 @@ function loadConfig() {
   // ── 每日人格轮换（owner 2026-11-15）────────────────────────────────────────
   // ⚠️ 这里必须显式搬：loadConfig() 是"白名单式重建"，config.json 里多出来的字段会被丢掉 ✗
   // （2026-11-16 踩过：config.json 明明写了 personaSchedule，进程里却是 undefined，
-  //   于是 rotation=[] ⇒ 长度<2 ⇒ 安静 return ⇒ 05:00 什么都没发生，且一条日志都没有）
+  //   于是 rotation=[] ⇒ 长度<2 ⇒ 安静 return ⇒ 01:00 什么都没发生，且一条日志都没有）
   {
     const ps = file.personaSchedule;
     if (ps && typeof ps === 'object' && !Array.isArray(ps)) {
       const rot = Array.isArray(ps.rotation) ? ps.rotation.map((x) => String(x)).filter(Boolean) : [];
       cfg.personaSchedule = {
         enabled: ps.enabled !== false,
-        switchAt: typeof ps.switchAt === 'string' && /^\d{1,2}:\d{2}$/.test(ps.switchAt) ? ps.switchAt : '05:00',
+        switchAt: typeof ps.switchAt === 'string' && /^\d{1,2}:\d{2}$/.test(ps.switchAt) ? ps.switchAt : '01:00',
         windowMinutes: Number(ps.windowMinutes) > 0 ? Number(ps.windowMinutes) : 30,
         rotation: rot,
         // 每个角色卡绑哪个模型（owner 2026-11-16 接入 Google 后需要）：
@@ -4835,7 +4835,7 @@ async function main() {
               sendJson({ ok: false, error: `角色「${name}」不存在（roles/${name}.md）` }, 400);
               return;
             }
-            // 换角色卡 ⇒ 重建会话（和 05:00 自动轮换保持一致；否则旧人格的历史会串进来 ✗）
+            // 换角色卡 ⇒ 重建会话（和 01:00 自动轮换保持一致；否则旧人格的历史会串进来 ✗）
             // 顺手同步 onDuty 镜像 + 清掉 AGY 旧人格没人认领的回合（与自动轮换同一条路径 ✓）
             // ⚠️ 不要在这里先 writeRoleState：applyPersonaSwitch 要用**切换前**的角色卡判断
             // "旧人格"该清哪些回合（先写就把 prev 覆盖成新名字了 ✗）
@@ -11717,7 +11717,7 @@ async function main() {
       // promptText 仍是 buildWakePromptV2 的产物 ⇒ 人格/心情/双态/生日注入**全部保留** ✓
       // ── #1 fallback：worker 掉线就别硬等，回落 DSH（否则群里会"哑火"，而且没人告诉你 ✗）──
       // 判定必须**按值班者的人格**看心跳：旧人格的 worker 还在轮询时会一直刷新
-      // "最近心跳"，只看它会得出"值班者还在"的错结论 ⇒ 05:00 换班后哑火 ✗
+      // "最近心跳"，只看它会得出"值班者还在"的错结论 ⇒ 01:00 换班后哑火 ✗
       // 只有把 transport 设成 agy 且 transportFallback=false 时才强制不走 DSH。
       const duty = dutyPersona;
       const dutySeenAt = agyWorkerSeenAtFor(duty);
@@ -13959,9 +13959,9 @@ async function main() {
 
 
   // ── 每日人格轮换（owner 2026-11-15 拍板）─────────────────────────────────
-  // 规则：北京时间每天 05:00 换一次角色卡；到点若这一轮还在跑就等它结束（窗口内每分钟重试）；
-  // 05:00 那一刻桥接没跑（非正常关机）⇒ 当天跳过，绝不延迟到白天变脸；
-  // 手动切换不暂停自动（只是覆盖到下一个 05:00）；心情/好感度/黑话不清零（两个角色是共同体）。
+  // 规则：北京时间每天 01:00 换一次角色卡；到点若这一轮还在跑就等它结束（窗口内每分钟重试）；
+  // 01:00 那一刻桥接没跑（非正常关机）⇒ 当天跳过，绝不延迟到白天变脸；
+  // 手动切换不暂停自动（只是覆盖到下一个 01:00）；心情/好感度/黑话不清零（两个角色是共同体）。
   const personaStateFile = path.join(STATE_DIR, 'persona-schedule.json');
   function readPersonaState() {
     return readJsonSafe(personaStateFile, { lastSwitchedDay: null, index: null });
@@ -13996,7 +13996,7 @@ async function main() {
   }
 
   /**
-   * 换人格的统一入口（05:00 自动轮换 + 控制台手动切换共用）：
+   * 换人格的统一入口（01:00 自动轮换 + 控制台手动切换共用）：
    *   ① 写角色卡（唯一真相）  ② 同步 persona-schedule.json 的 onDuty 镜像
    *   ③ 重建 DSH 会话（防人格串味；AGY 模式下通常没有会话 ⇒ 天然是空操作）
    *   ④ **AGY 模式**：清掉旧人格还没被认领的回合 —— 新值班者永远不会去取它们，
@@ -14032,12 +14032,12 @@ async function main() {
       const cur = readRoleState().role;
       const plan = shouldSwitch({
         now: Date.now(),
-        switchAt: sch.switchAt ?? '05:00',
+        switchAt: sch.switchAt ?? '01:00',
         windowMinutes: Number(sch.windowMinutes) > 0 ? Number(sch.windowMinutes) : 30,
         lastSwitchedDay: st.lastSwitchedDay ?? null,
         rotation,
         // ⚠️ 永远以**实际角色卡**为准算位置，绝不信 state.index ✗
-        // 事故（2026-11-17）：手动切换不更新 index ⇒ 05:00 算出的"下一个"正好是当前角色 ⇒ 空转，
+        // 事故（2026-11-17）：手动切换不更新 index ⇒ 01:00 算出的"下一个"正好是当前角色 ⇒ 空转，
         // 用户看到的是"没切换"，但日志里明明写着切换成功 ✗。
         index: indexOfRole(rotation, cur),
         busy: anyConversationBusy()
@@ -14061,7 +14061,7 @@ async function main() {
       const switched = applyPersonaSwitch(plan.name);
       // b. 记下"今天切过了"（幂等：重启不会重复切）
       writePersonaState({ ...readPersonaState(), lastSwitchedDay: plan.day, index: plan.index });
-      log(`[persona] ${plan.day} ${sch.switchAt ?? '05:00'} 切换到「${plan.name}」`
+      log(`[persona] ${plan.day} ${sch.switchAt ?? '01:00'} 切换到「${plan.name}」`
         + (switched.rebuilt.length ? `（已重建会话：${switched.rebuilt.join('、')}）` : '（当前没有活跃会话）')
         + (switched.dropped.length ? `（已清掉旧人格未认领回合 ${switched.dropped.length} 个）` : ''));
     } catch (error) {

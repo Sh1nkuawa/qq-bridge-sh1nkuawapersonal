@@ -1,9 +1,9 @@
-// 每日人格轮换：北京时间每天 05:00 换一次角色卡（owner 2026-11-15 拍板）。
+// 每日人格轮换：北京时间每天 01:00 换一次角色卡（owner 2026-11-15 拍板）。
 //
 // 设计要点（按 owner 的五条决定）：
 //   1. 换卡**允许换会话**；若当时这一轮还在跑，就等本轮结束再换（同一时间窗内每分钟重试）。
-//   2. **不补切**：05:00 那一刻桥接没跑（说明前一天非正常关机），当天就跳过，绝不延迟到白天突然变脸。
-//   3. 手动切换**不暂停**自动：手动只是覆盖到下一个 05:00。
+//   2. **不补切**：01:00 那一刻桥接没跑（说明前一天非正常关机），当天就跳过，绝不延迟到白天突然变脸。
+//   3. 手动切换**不暂停**自动：手动只是覆盖到下一个 01:00。
 //   4. 心情**不清零**：两个角色是共同体，心情/好感度/黑话全部共享。
 //   5. 每天切一次。
 //
@@ -29,7 +29,7 @@ export function dayKey(parts) {
   return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
 }
 
-/** '05:00' → { hour:5, minute:0 }；非法返回 null */
+/** '01:00' → { hour:5, minute:0 }；非法返回 null */
 export function parseSwitchAt(text) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(text ?? '').trim());
   if (!m) return null;
@@ -43,7 +43,7 @@ export function parseSwitchAt(text) {
  * 现在该不该轮换。
  * @param {object} o
  * @param {number} o.now
- * @param {string} [o.switchAt='05:00']   北京时间几点切
+ * @param {string} [o.switchAt='01:00']   北京时间几点切
  * @param {number} [o.windowMinutes=30]   窗口：到点后多少分钟内允许切（超出即当天放弃）
  * @param {string|null} [o.lastSwitchedDay] 上次成功切换的日期（'YYYY-MM-DD'）
  * @param {string[]} o.rotation           角色名轮换表
@@ -54,7 +54,7 @@ export function parseSwitchAt(text) {
 export function shouldSwitch(o) {
   const {
     now = Date.now(),
-    switchAt = '05:00',
+    switchAt = '01:00',
     windowMinutes = 30,
     lastSwitchedDay = null,
     rotation = [],
