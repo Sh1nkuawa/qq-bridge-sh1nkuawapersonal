@@ -4,11 +4,13 @@
 //   1. 每 10 秒检查 GET http://127.0.0.1:<consolePort>/api/agy/status
 //   2. 每当 dutyTransport 切到 "agy"（无论是 01:00 定时换班还是手动 POST /api/role 切换），
 //      或当前处于 AGY 值班但没有活跃值守会话（例如上一会话满 20 轮主动下班防上下文超限）时，
-//      在 geminiqq 项目下开启一个全新干净的 Antigravity 对话（默认 model="flash" = Gemini 4 Hydrogen Medium）。
+//      在 geminiqq 项目下开启一个全新干净的 Antigravity 对话（默认 model="flash" = Gemini 4 Hydrogen Medium），
+//      并顺手清理 geminiqq 下超过 AGY_PRUNE_MAX_AGE_HOURS（默认 48 小时 / 2 天）的闲置旧会话。
 //   3. 绝不修改桥接侧 src/**、config.json、state/*.json；绝不打印 console-token。
 //
 // 支持测试模式：
 //   node watcher.mjs --once --dry-run
+//   node watcher.mjs --prune-now --dry-run
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -21,9 +23,14 @@ const MODEL = process.env.AGY_MODEL || 'flash';
 const POLL_MS = Math.max(3000, Number(process.env.AGY_POLL_MS) || 10000);
 const RESPAWN_COOLDOWN_MS = Math.max(30000, Number(process.env.AGY_RESPAWN_COOLDOWN_MS) || 180000);
 const BRIDGE_RECOVER_GRACE_MS = Math.max(10000, Number(process.env.AGY_BRIDGE_RECOVER_GRACE_MS) || 35000);
+const PRUNE_MAX_AGE_HOURS = Number.isFinite(Number(process.env.AGY_PRUNE_MAX_AGE_HOURS))
+  ? Math.max(0, Number(process.env.AGY_PRUNE_MAX_AGE_HOURS))
+  : 48;
+const PRUNE_MAX_AGE_MS = PRUNE_MAX_AGE_HOURS * 3600 * 1000;
 const WORKER_TAG = 'qq-duty-worker';
 const ONCE = process.argv.includes('--once');
 const DRY_RUN = process.argv.includes('--dry-run');
+const PRUNE_NOW = process.argv.includes('--prune-now');
 
 const DATA_DIR = process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR || '';
 const STATE_FILE = DATA_DIR ? path.join(DATA_DIR, 'watcher-state.json') : '';
@@ -173,6 +180,98 @@ async function hasRunningWorkerConversation(persona) {
   if (r.http !== 200 || !Array.isArray(r.body?.conversations)) return null;
   const active = r.body.conversations.find((c) => c?.state?.runState === 'RUN_STATE_RUNNING');
   return active ? active.id : false;
+}
+
+async function pruneOldConversations(excludeIds = []) {
+  if (PRUNE_MAX_AGE_MS <= 0) {
+    return { skipped: true, reason: 'disabled' };
+  }
+  const ls = getLsConfig();
+  if (!ls) {
+    log('prune-skip-no-ls');
+    return { skipped: true, reason: 'no-ls' };
+  }
+
+  const keepSet = new Set(excludeIds.filter(Boolean).map(String));
+  const cutoffMs = Date.now() - PRUNE_MAX_AGE_MS;
+  const headers = {
+    'content-type': 'application/json',
+    'connect-protocol-version': '1',
+    'x-antigravity-csrf-token': ls.csrf
+  };
+
+  let scanned = 0;
+  let eligible = 0;
+  let deleted = 0;
+  let failed = 0;
+  const dryRunIds = [];
+  let pageToken = '';
+
+  for (let page = 0; page < 20; page += 1) {
+    const reqBody = {
+      projectId: PROJECT_ID,
+      pageSize: 100,
+      includeArchived: true,
+      ...(pageToken ? { pageToken } : {})
+    };
+    const r = await fetchJsonWithTimeout(
+      `http://${ls.addr}/product.v1.ConversationService/ListConversations`,
+      { method: 'POST', headers, body: JSON.stringify(reqBody) },
+      10000
+    );
+    if (r.http !== 200 || !Array.isArray(r.body?.conversations)) {
+      log('prune-list-failed', { http: r.http, error: r.body?.error ?? r.body?.code ?? 'unknown', page });
+      break;
+    }
+
+    for (const c of r.body.conversations) {
+      scanned += 1;
+      const id = String(c?.id ?? '').trim();
+      if (!id || keepSet.has(id)) continue;
+      // 双重项目边界校验：绝不越界删除非 geminiqq 的任何会话
+      if (c?.metadata?.projectId && c.metadata.projectId !== PROJECT_ID) continue;
+      // 安全保护：运行中/取消中、置顶、星标会话一律不删
+      const runState = String(c?.state?.runState ?? '');
+      if (runState === 'RUN_STATE_RUNNING' || runState === 'RUN_STATE_CANCELLING') continue;
+      if (c?.annotations?.pinned || c?.annotations?.starred) continue;
+
+      const tsRaw = c?.state?.updateTime || c?.metadata?.createTime || '';
+      const lastActiveMs = Date.parse(String(tsRaw));
+      if (!Number.isFinite(lastActiveMs) || lastActiveMs > cutoffMs) continue;
+
+      eligible += 1;
+      if (DRY_RUN) {
+        dryRunIds.push(id);
+        continue;
+      }
+
+      const del = await fetchJsonWithTimeout(
+        `http://${ls.addr}/product.v1.ConversationService/DeleteConversation`,
+        { method: 'POST', headers, body: JSON.stringify({ conversationId: id }) },
+        10000
+      );
+      if (del.http === 200) {
+        deleted += 1;
+      } else {
+        failed += 1;
+        log('prune-delete-failed', { conversationId: id, http: del.http, error: del.body?.error ?? del.body?.code ?? 'unknown' });
+      }
+    }
+
+    pageToken = String(r.body?.nextPageToken ?? '').trim();
+    if (!pageToken) break;
+  }
+
+  log(DRY_RUN ? 'prune-dry-run' : 'prune-old-conversations', {
+    projectId: PROJECT_ID,
+    maxAgeHours: PRUNE_MAX_AGE_HOURS,
+    scanned,
+    eligible,
+    deleted,
+    failed,
+    ...(DRY_RUN && dryRunIds.length ? { candidateIds: dryRunIds } : {})
+  });
+  return { scanned, eligible, deleted, failed };
 }
 
 function buildDutyPrompt(persona, triggerReason, roleCard = '') {
@@ -388,14 +487,22 @@ async function tick() {
     state.lastSpawnAt = now;
     state.lastConversationId = spawned.conversationId;
     saveState(state);
+    // 每次开新会话时顺手清理 geminiqq 下超过 2 天（默认 48h）的闲置旧会话
+    try {
+      await pruneOldConversations([spawned.conversationId]);
+    } catch (err) {
+      log('prune-uncaught', { error: err?.message ?? String(err) });
+    }
   } else {
     log('spawn-failed', { persona: onDuty, triggerReason, method: spawned.method, error: spawned.error });
   }
 }
 
-log('started', { projectId: PROJECT_ID, model: MODEL, pollMs: POLL_MS, once: ONCE, dryRun: DRY_RUN });
+log('started', { projectId: PROJECT_ID, model: MODEL, pollMs: POLL_MS, pruneMaxAgeHours: PRUNE_MAX_AGE_HOURS, once: ONCE, dryRun: DRY_RUN, pruneNow: PRUNE_NOW });
 
-if (ONCE) {
+if (PRUNE_NOW) {
+  await pruneOldConversations([state.lastConversationId]);
+} else if (ONCE) {
   await tick();
 } else {
   while (true) {

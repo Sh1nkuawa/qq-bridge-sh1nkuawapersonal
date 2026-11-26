@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,293** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,451** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -52,8 +52,8 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`sidecar.json`](../agy-plugin/sidecars/agy-duty-watcher/sidecar.json) | 14 | 监听本地 D:\dsh\qq-bridge 的 dutyTransport；每次切到 AGY（01:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），保证上下文不超限。 | 文件自带（JSON 字段） |
-| [`watcher.mjs`](../agy-plugin/sidecars/agy-duty-watcher/watcher.mjs) | 409 | watcher.mjs —— Antigravity Plugin Sidecar：监听 qq-bridge 的 AGY 值班切换并在 geminiqq 自动开新会话 | 文件自带 |
+| [`sidecar.json`](../agy-plugin/sidecars/agy-duty-watcher/sidecar.json) | 15 | 监听本地 D:\dsh\qq-bridge 的 dutyTransport；每次切到 AGY（01:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），并顺手清理 geminiqq 下超过 2 天的闲置旧会话。 | 文件自带（JSON 字段） |
+| [`watcher.mjs`](../agy-plugin/sidecars/agy-duty-watcher/watcher.mjs) | 516 | watcher.mjs —— Antigravity Plugin Sidecar：监听 qq-bridge 的 AGY 值班切换并在 geminiqq 自动开新会话 | 文件自带 |
 
 ## agy-plugin/skills/qq-bot-operator
 
@@ -200,7 +200,7 @@
 | [`check-onebot-status.mjs`](../scripts/check-onebot-status.mjs) | 68 | 查询 SnowLuma 网关与 QQ 会话状态：HTTP API + WebSocket | 文件自带 |
 | [`check-preset-admin-rules.mjs`](../scripts/check-preset-admin-rules.mjs) | 62 | 只读校验：预设里的规则编号/关键规则是否齐（手写 YAML 容易漏或串号）。 | 文件自带 |
 | [`check-preset-rules.mjs`](../scripts/check-preset-rules.mjs) | 18 | 校验两个 preset 的规则完整性（YAML 可解析 + 关键规则都在） | 文件自带 |
-| [`cleanup-stale-sessions.mjs`](../scripts/cleanup-stale-sessions.mjs) | 87 | !/usr/bin/env node | 文件自带 |
+| [`cleanup-stale-sessions.mjs`](../scripts/cleanup-stale-sessions.mjs) | 137 | !/usr/bin/env node | 文件自带 |
 | [`close-dsh.mjs`](../scripts/close-dsh.mjs) | 56 | !/usr/bin/env node | 文件自带 |
 | [`close-dsh.ps1`](../scripts/close-dsh.ps1) | 38 | close-dsh.ps1 - started by the QQ agent on user request: wait a bit, then stop the DSH web process. | 文件自带 |
 | [`console-status.mjs`](../scripts/console-status.mjs) | 41 | 读桥接控制台状态，定位「会话繁忙」的原因 | 文件自带 |
