@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,125** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,149** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -442,7 +442,7 @@
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
 | [`impersonator-guard.js`](../src/impersonator-guard.js) | 88 | 冒名守卫：群友把昵称/群名片改成"像 bot 的名字"时，自动给他改成「冒名·X」。 | 文件自带 |
-| [`link-bilibili.js`](../src/link-bilibili.js) | 184 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
+| [`link-bilibili.js`](../src/link-bilibili.js) | 208 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
 | [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,727 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |

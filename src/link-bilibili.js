@@ -101,6 +101,23 @@ const inflight = new Map();     // url → Promise
 
 export function clearBilibiliCache() { cache.clear(); inflight.clear(); }
 
+/** 普通通道：不带 UA、不带 cookie（B 站把这种请求当 API 客户端，不做浏览器指纹风控） */
+async function fetchViewJson(fetchImpl, apiUrl, signal) {
+  try {
+    const res = await fetchImpl(apiUrl, { headers: { Referer: 'https://www.bilibili.com/' }, signal });
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
+/** 兜底通道：DoH 真实 IP + SNI 直连（绕开代理/TUN 出口），拿不到就返回 null */
+async function tryDirectViewJson(apiUrl, timeoutMs) {
+  const { biliDirectFetch } = await import('./bili-direct.js');
+  const res = await biliDirectFetch(apiUrl, { headers: { Referer: 'https://www.bilibili.com/' } }, { timeoutMs });
+  return await res.json().catch(() => null);
+}
+
 /**
  * 拿一段 B 站链接的摘要文本。
  * @returns {Promise<{ok:boolean, text?:string, reason?:string, cached?:boolean}>}
@@ -143,9 +160,16 @@ export async function summarizeBilibili(url, {
       //   浏览器 UA + cookie    → 200 ✓
       // 这里刻意不发 UA（也不引入登录 cookie，保持"免登录"的设计）：B 站把无 UA 的请求当 API 客户端，
       // 不做浏览器指纹风控。真要加 UA 就必须同时带 cookie，否则必 412 ✗
-      const res = await fetchImpl(apiUrl, { headers: { Referer: 'https://www.bilibili.com/' }, signal: ac.signal });
-      const json = await res.json().catch(() => null);
-      if (!json) return { ok: false, reason: 'B站接口返回的不是 JSON（可能是风控页）—— 常见原因：带了浏览器 UA 却没带登录 cookie（B 站会回 412）；无 UA 或 UA+cookie 都正常' };
+      //
+      // 兜底：普通 fetch 走的是系统代理/TUN（出口可能在国外）—— 那条路也会被 412。
+      // 所以非 JSON 时再用 bili-direct（DoH 真实 IP + SNI 直连）试一次，两条路互为备份 ✓
+      // 注意：直连带 cookie 才稳，这里没 cookie；两边都可能 412，所以失败后仍按 30 分钟缓存，不狂重试。
+      let json = await fetchViewJson(fetchImpl, apiUrl, ac.signal);
+      if (!json) {
+        const viaDirect = await tryDirectViewJson(apiUrl, timeoutMs).catch(() => null);
+        if (viaDirect) json = viaDirect;
+      }
+      if (!json) return { ok: false, reason: 'B站接口返回的不是 JSON（风控页）—— 常见原因：带了浏览器 UA 却没带登录 cookie（会 412）、或代理出口被 B 站临时封了' };
       if (json.code !== 0) {
         const map = {
           '-404': '视频不存在或已删除',
