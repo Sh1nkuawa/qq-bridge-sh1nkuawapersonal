@@ -314,15 +314,22 @@ POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
 
 | 触发 | 动作 |
 |---|---|
+| **回合被认领后静默僵住**（连不上自己的模型时 agent 会卡住：既不 `requeue` 也不报错） | **首次租约超时**即判定"卡住"：降级 10 分钟 + 用 DSH 接住 + **丢掉这条回合**（否则 worker 清醒后会双发 ✗）。租约默认 **5 分钟**（`config.agyLeaseMs` 可调 1~60 分钟）|
 | 回合**真的被丢弃**（重排次数超限），原因是 `lease-expired` / `tool-error` / `timeout`（或未知） | ① 把该人格**降级 10 分钟**（`status.degradedUntil` 能看到）② **立刻用 DSH 补投这批消息**（消息没标已读，还在未读里） |
 | `refusal` / `manual` 导致的丢弃 | **不降级**（模型自己不想说 / 人手动退的，不是链路问题）|
 | 降级期内 | 该人格的所有唤醒直接走 DSH（`status.dutyTransport` 会显示 `dsh`）|
 | 恢复 | 10 分钟到点自动恢复；或有回合**成功完成**（`complete`）立即解除 |
 | 手动 | `POST /api/agy/degrade {persona, minutes}`（`0` = 解除）|
 
-> 关键：**worker 侧主动 `requeue` 能大幅加快这个判定** —— 失败就退（`tool-error`），两次就到上限、
-> 立刻触发降级 + DSH 补投；如果只是干等租约，最坏要 10 分钟 × 2 才会走到这里。
-> 所以「模型连不上」时**别干等**，直接 `requeue`，群里能更快被 DSH 接住 ✓
+> ⚠️ **回落时用哪个模型**（2026-11-27 实测的坑）：猫娘人格配的是 `provider=google / model=gemini-4-hydrogen`
+> —— 那是给 **AGY** 用的。回落 DSH 时若照用 Gemini，**没 VPN 时 Gemini 照样连不上**，回落了个寂寞
+> （日志 `agent 回合出错 [TRANSPORT]: fetch failed`）✗
+> 所以：**AGY 人格在 DSH 上跑时一律用全局 `dsh` 模型（DeepSeek）** —— 回落的意义就是"换一条能用的路" ✓
+> 实测（2026-11-27 00:21）：掉线回落 → `deepseek-official/deepseek-flash` → `工具统一发送 成功 1/1 条` ✓
+
+> 关键：**worker 侧主动 `requeue` 也能加快判定** —— 失败就退（`tool-error`），两次到上限、
+> 立刻触发降级 + DSH 补投；干等租约则要一个租约周期（现在 5 分钟）。
+> 但"模型连不上"时 agent 往往**直接僵住**（不会 requeue），所以租约兜底是必需的 ✓
 - 值班者掉线（该 persona 的 `onDutyWorkerSeenAt` > 5 分钟）：
   - `transportFallback: "dsh"`（默认）→ 该回合回落给 DSH 处理 ✓（保证不哑火 ✓）
   - `"none"` → 只在日志与 `status` 里告警 ✓

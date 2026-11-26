@@ -126,6 +126,24 @@ export function createAgyTransport({
   }
 
   /**
+   * 丢弃单个回合（不管有没有被认领）。用于"租约超时 ⇒ 桥接改用 DSH 接住"：
+   * 回合必须从队列里拿掉，否则 worker 清醒后还会把这条旧回合再回一遍 ⇒ 群里双发 ✗
+   */
+  function dropTurn(turnId) {
+    const id = String(turnId ?? '');
+    const turn = turns.get(id);
+    if (!turn) return { ok: false, error: AGY_ERRORS.TURN_NOT_FOUND };
+    turns.delete(id);
+    const list = queues.get(turn.persona);
+    if (list) {
+      const idx = list.findIndex((x) => x.turnId === id);
+      if (idx >= 0) list.splice(idx, 1);
+    }
+    stats.dropped += 1;
+    return { ok: true, turn };
+  }
+
+  /**
    * 丢弃某人格下**还没被认领**的回合（可选只丢"老于 olderThanMs"的）。
    * 用途：① 01:00 换班后，旧人格的待办新值班者永远不会来取；
    *      ② 值班者掉线时，挂着没人认领的回合会把会话一直锁成 busy ⇒ 后续唤醒全被挡。
@@ -295,5 +313,5 @@ export function createAgyTransport({
     waiters.clear();
   }
 
-  return { enqueue, wait, claim, complete, requeue, touch, sweep, status, hasWork, pending, reset, snapshot, setPrompt, dropUnclaimed, wake };
+  return { enqueue, wait, claim, complete, requeue, touch, sweep, status, hasWork, pending, reset, snapshot, setPrompt, dropUnclaimed, dropTurn, wake };
 }

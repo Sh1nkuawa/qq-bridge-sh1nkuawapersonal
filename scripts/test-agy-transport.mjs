@@ -275,4 +275,22 @@ ok('★★ complete 带 atUserId 会留在回合上（@人用）；脏值当没�
   assert.equal(t.complete({ turnId: none.turnId, workerId: 'w1' }).turn.atUserId, null);
 });
 
+ok('★★ dropTurn：租约超时改走 DSH 时要把那条回合**从队列拿掉**（否则 worker 清醒后双发）', () => {
+  let clock = 50_000;
+  const t = createAgyTransport({ leaseMs: 1000, now: () => clock });
+  const turn = t.enqueue({ persona: 'p', key: 'g', prompt: 'x' });
+  t.claim({ turnId: turn.turnId, workerId: 'w1' });
+  clock += 1500;
+  // 模拟 sweep 的"首次超时 → 重排"：先超时让它回队列
+  const swept = t.sweep();
+  assert.equal(swept[0].requeued, true);
+  assert.equal(t.pending('p'), 1);
+  // 桥接拿到这条判"worker 卡住"⇒ 丢掉它
+  const r = t.dropTurn(swept[0].turnId);
+  assert.equal(r.ok, true);
+  assert.equal(t.pending('p'), 0, '丢掉后队列里不能再有它');
+  // 幂等：再丢一次是 404，不抛
+  assert.equal(t.dropTurn(swept[0].turnId).ok, false);
+});
+
 console.log(`\n全部通过：${n} 项断言组`);

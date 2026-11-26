@@ -959,7 +959,18 @@ function normalizeIdList(value) {
 
 // ── 配置 ────────────────────────────────────────────────────────────────────
 // ── AGY 传输层（config.transport === "agy" 时启用）────────────────────────────
-const agyTransport = createAgyTransport();
+// 租约（认领后多久没动静算卡住）：默认 **5 分钟**（2026-11-27 从 10 分钟下调）。
+// 实测：worker 连不上自己的模型时会**静默僵住**（既不 requeue 也不 error），
+// 只能靠租约兜底；10 分钟太长，群里就是长时间哑火。可用 config.json 的 `agyLeaseMs` 调（1~60 分钟）。
+const AGY_LEASE_MS = (() => {
+  const fallback = 5 * 60 * 1000;
+  try {
+    const n = Number(readJsonSafe(path.join(ROOT, 'config.json'), {}, false)?.agyLeaseMs);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return Math.min(Math.max(Math.round(n), 60000), 60 * 60 * 1000);
+  } catch { return fallback; }
+})();
+const agyTransport = createAgyTransport({ leaseMs: AGY_LEASE_MS });
 // ⚠️ 心跳必须**按 persona 记**（2026-11-25 观察出来的坑）：
 // 01:00 换班后，旧人格的 worker 还在每 7 秒轮询（拿到的永远是 idle:not-on-duty），
 // 如果只记"最近一次心跳"，桥接就会以为"值班者还在"，于是既不回落 DSH、也不清掉
@@ -1042,7 +1053,19 @@ function agySweepTick() {
   try {
     for (const item of agyTransport.sweep()) {
       if (item.requeued) {
-        log(`[agy] 租约超时，回合 ${item.turnId} 已重排（attempts=${item.attempts}）`);
+        // ⚠️ 2026-11-27 改：**首次租约超时就不再干等**。
+        // 实测（凌晨无 VPN）：worker 正常轮询、认领了回合，然后**卡住 4 分钟一点动静都没有**
+        // （既不 requeue 也不 error —— 因为它连不上自己的模型，agent 直接僵住）。
+        // 旧逻辑要"超时 → 重排 → 再超时 → 再重排 → 丢弃"才回落，最坏 30 分钟群里哑火 ✗
+        // 现在：第一次超时 = 这条链路废了 ⇒ 降级 10 分钟 + 用 DSH 把这批消息接住 + 丢掉这条回合
+        //（丢掉是为了 worker 清醒后不会把旧回合再回一遍 ⇒ 群里双发 ✗）
+        log(`[agy] 租约超时，回合 ${item.turnId}（attempts=${item.attempts}）⇒ 判定 worker 卡住，改用 DSH 接住`);
+        agyMarkDegraded(item.persona, 'lease-expired');
+        try { agyTransport.dropTurn(item.turnId); } catch { /* ignore */ }
+        if (item.key) {
+          agyHooks.releaseTurn?.(String(item.key), { dropped: true });
+          agyHooks.fallbackToDsh?.(String(item.key));
+        }
       } else if (item.error === 'requeued-too-many') {
         log(`[agy] 租约超时且超过重排上限，回合 ${item.turnId} 丢弃`);
         if (item.key) agyHooks.releaseTurn?.(String(item.key), { dropped: true });
@@ -10779,6 +10802,22 @@ async function main() {
   function personaModelFor(roleName) {
     const table = cfg.personaSchedule?.personas;
     const hit = table && typeof table === 'object' ? table[String(roleName ?? '')] : null;
+    // ⚠️ 2026-11-27 实测：猫娘人格配的是 provider=google/model=gemini-4-hydrogen（那是给 **AGY** 用的），
+    // 但 AGY 掉线回落到 DSH 时也会用这个模型 ⇒ **没 VPN 时 Gemini 同样连不上**，
+    // 回落了个寂寞（日志 `agent 回合出错 [TRANSPORT]: fetch failed`）✗
+    // 所以：**AGY 人格在 DSH 上跑时，一律用全局 dsh 模型（DeepSeek）** —— 回落的意义就是"换一条能用的路"。
+    const configured = resolvePersonaTransport({
+      globalTransport: cfg.transport,
+      personas: table,
+      persona: roleName
+    });
+    if (configured === 'agy') {
+      return {
+        provider: String(cfg.dsh?.provider || 'deepseek-official'),
+        model: String(cfg.dsh?.model || 'deepseek-flash'),
+        effort: String(cfg.dsh?.reasoningEffort || REASONING_EFFORT_DEFAULT)
+      };
+    }
     return {
       provider: String(hit?.provider || cfg.dsh?.provider || 'deepseek-official'),
       model: String(hit?.model || cfg.dsh?.model || 'deepseek-flash'),
