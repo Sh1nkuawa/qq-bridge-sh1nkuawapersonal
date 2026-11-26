@@ -13488,6 +13488,13 @@ async function main() {
         for (const u of linksInText(`${m?.text ?? ''}\n${m?.plain ?? ''}`)) urls.push(u);
       }
       const uniq = [...new Set(urls)].slice(0, Number(lc.maxLinks ?? 3) || 3);
+      // [自愈 2026-11-26] 窗口里的 B 站链接如果还没有摘要（比如消息进来时预取失败了、或桥接重启后缓存在内存里丢了），
+      // 这里顺手补一次（异步、不阻塞本轮）。否则那条链接会一直显示"元信息还没取到"，模型只能瞎猜 ✗
+      try {
+        const have = new Set((linkSummaries.get(key)?.items ?? []).map((x) => x.url));
+        const missing = uniq.filter((u) => bilibiliRef(u) && !have.has(u));
+        if (missing.length) prefetchBilibiliLinks(key, missing, lc);
+      } catch { /* ignore */ }
       // 除了"最近 15 条里出现过的链接"，也带上**刚重新预取过**的（10 分钟内）：
       // 群友用文字提"刚才那条视频"时我们会去重取一次，那条 URL 不在窗口里，
       // 若只认窗口就会把刚取回的字幕又丢掉（2026-10-15 实测踩过）。

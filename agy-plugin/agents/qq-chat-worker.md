@@ -51,7 +51,7 @@ node scripts/agy-status.mjs --persona 猫娘侍从
 
 重点核对以下字段（自检值班者心跳请看 `onDutyWorkerSeenAt` / `onDutyStale`，**不要只看 `lastWorkerSeenAt`**）：
 - `onDuty`：当前值班人格。
-- `dutyTransport`：当前值班者走 `"dsh"` 还是 `"agy"`。若为 `"dsh"`，说明当前不是 AGY 值班（例如需等 05:00 换班或由桥接侧切换），属正常状态。
+- `dutyTransport`：当前值班者走 `"dsh"` 还是 `"agy"`。若为 `"dsh"`，说明当前不是 AGY 值班（例如需等 01:00 换班、由桥接侧切换，或处于 10 分钟 AGY 降级期，可同时看 `degradedUntil`），属正常状态。
 - `personaTransport`：每个人格对应的传输层（如 `{"小鲸鱼":"dsh","猫娘侍从":"agy"}`）。只起归属 `"agy"` 的人格 worker。
 
 ### 第 1 步：零消耗挂起领取一个回合
@@ -86,7 +86,8 @@ node scripts/agy-wait-wake.mjs --persona 猫娘侍从 --loop --exit-on-not-on-du
   ```powershell
   node scripts/agy-touch.mjs --turn-id <turnId> --persona 猫娘侍从 --worker-id <workerId>
   ```
-- **异常退回**：若发生不可恢复异常无法产出安全回复，**绝不把半成品或报错发到群里**，而是 `requeue` 退回队首：
+- 唤醒理由 `hotChat`：桥接 v1.5 新增的「回复后 5 分钟滑动热聊窗口」，窗口内普通群消息也会触发唤醒（最多 3 次/分钟）；正常接话即可，不要问“为什么没 @ 也叫我”。
+- **异常退回（立刻 `requeue`，绝不干等租约）**：若发生模型/网络/工具不可恢复错误无法产出安全回复，**绝不把半成品或报错发到群里，也不要干等 10 分钟租约过期**——立刻以 `reason: "tool-error"`（或 `"timeout"`）调用 `requeue` 退回，这样两次到上限后桥接会在几十秒内触发 10 分钟降级并由 DSH 立刻补投接住（避免群里哑火 20 分钟）；**反之，正常成功时绝不要 `requeue`**（会把桥接推向降级）：
   ```powershell
   $utf8 = [System.Text.UTF8Encoding]::new($false)
   $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
@@ -108,7 +109,7 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 '@ | node scripts/agy-reply-and-wait.mjs --batch-stdin --wait --loop --exit-on-not-on-duty --timeout-ms 90000
 ```
 
-- 05:00 换班瞬间若遇到 `404 turn-not-found` 或 `409 already-claimed`，属于桥接清理旧人格未领回合的正常现象，**不要重发同一个 `turnId`**，直接重新 `wait`。
+- 01:00 换班瞬间若遇到 `404 turn-not-found` 或 `409 already-claimed`，属于桥接清理旧人格未领回合的正常现象，**不要重发同一个 `turnId`**，直接重新 `wait`。
 
 ---
 

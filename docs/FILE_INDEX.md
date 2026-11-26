@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,087** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,125** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -46,13 +46,13 @@
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`qq-chat-worker.md`](../agy-plugin/agents/qq-chat-worker.md) | 120 | QQ Chat Worker（AGY 传输层值守指令） | 文件自带（标题） |
+| [`qq-chat-worker.md`](../agy-plugin/agents/qq-chat-worker.md) | 121 | QQ Chat Worker（AGY 传输层值守指令） | 文件自带（标题） |
 
 ## agy-plugin/sidecars/agy-duty-watcher
 
 | 文件 | 行数 | 作用 | 来源 |
 | --- | ---: | --- | --- |
-| [`sidecar.json`](../agy-plugin/sidecars/agy-duty-watcher/sidecar.json) | 14 | 监听本地 D:\dsh\qq-bridge 的 dutyTransport；每次切到 AGY（05:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），保证上下文不超限。 | 文件自带（JSON 字段） |
+| [`sidecar.json`](../agy-plugin/sidecars/agy-duty-watcher/sidecar.json) | 14 | 监听本地 D:\dsh\qq-bridge 的 dutyTransport；每次切到 AGY（01:00 换班或手动切班）或值守会话满轮下班时，自动在 geminiqq 项目下开启一个全新干净会话（默认 Gemini 4 Hydrogen Medium），保证上下文不超限。 | 文件自带（JSON 字段） |
 | [`watcher.mjs`](../agy-plugin/sidecars/agy-duty-watcher/watcher.mjs) | 409 | watcher.mjs —— Antigravity Plugin Sidecar：监听 qq-bridge 的 AGY 值班切换并在 geminiqq 自动开新会话 | 文件自带 |
 
 ## agy-plugin/skills/qq-bot-operator
@@ -75,7 +75,7 @@
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
 | [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 406 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_FEATURE_GAPS.md`](../docs/AGY_FEATURE_GAPS.md) | 222 | AGY 侧能力缺口矩阵（2026-11-25） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 278 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 292 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 246 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
@@ -180,7 +180,7 @@
 | [`agy-lib.mjs`](../scripts/agy-lib.mjs) | 617 | agy-lib.mjs —— AGY worker 共享工具（认证、HTTP 超时、断线重连、日志脱敏、CLI 参数解析） | 文件自带 |
 | [`agy-reply-and-wait.mjs`](../scripts/agy-reply-and-wait.mjs) | 333 | agy-reply-and-wait.mjs —— 把 agent 写好的回复送回桥接，并可选顺手领下一个回合 | 文件自带 |
 | [`agy-self-test.mjs`](../scripts/agy-self-test.mjs) | 720 | agy-self-test.mjs —— AGY worker CLI 端到端契约自检（零外部依赖，不修改 config.json 或线上队列） | 文件自带 |
-| [`agy-status.mjs`](../scripts/agy-status.mjs) | 56 | agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status，10 秒硬超时） | 文件自带 |
+| [`agy-status.mjs`](../scripts/agy-status.mjs) | 64 | agy-status.mjs —— 查询桥接 AGY 传输层健康状态（GET /api/agy/status，10 秒硬超时） | 文件自带 |
 | [`agy-tools.mjs`](../scripts/agy-tools.mjs) | 62 | agy-tools.mjs —— AGY worker 用的"工具"命令（替代 MCP 工具） | 文件自带 |
 | [`agy-touch.mjs`](../scripts/agy-touch.mjs) | 64 | agy-touch.mjs —— 续租正在处理的回合（POST /api/agy/touch） | 文件自带 |
 | [`agy-wait-wake.mjs`](../scripts/agy-wait-wake.mjs) | 134 | agy-wait-wake.mjs —— 领一个 AGY 回合，并把 prompt 原样打印到标准输出 | 文件自带 |
@@ -433,7 +433,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,885 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,892 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -442,7 +442,7 @@
 | [`image-ack.js`](../src/image-ack.js) | 100 | image-ack.js —— 生图请求的文本识别 + 回执去重（纯函数，可单测）。 | 文件自带 |
 | [`image-failure-text.mjs`](../src/image-failure-text.mjs) | 58 | 生图失败时**给群友看的文案**：如实区分「首选后端」和「回落后端」各自的失败原因。 | 文件自带 |
 | [`impersonator-guard.js`](../src/impersonator-guard.js) | 88 | 冒名守卫：群友把昵称/群名片改成"像 bot 的名字"时，自动给他改成「冒名·X」。 | 文件自带 |
-| [`link-bilibili.js`](../src/link-bilibili.js) | 176 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
+| [`link-bilibili.js`](../src/link-bilibili.js) | 184 | B 站链接 → 结构化短摘要（免登录官方接口）。 | 文件自带 |
 | [`mcp-host-server.js`](../src/mcp-host-server.js) | 93 | SnowLuma 网关状态查询 MCP server（stdio）。 | 文件自带 |
 | [`mcp-qq-wait.js`](../src/mcp-qq-wait.js) | 105 | mcp-qq-wait.js — **只**暴露 qq_wait_for_messages 的独立 MCP stdio 服务。 | 文件自带 |
 | [`mcp-snowluma-safe.js`](../src/mcp-snowluma-safe.js) | 1,727 | 安全版 QQ MCP server（stdio）。由 DSH 的 MCP 客户端 spawn。 | 文件自带 |

@@ -135,9 +135,17 @@ export async function summarizeBilibili(url, {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
     try {
-      const res = await fetchImpl(apiUrl, { headers: { 'User-Agent': UA, Referer: 'https://www.bilibili.com/' }, signal: ac.signal });
+      // ⚠️ 2026-11-26 实测：**带浏览器 UA + 不带登录 cookie 会被 B 站风控**（HTTP 412 / 非 JSON）。
+      // 对照（同一台机器、同一接口、连续 3 轮）：
+      //   无 UA                 → 200 + JSON ✓
+      //   无 UA + cookie        → 200 ✓
+      //   浏览器 UA（无 cookie） → **412** ✗  ← 之前就是这么发的，16:39 起元信息全挂
+      //   浏览器 UA + cookie    → 200 ✓
+      // 这里刻意不发 UA（也不引入登录 cookie，保持"免登录"的设计）：B 站把无 UA 的请求当 API 客户端，
+      // 不做浏览器指纹风控。真要加 UA 就必须同时带 cookie，否则必 412 ✗
+      const res = await fetchImpl(apiUrl, { headers: { Referer: 'https://www.bilibili.com/' }, signal: ac.signal });
       const json = await res.json().catch(() => null);
-      if (!json) return { ok: false, reason: 'B站接口返回的不是 JSON（可能是代理/风控页）—— 若代理把 B 站流量走了国外节点，请给 bilibili.com / b23.tv / hdslb.com 配 DIRECT' };
+      if (!json) return { ok: false, reason: 'B站接口返回的不是 JSON（可能是风控页）—— 常见原因：带了浏览器 UA 却没带登录 cookie（B 站会回 412）；无 UA 或 UA+cookie 都正常' };
       if (json.code !== 0) {
         const map = {
           '-404': '视频不存在或已删除',

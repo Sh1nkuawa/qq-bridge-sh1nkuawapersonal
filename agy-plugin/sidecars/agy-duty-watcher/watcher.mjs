@@ -2,7 +2,7 @@
 //
 // 目标：
 //   1. 每 10 秒检查 GET http://127.0.0.1:<consolePort>/api/agy/status
-//   2. 每当 dutyTransport 切到 "agy"（无论是 05:00 定时换班还是手动 POST /api/role 切换），
+//   2. 每当 dutyTransport 切到 "agy"（无论是 01:00 定时换班还是手动 POST /api/role 切换），
 //      或当前处于 AGY 值班但没有活跃值守会话（例如上一会话满 20 轮主动下班防上下文超限）时，
 //      在 geminiqq 项目下开启一个全新干净的 Antigravity 对话（默认 model="flash" = Gemini 4 Hydrogen Medium）。
 //   3. 绝不修改桥接侧 src/**、config.json、state/*.json；绝不打印 console-token。

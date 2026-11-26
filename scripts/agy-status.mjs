@@ -43,7 +43,15 @@ if (logFlag || res.http !== 200) {
     persona,
     event: res.http === 200 ? 'status' : 'error',
     extra: res.http === 200
-      ? { http: 200, onDuty: res.body?.onDuty ?? null, transport: res.body?.transport ?? null }
+      ? {
+          http: 200,
+          onDuty: res.body?.onDuty ?? null,
+          transport: res.body?.transport ?? null,
+          dutyTransport: res.body?.dutyTransport ?? null,
+          ...(res.body?.degradedUntil && Object.keys(res.body.degradedUntil).length
+            ? { degradedUntil: res.body.degradedUntil }
+            : {})
+        }
       : { where: 'status', http: res.http, error: res.body?.error ?? `http-${res.http}` },
     secretToken: token
   });

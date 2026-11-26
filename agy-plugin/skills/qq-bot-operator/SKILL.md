@@ -31,7 +31,7 @@ description: >-
 node scripts/agy-status.mjs --persona 猫娘侍从
 ```
 
-重点看：`onDuty`、`dutyTransport`、`personaTransport`、`onDutyWorkerSeenAt`、`onDutyStale`（别只看 `lastWorkerSeenAt`）。
+重点看：`onDuty`、`dutyTransport`、`personaTransport`、`onDutyWorkerSeenAt`、`onDutyStale`、`degradedUntil`（别只看 `lastWorkerSeenAt`；若 `degradedUntil` 非空说明刚触发了 10 分钟降级保护）。
 
 ### 2. 领取一个回合（推荐 `--loop --exit-on-not-on-duty` 零消耗等活）
 
@@ -60,7 +60,7 @@ $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
 - **只看不说**（桥接仍自动标已读）：传 `"replies": []`。
 - **引用回复某条消息**：加 `"replyToMessageId": -1234567890`。
 - **@ 某位群友**（v1.3，仅作用于第一条回复）：加 `"atUserId": "123456789"`。
-- **拒答 / 异常退回队首**（绝不把半成品发到群里）：
+- **异常退回队首（立刻退，绝不干等租约）**：发生不可恢复的模型/网络/工具错误时，**不要把半成品发到群里，也不要干等 10 分钟租约**——立刻用 `reason: "tool-error"`（或 `"timeout"`）退回，便于桥接几十秒内降级 10 分钟并由 DSH 补投；成功时绝不要 `requeue`：
   ```powershell
   $utf8 = [System.Text.UTF8Encoding]::new($false)
   $OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8
@@ -135,7 +135,7 @@ node scripts/agy-self-test.mjs
 | `204` | （空体） | 正常空闲，立刻继续 `wait` |
 | `200` | `idle: true, reason: "not-on-duty"` | 归 AGY 管但未值班，休眠 ~7s 后继续 `wait` |
 | `200` | `idle: true, reason: "persona-on-dsh"` | 该人格归 DSH 管，**不要死等**，换人格或收工 |
-| `404` | `turn-not-found` | 回合过期或 05:00 换班被清理，不崩溃，重新 `wait` |
+| `404` | `turn-not-found` | 回合过期或 01:00 换班被清理，不崩溃，重新 `wait` |
 | `409` | `already-claimed` / `requeued-too-many` | 已被领走或超重排上限，不崩溃，重新 `wait` |
 | `409` | `transport-not-agy` | 桥接未开 AGY，停止并提示桥接侧 |
 | `403` | `bad-token` | 检查 `state/console-token` 是否可读（**切勿把令牌写进日志**） |
