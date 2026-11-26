@@ -64,3 +64,34 @@ export function personaRoutingTable({ globalTransport = 'dsh', personas = null, 
   for (const name of names) out[name] = resolvePersonaTransport({ globalTransport, personas, persona: name });
   return out;
 }
+
+// ── AGY 降级（2026-11-26）─────────────────────────────────────────────────
+// 问题：只按"心跳"判定掉线，漏了「worker 活着、但它连不上自己的模型/网络」这种情况 ——
+//   回合被认领后卡死 → 租约 10 分钟超时 → 重排 → 再超时 → 丢弃。整个过程中
+//   **心跳一直是新的** ⇒ 永远不回落 DSH ⇒ 群里哑火，那条消息最后被丢弃 ✗
+// 做法：真正"丢了一个回合"（重排次数超限）时，把这个人格**降级 10 分钟**：
+//   这段时间内的唤醒直接走 DSH；10 分钟后再试 AGY（避免一次抖动就永久切走）。
+
+export const AGY_DEGRADE_MS = 10 * 60 * 1000;
+
+/** 哪些"退回"原因算基础设施故障（值得降级）。'refusal'/'manual' 是模型自己不想/人手动退的，不算。 */
+export const AGY_INFRA_REQUEUE_REASONS = ['lease-expired', 'tool-error', 'timeout'];
+
+/**
+ * 这次"丢弃"是否说明 AGY 这条链路坏了（⇒ 应该降级到 DSH）。
+ * @param {object} opts
+ * @param {boolean} opts.dropped 回合是否真的被丢弃（不是普通重排）
+ * @param {string} [opts.reason] 退回原因；空 = 不知道原因，也按故障处理（宁可回落也别哑火）
+ */
+export function shouldDegradeToDsh({ dropped = false, reason = '' } = {}) {
+  if (!dropped) return false;
+  const r = String(reason ?? '').trim().toLowerCase();
+  if (!r) return true;
+  return AGY_INFRA_REQUEUE_REASONS.includes(r);
+}
+
+/** 当前是否处于降级期（`until` 是毫秒时间戳，0/空 = 没降级）。 */
+export function isDegraded(untilMs, nowMs = Date.now()) {
+  const until = Number(untilMs) || 0;
+  return until > Number(nowMs);
+}

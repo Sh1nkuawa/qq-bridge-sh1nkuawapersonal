@@ -182,6 +182,17 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 > `get_group_msg_history` 是否可用取决于 SnowLuma 有没有实现这个动作 —— 没实现就是 502，
 > **不是**你参数传错了 ✓
 
+### 3.8 `POST /api/agy/degrade` — 手动降级（2026-11-26 v1.5 新增，应急用）
+
+```
+POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 10 }   // 降级 10 分钟（期间唤醒走 DSH）
+POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
+```
+
+- 场景：AGY 那边**心跳还在但明显不正常**（比如连不上模型、一直丢回合）—— 心跳判定抓不到这种情况
+- 效果：`status.dutyTransport` 立即变 `dsh`，唤醒不再入队（直接走 DSH）
+- 只认控制台令牌（`/api/agy/*` 天然拒绝 `x-agent-token`）；到期自动恢复，不用手动解除
+
 ---
 
 ## 4. Turn 对象
@@ -288,6 +299,27 @@ GET /api/agy/onebot?action=get_group_msg_history&groupId=541026885&messageSeq=53
 
 > 纯逻辑在 `src/hot-chat.js`（`isHotChat` / `nextHotChatUntil` / `effectiveMaxWakePerMinute`），
 > `scripts/test-hot-chat.mjs` 7 组回归钉住"滑动 / 到点即失效 / 关掉 / 限流放宽"。
+
+### 5.3 AGY 降级：心跳还在但链路坏了怎么办（2026-11-26 v1.5）
+
+**原来只有一种回落判定**：`onDutyStale`（值班者 >5 分钟没心跳）⇒ 回落 DSH。
+它漏掉了最常见的一种故障：**worker 活着、照常长轮询，但它连不上自己的模型/网络**。
+这时心跳一直是新的 ⇒ 永不回落；回合被认领后卡到租约（10 分钟）超时 → 重排 → 再超时 → 丢弃，
+整个过程中群里**哑火**，谁也不会被告知 ✗
+
+**现在**：
+
+| 触发 | 动作 |
+|---|---|
+| 回合**真的被丢弃**（重排次数超限），原因是 `lease-expired` / `tool-error` / `timeout`（或未知） | ① 把该人格**降级 10 分钟**（`status.degradedUntil` 能看到）② **立刻用 DSH 补投这批消息**（消息没标已读，还在未读里） |
+| `refusal` / `manual` 导致的丢弃 | **不降级**（模型自己不想说 / 人手动退的，不是链路问题）|
+| 降级期内 | 该人格的所有唤醒直接走 DSH（`status.dutyTransport` 会显示 `dsh`）|
+| 恢复 | 10 分钟到点自动恢复；或有回合**成功完成**（`complete`）立即解除 |
+| 手动 | `POST /api/agy/degrade {persona, minutes}`（`0` = 解除）|
+
+> 关键：**worker 侧主动 `requeue` 能大幅加快这个判定** —— 失败就退（`tool-error`），两次就到上限、
+> 立刻触发降级 + DSH 补投；如果只是干等租约，最坏要 10 分钟 × 2 才会走到这里。
+> 所以「模型连不上」时**别干等**，直接 `requeue`，群里能更快被 DSH 接住 ✓
 - 值班者掉线（该 persona 的 `onDutyWorkerSeenAt` > 5 分钟）：
   - `transportFallback: "dsh"`（默认）→ 该回合回落给 DSH 处理 ✓（保证不哑火 ✓）
   - `"none"` → 只在日志与 `status` 里告警 ✓

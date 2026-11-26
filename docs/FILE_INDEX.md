@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **79,844** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,032** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -73,9 +73,9 @@
 | --- | ---: | --- | --- |
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
-| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 370 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
+| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 402 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_FEATURE_GAPS.md`](../docs/AGY_FEATURE_GAPS.md) | 222 | AGY 侧能力缺口矩阵（2026-11-25） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 253 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 269 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 204 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
@@ -366,7 +366,7 @@
 | [`test-owner-dm.mjs`](../scripts/test-owner-dm.mjs) | 59 | 验证「owner 私聊命令」链路（用控制台模拟器，不需要 owner 真的发消息）。 | 文件自带 |
 | [`test-persona-lines.mjs`](../scripts/test-persona-lines.mjs) | 105 | persona-lines.js 单元测试：桥接"替机器人说的话"（禁言播报 / 生图开始提示）。 | 文件自带 |
 | [`test-persona-schedule.mjs`](../scripts/test-persona-schedule.mjs) | 108 | 每日人格轮换的离线回归：窗口、忙碌延后、不补切、幂等、轮换顺序 | 文件自带 |
-| [`test-persona-transport.mjs`](../scripts/test-persona-transport.mjs) | 83 | 按人格分流传输层（小鲸鱼→DSH，猫娘→AGY）的离线回归 | 文件自带 |
+| [`test-persona-transport.mjs`](../scripts/test-persona-transport.mjs) | 115 | 按人格分流传输层（小鲸鱼→DSH，猫娘→AGY）的离线回归 | 文件自带 |
 | [`test-preset-local-tools.mjs`](../scripts/test-preset-local-tools.mjs) | 260 | 铁律 L7 的注册期断言：仿真会话的 preset **不得包含本地执行能力**。 | 文件自带 |
 | [`test-preset-prompt.mjs`](../scripts/test-preset-prompt.mjs) | 173 | 仿真提示词改写（src/preset-prompt.js）的离线单测。 | 文件自带 |
 | [`test-qq-mode-plugin.mjs`](../scripts/test-qq-mode-plugin.mjs) | 15 | DSH 0.2 obtains settings metadata from Config and never calls register(). | 文件自带 |
@@ -433,7 +433,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,808 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,885 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |
@@ -455,7 +455,7 @@
 | [`mood.js`](../src/mood.js) | 390 | 自研「心情」引擎（2026-10-23）：替代 dsh-feiyu-mood 的判断部分，**保留它的 UI**。 | 文件自带 |
 | [`persona-lines.js`](../src/persona-lines.js) | 68 | persona-lines.js —— 桥接"替机器人说的一句话"（群里播报）的模板池与挑选器。 | 文件自带 |
 | [`persona-schedule.js`](../src/persona-schedule.js) | 94 | 每日人格轮换：北京时间每天 05:00 换一次角色卡（owner 2026-11-15 拍板）。 | 文件自带 |
-| [`persona-transport.js`](../src/persona-transport.js) | 66 | 按人格（persona）决定这一轮用哪条传输层：DSH 会话 还是 AGY worker | 文件自带 |
+| [`persona-transport.js`](../src/persona-transport.js) | 97 | 按人格（persona）决定这一轮用哪条传输层：DSH 会话 还是 AGY worker | 文件自带 |
 | [`preset-prompt.js`](../src/preset-prompt.js) | 157 | 二代仿真预设提示词（「仿真」层）的读取与安全改写。 | 文件自带 |
 | [`qq-model-view.js`](../src/qq-model-view.js) | 80 | Only the model-facing view is compacted. Stored messages and console/API data | 文件自带 |
 | [`quote-ref.js`](../src/quote-ref.js) | 114 | 引用消息的"身份证"：把「引用的是谁、哪一条、带什么附件」写清楚，供模型直接定位。 | 文件自带 |

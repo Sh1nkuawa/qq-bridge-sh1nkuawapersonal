@@ -15,6 +15,22 @@ v1.3 已对接 AGY 侧在契约 §10 登记的三条（@人 / 只读 OneBot / pr
 worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
 
+### 1.7 v1.5 补：AGY 降级（2026-11-26 14:0x）
+
+**原来只有"心跳过期"一种回落判定**（`onDutyStale`）。漏了最常见的一种：
+**worker 活着、照常长轮询，但它连不上自己的模型/网络** ⇒ 心跳一直新 ⇒ 永不回落；
+回合卡到租约超时 → 重排 → 再超时 → 丢弃，群里哑火且没人知道 ✗
+
+现在：回合**真的被丢弃**（`lease-expired` / `tool-error` / `timeout` / 未知原因）时
+→ ① 该人格**降级 10 分钟** ② **立刻用 DSH 补投这批消息**（消息没标已读，还在未读里）；
+`refusal`/`manual` 不降级；降级期内 `dutyTransport` 显示 `dsh`；10 分钟后自动恢复，
+或有回合成功 `complete` 立即解除。手动开关：`POST /api/agy/degrade {persona, minutes}`（0=解除）。
+
+实测（14:03）：心跳新鲜（stale=false）时手动降级 → `dutyTransport` 立刻 `agy→dsh`；解除后回 `agy` ✓
+
+> 想更快触发：**worker 侧失败就 `requeue(tool-error)`** —— 两次到上限立刻降级 + DSH 补投；
+> 干等租约要 10 分钟 × 2 才走到这里。
+
 ### 1.6 v1.5（2026-11-26 01:0x）—— 热聊窗口
 
 **问题**（owner 明确要求，AGY 侧在契约 §10 登记）：bot 回完一句就结束回合、群停在 `diving`

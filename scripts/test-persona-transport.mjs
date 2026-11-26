@@ -5,10 +5,14 @@
 
 import assert from 'node:assert/strict';
 import {
+  AGY_DEGRADE_MS,
+  AGY_INFRA_REQUEUE_REASONS,
   TRANSPORTS,
+  isDegraded,
   normalizePersonaTransport,
   personaRoutingTable,
-  resolvePersonaTransport
+  resolvePersonaTransport,
+  shouldDegradeToDsh
 } from '../src/persona-transport.js';
 
 let n = 0;
@@ -78,6 +82,34 @@ ok('★ persona 表里有但 rotation 没写的，也要出现在路由表里（
 ok('★ 全局 dsh 时路由表全是 dsh', () => {
   const table = personaRoutingTable({ globalTransport: 'dsh', personas: PERSONAS, rotation: ['小鲸鱼', '猫娘侍从'] });
   assert.deepEqual(table, { 小鲸鱼: 'dsh', 猫娘侍从: 'dsh' });
+});
+
+console.log('\nAGY 降级（心跳还在但链路坏了 ⇒ 回落 DSH）：');
+
+ok('★★ 只有"真的丢了回合"才降级；普通重排不降级（那是慢，不是坏）', () => {
+  assert.equal(shouldDegradeToDsh({ dropped: false, reason: 'lease-expired' }), false);
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: 'lease-expired' }), true);
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: 'tool-error' }), true);
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: 'timeout' }), true);
+});
+
+ok('★ 模型自己拒答 / 人手动退回 不降级（不是基础设施问题）', () => {
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: 'refusal' }), false);
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: 'manual' }), false);
+});
+
+ok('★ 不知道原因时按故障处理（宁可回落 DSH，也别在群里哑火）', () => {
+  assert.equal(shouldDegradeToDsh({ dropped: true }), true);
+  assert.equal(shouldDegradeToDsh({ dropped: true, reason: '' }), true);
+});
+
+ok('★ 降级 10 分钟；到点自动恢复，避免一次抖动就永久切走', () => {
+  assert.equal(AGY_DEGRADE_MS, 10 * 60 * 1000);
+  const now = 1_000_000;
+  assert.equal(isDegraded(now + AGY_DEGRADE_MS, now), true);
+  assert.equal(isDegraded(now + AGY_DEGRADE_MS, now + AGY_DEGRADE_MS), false, '到点即恢复');
+  assert.equal(isDegraded(0, now), false, '没降级');
+  assert.equal(AGY_INFRA_REQUEUE_REASONS.length, 3);
 });
 
 console.log(`\n全部通过：${n} 项断言组`);

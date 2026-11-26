@@ -35,7 +35,7 @@ import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
 import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill, pickNewestWithinBudget } from './agy-prompt.js';
 import { effectiveMaxWakePerMinute, isHotChat, nextHotChatUntil, normalizeHotChatWindowMs } from './hot-chat.js';
-import { normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport } from './persona-transport.js';
+import { AGY_DEGRADE_MS, isDegraded, normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport, shouldDegradeToDsh } from './persona-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
 import { summarizeBilibili } from './link-bilibili.js';
@@ -1010,6 +1010,33 @@ function agyDutyStale(persona) {
  */
 const agyHooks = { releaseTurn: null };
 
+/**
+ * AGY 降级表（persona → 截止时间）。
+ * 为什么需要：`agyDutyStale` 只看心跳，而"worker 活着、但它连不上自己的模型/网络"时
+ * 心跳一直是新的 ⇒ 永远不回落 DSH ⇒ 回合卡到租约超时、重排两次后被丢弃 ⇒ 群里哑火 ✗
+ * 所以"真的丢了一个回合"时把这个人格降级 10 分钟（期间的唤醒直接走 DSH），到点自动重试 AGY。
+ */
+const agyDegradedUntil = new Map();
+const AGY_DEGRADE_NOTE = new Set();
+
+function agyMarkDegraded(persona, why = '') {
+  const p = String(persona ?? '').trim();
+  if (!p) return;
+  const until = Date.now() + AGY_DEGRADE_MS;
+  agyDegradedUntil.set(p, until);
+  if (AGY_DEGRADE_NOTE.has(p)) return;
+  AGY_DEGRADE_NOTE.add(p);
+  log(`[agy] 值班者「${p}」丢了回合（${why || '未知原因'}）⇒ 降级 ${Math.round(AGY_DEGRADE_MS / 60000)} 分钟：`
+    + '这段时间的唤醒直接回落 DSH（心跳还在也可能只是"worker 活着但连不上模型"）');
+}
+
+function agyIsDegraded(persona) {
+  const p = String(persona ?? '').trim();
+  const until = agyDegradedUntil.get(p) || 0;
+  if (!isDegraded(until)) { agyDegradedUntil.delete(p); return false; }
+  return true;
+}
+
 /** 每分钟回收超时租约；丢弃的回合要顺手释放"会话繁忙"（AGY 侧 2026-11-25 指出：之前根本没调 sweep ✗）。 */
 function agySweepTick() {
   try {
@@ -1019,6 +1046,12 @@ function agySweepTick() {
       } else if (item.error === 'requeued-too-many') {
         log(`[agy] 租约超时且超过重排上限，回合 ${item.turnId} 丢弃`);
         if (item.key) agyHooks.releaseTurn?.(String(item.key), { dropped: true });
+        // 丢回合 = 这条链路坏了（心跳在也可能只是"worker 活着但连不上模型"）
+        // ⇒ 降级 + 立刻用 DSH 把这一批消息接住，别让群里哑火
+        if (shouldDegradeToDsh({ dropped: true, reason: 'lease-expired' })) {
+          agyMarkDegraded(item.persona, 'lease-expired');
+          if (item.key) agyHooks.fallbackToDsh?.(String(item.key));
+        }
       }
     }
     // 值班者掉线 / 换班后新值班者没起来：挂太久又没人认领的回合必须清掉。
@@ -4860,6 +4893,8 @@ async function main() {
             // 按人格分流的现状：dutyTransport = 这一位现在实际走哪边，
             // personaTransport = 每个人格的去向（小鲸鱼 dsh / 猫娘侍从 agy）
             dutyTransport,
+            // 降级中的值班者（心跳还在但链路坏过）：这段时间的唤醒直接走 DSH
+            degradedUntil: Object.fromEntries([...agyDegradedUntil].filter(([, t]) => isDegraded(t))),
             personaTransport: personaRoutingTable({
               globalTransport: cfg.transport,
               personas: cfg.personaSchedule?.personas,
@@ -4951,6 +4986,27 @@ async function main() {
           sendJson(r.ok ? { ok: true, turn: r.turn, leaseUntil: r.leaseUntil } : { ok: false, error: r.error }, r.http ?? 200);
           return;
         }
+        if (req.method === 'POST' && action === 'degrade') {
+          // 手动降级：AGY 那边"心跳还在但明显不正常"（比如连不上模型）时的应急开关，
+          // 也是验证降级路由的手段。minutes<=0 ⇒ 解除。只认控制台令牌（/api/agy/* 天然拒 agent token）✓
+          const personaName = String(agyBody.persona ?? '').trim() || currentDutyPersona();
+          if (!personaName) { sendJson({ ok: false, error: 'persona 不能为空' }, 400); return; }
+          const minutes = Number(agyBody.minutes);
+          if (Number.isFinite(minutes) && minutes <= 0) {
+            agyDegradedUntil.delete(personaName);
+            AGY_DEGRADE_NOTE.delete(personaName);
+            log(`[agy] 手动解除降级（${personaName}）⇒ 唤醒恢复走 AGY`);
+            sendJson({ ok: true, persona: personaName, degradedUntil: null });
+            return;
+          }
+          const ms = Number.isFinite(minutes) && minutes > 0
+            ? Math.min(Math.round(minutes * 60000), 24 * 3600000)
+            : AGY_DEGRADE_MS;
+          agyDegradedUntil.set(personaName, Date.now() + ms);
+          log(`[agy] 手动降级（${personaName}）${Math.round(ms / 60000)} 分钟 ⇒ 这段时间的唤醒走 DSH`);
+          sendJson({ ok: true, persona: personaName, degradedUntil: agyDegradedUntil.get(personaName) });
+          return;
+        }
         if (req.method === 'POST' && action === 'touch') {
           const r = agyTransport.touch({ turnId: agyBody.turnId, workerId: agyBody.workerId });
           sendJson(r.ok ? { ok: true, leaseUntil: r.leaseUntil } : { ok: false, error: r.error }, r.http ?? 200);
@@ -4961,10 +5017,15 @@ async function main() {
           log(`[agy] 回合退回 ${agyBody.turnId}（${agyBody.reason ?? 'manual'}）` + (r.attempts ? ` attempts=${r.attempts}` : ''));
           if (!r.ok && r.error === 'requeued-too-many') {
             try {
-              const dead = agyTransport.snapshot ? null : null;
               // 该回合已被丢弃 ⇒ 用 key 释放（turnId 已不在队列里，key 从退回前拿不到时就跳过）
               const dk = r.turn?.key ?? agyBody.key;
               if (dk) agyReleaseTurn(String(dk), { dropped: true });
+              // 链路坏了（工具报错/超时/不知道原因）⇒ 降级 + 用 DSH 把这一批接住
+              const dReason = String(agyBody.reason ?? '');
+              if (dk && shouldDegradeToDsh({ dropped: true, reason: dReason })) {
+                agyMarkDegraded(r.turn?.persona ?? agyBody.persona, dReason || 'unknown');
+                agyHooks.fallbackToDsh?.(String(dk));
+              }
             } catch { /* ignore */ }
           }
           sendJson(r.ok ? { ok: true, attempts: r.attempts } : { ok: false, error: r.error }, r.http ?? 200);
@@ -5002,6 +5063,9 @@ async function main() {
           }
           agyLastCompleteAt = Date.now();
           agyNoteWorkerSeen(r.turn.persona);
+          // 成功完成 ⇒ 解除降级（链路恢复了，别再白白走 DSH 花钱）
+          agyDegradedUntil.delete(String(r.turn.persona ?? ''));
+          AGY_DEGRADE_NOTE.delete(String(r.turn.persona ?? ''));
           // ⭐ 必须释放繁忙标记，否则这一轮结束后所有新唤醒都会被挡住（AGY 侧联调发现 ✗）
           // 已读水位用**这个回合自己**的快照水位（turn.readThroughSeq）：
           // AGY 那边没有 qq_mark_read，桥接必须在收尾时代为提交，否则未读会一轮轮堆积 ✗
@@ -10671,6 +10735,17 @@ async function main() {
 
   // 模块级 agySweepTick() 需要一个能调到这里的作用域入口（见文件上方 agyHooks 注释）
   agyHooks.releaseTurn = (key, opts) => agyReleaseTurn(key, opts);
+  // AGY 降级时的补投：这批消息 AGY 没接住，直接改用 DSH 再来一次（消息没标已读，还在未读里）
+  agyHooks.fallbackToDsh = (key) => {
+    try {
+      const st = getSocialV2State(key);
+      const reason = String(st.lastWakeReason || 'atMention');
+      log(`[agy] ${key} 的这批消息改用 DSH 补投（原因沿用 ${reason}）`);
+      scheduleWakeV2(key, reason);
+    } catch (error) {
+      log(`[agy] DSH 补投失败 ${key}：${error?.message ?? error}`);
+    }
+  };
 
   /**
    * 某个人格这一轮该走哪条传输层（'agy' | 'dsh'）。
@@ -10681,6 +10756,8 @@ async function main() {
    *   生产里则是每次唤醒都 ReferenceError —— 而且只在真的唤醒时才炸）
    */
   function personaTransportOf(persona) {
+    // 降级期内直接走 DSH（心跳还在也一样：可能是"worker 活着但连不上模型"）
+    if (agyIsDegraded(persona)) return 'dsh';
     return resolvePersonaTransport({
       globalTransport: cfg.transport,
       personas: cfg.personaSchedule?.personas,
