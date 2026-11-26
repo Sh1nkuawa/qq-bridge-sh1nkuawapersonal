@@ -291,19 +291,23 @@ await test('an in-flight wait rechecks mode permission before exposing a new arr
   assert.equal(result.data.newMessages, undefined);
 });
 
-await test('building a budgeted snapshot preserves whole oldest messages without granting a receipt', async ({ h, st, request, append }) => {
+await test('budgeted snapshot gives the NEWEST batch (not the oldest) and grants no receipt by itself', async ({ h, st, request, append }) => {
+  // 2026-11-27 owner 拍板：给模型**最近**的一批未读，更早的由桥接在收尾时自动标已读。
+  // 旧策略是"最早优先"（先给 1、2，把最新的 3 留到下一轮）—— 那会让触发唤醒的那条被切在外面 ✗
   h.cfg.socialV2.context.wakeMessageLimit = 2;
   h.cfg.socialV2.context.wakeRecentLimit = 0;
   append('first'); append('second'); append('third');
   const snapshot = h.buildWakeSnapshotV2(KEY);
-  assert.deepEqual(seqs(snapshot.messages), [1, 2]);
+  assert.deepEqual(seqs(snapshot.messages), [2, 3], '给最近两条，且仍按时间正序');
   assert.equal(snapshot.includedUnreadCount, 2);
   assert.equal(snapshot.unreadCount, 3);
   assert.equal(snapshot.partial, true);
-  assert.equal(snapshot.readThroughSeq, 2);
+  assert.equal(snapshot.skippedOlder, 1, '要告诉模型前面还有 1 条没给');
+  assert.equal(snapshot.readThroughSeq, 3, '水位 = 看到的最新技术');
   assert.ok(JSON.stringify(snapshot).length <= h.cfg.socialV2.context.wakeMaxChars);
-  assert.equal((await request('mark-read', { body: { throughSeq: 2 } })).status, 400);
+  // 快照本身不授权已读：未读与水位都不动（收尾才由 bridge 自动提交）
   assert.deepEqual(seqs(st.unread), [1, 2, 3]);
+  assert.equal(st.lastReadThroughSeq, 0);
 });
 
 await test('an in-flight wait rechecks paused, feature, tool and allowlist permissions without granting observation', async ({ h, st, request, append }) => {
@@ -328,7 +332,9 @@ await test('an in-flight wait rechecks paused, feature, tool and allowlist permi
   }
 }, { observe: true });
 
-await test('oversized first stored unread remains intact and cannot be skipped by the snapshot', async ({ h, st, request, append }) => {
+await test('an over-budget older message is skipped (newest given), kept intact, and never truncated', async ({ h, st, request, append }) => {
+  // 最新优先 + 预算：塞不下的大消息会被跳过（skippedOlder），给进去的仍是原文、不二次截断。
+  // 被跳过的那条不会消失（存储原样），收尾时随"更早的一批"一起标已读。
   h.cfg.socialV2.context.wakeMaxChars = 500;
   // Existing bridge storage keeps head/tail excerpts. Distinct long excerpts
   // exceed this snapshot budget and must not be truncated a second time.
@@ -336,11 +342,12 @@ await test('oversized first stored unread remains intact and cannot be skipped b
   append(long); append('small but newer');
   const storedBefore = plain(st.unread[0]);
   const snapshot = h.buildWakeSnapshotV2(KEY);
-  assert.equal(snapshot.messages.length, 0);
+  assert.deepEqual(seqs(snapshot.messages), [2], '塞不下最旧那条 ⇒ 给最新的那条');
+  assert.equal(snapshot.skippedOlder, 1);
   assert.equal(snapshot.partial, true);
-  assert.equal(snapshot.readThroughSeq, 0);
+  assert.equal(snapshot.readThroughSeq, 2);
   assert.ok(JSON.stringify(snapshot).length <= 500);
-  assert.deepEqual(plain(st.unread[0]), storedBefore);
+  assert.deepEqual(plain(st.unread[0]), storedBefore, '被跳过的那条存储不能被改写');
   const unread = await request('unread');
   assert.deepEqual(unread.data.messages[0], storedBefore);
 });

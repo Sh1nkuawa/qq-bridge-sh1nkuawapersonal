@@ -11,7 +11,7 @@
 > （2026-10-05 实例：`src/bridge.js` 总行 14,108 / 非空行 13,693，差 415 行空行）。
 > **要在文档里写行数，就引用这里，别手抄**；二进制文件与生成物自己（本文件）不列行数（显示 `—`）。
 
-统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,231** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
+统计：共 **364** 个被跟踪文件（其中 362 个文本文件、合计 **80,293** 行） —— 文件自带说明 **340**、人工补写 **23**、待补 **1**。
 
 ## （仓库根）
 
@@ -73,9 +73,9 @@
 | --- | ---: | --- | --- |
 | [`群公告-新版草稿.md`](../docs/群公告-新版草稿.md) | 51 | 群公告（bot 第一人称版） | 文件自带（标题） |
 | [`AFFINITY.md`](../docs/AFFINITY.md) | 149 | 好感度（关系）系统设计 —— 阶段 1 | 文件自带（标题） |
-| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 413 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
+| [`AGY_CONTRACT.md`](../docs/AGY_CONTRACT.md) | 431 | AGY 传输层契约（bridge ↔ worker） | 文件自带（标题） |
 | [`AGY_FEATURE_GAPS.md`](../docs/AGY_FEATURE_GAPS.md) | 222 | AGY 侧能力缺口矩阵（2026-11-25） | 文件自带（标题） |
-| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 292 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
+| [`AGY_HANDOFF.md`](../docs/AGY_HANDOFF.md) | 305 | AGY 交接（给新会话的 agent） | 文件自带（标题） |
 | [`AGY_SIDE_TASKS.md`](../docs/AGY_SIDE_TASKS.md) | 246 | AGY 侧待办（给 Antigravity 里的 agent） | 文件自带（标题） |
 | [`AGY_WORKER_TASK.md`](../docs/AGY_WORKER_TASK.md) | 113 | AGY worker 任务包（交给 Antigravity 那边的 agent） | 文件自带（标题） |
 | [`FEED.md`](../docs/FEED.md) | 137 | 投喂（赞助）功能设计 | 文件自带（标题） |
@@ -383,7 +383,7 @@
 | [`test-snowluma-liveness.mjs`](../scripts/test-snowluma-liveness.mjs) | 87 | SnowLuma 链路存活看门狗验收。 | 文件自带 |
 | [`test-speech-mode.mjs`](../scripts/test-speech-mode.mjs) | 138 | 说话姿态判定的离线回归：用真实群聊风格的话验证阈值 | 文件自带 |
 | [`test-stickers.mjs`](../scripts/test-stickers.mjs) | 158 | 表情包体系自检： | 文件自带 |
-| [`test-token-economy.mjs`](../scripts/test-token-economy.mjs) | 624 | Exercise real bridge HTTP handlers and prompt delivery with isolated files, | 文件自带 |
+| [`test-token-economy.mjs`](../scripts/test-token-economy.mjs) | 631 | Exercise real bridge HTTP handlers and prompt delivery with isolated files, | 文件自带 |
 | [`test-token-usage.mjs`](../scripts/test-token-usage.mjs) | 303 | Token 用量账本 + 价目表测试。 | 文件自带 |
 | [`test-tts-service.mjs`](../scripts/test-tts-service.mjs) | 120 | tts-service 的离线回归：按需拉起、并发只拉一次、空闲 30 分钟自动关 | 文件自带 |
 | [`test-turn-retry.mjs`](../scripts/test-turn-retry.mjs) | 102 | 回合级重试策略单测：工具参数写成非法 JSON（MALFORMED_RESPONSE）时该不该自动重发。 | 文件自带 |
@@ -433,7 +433,7 @@
 | [`bili-direct.js`](../src/bili-direct.js) | 198 | B 站专用通道：**DoH 拿真实 IP → 直连**（绕过 mihomo 的 fake-ip / 代理路由） | 文件自带 |
 | [`bili-subtitle.js`](../src/bili-subtitle.js) | 286 | B 站字幕：抓取 → 清洗 → 分层压缩（长字幕适配）→ 缓存 + 按时间分页 | 文件自带 |
 | [`birthday.js`](../src/birthday.js) | 156 | 生日祝贺：判定"今天谁过生日" → 到点唤醒一次模型，由它写祝福并用自己的声音说一句日语。 | 文件自带 |
-| [`bridge.js`](../src/bridge.js) | 15,931 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
+| [`bridge.js`](../src/bridge.js) | 15,955 | QQ ↔ DeepSeek Harness 桥接主程序。 | 文件自带 |
 | [`card-link.js`](../src/card-link.js) | 231 | QQ 分享卡片 / 小程序卡片 → 抽出「来源 + 标题 + 链接」的可读文本。 | 文件自带 |
 | [`dsh-client.js`](../src/dsh-client.js) | 913 | Node 环境的 DSH Web API 客户端。 | 文件自带 |
 | [`feed.js`](../src/feed.js) | 389 | feed.js — 投喂（赞助）账本 + 爱发电订单核验 + DeepSeek 余额水位 | 文件自带 |

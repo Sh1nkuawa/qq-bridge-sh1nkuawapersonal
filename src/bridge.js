@@ -11849,7 +11849,15 @@ async function main() {
       promptText = buildWakePromptV2(key, opts.wakeReason);
       wakeSnapshot = buildWakeSnapshotV2(key);
       if (wakeSnapshot) {
-        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n以上消息已提供，无需重复查询；partial=true 时用 qq_get_unread_messages(afterSeq=readThroughSeq) 继续读取。先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。收尾只确认你已处理的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；新到消息留待处理。`;
+        const skipped = Number(wakeSnapshot.skippedOlder) || 0;
+        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n`
+          + '以上是**最近的一批**未读消息（按时间正序，最近的在后）。'
+          + (skipped > 0
+            ? `\n⚠️ partial=true：另有 **${skipped} 条更早的**没给 —— 收尾时桥接会**自动把它们一并标已读**，不会再来第二轮。`
+              + '要补看就用 qq_get_unread_messages(afterSeq=0)（或 qq_get_recent_messages）。'
+            : '')
+          + '\n先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。'
+          + '收尾的已读由桥接自动提交，你也可以照常 qq_mark_read(throughSeq=readThroughSeq)；新到消息留待处理。';
       }
     }
     let content = [{ type: 'text', text: withSlangContext(promptText) }];
@@ -11880,6 +11888,9 @@ async function main() {
       // Acceptance grants visibility, never acknowledgement. New arrivals and
       // rejected/stale deliveries must not be cleared by an old cursor.
       noteModelMessagesV2(wakeState, [...wakeSnapshot.messages, ...wakeSnapshot.recent]);
+      // 只有**真被接受**的这一份快照，才允许收尾时按它自动提交水位
+      //（被拒/过期会话绝不能授权：否则一条没送到的消息会被标成已读 ✗）
+      wakeState.lastShownThroughSeq = Number(wakeSnapshot.readThroughSeq) || 0;
     }
     if (accepted.result.value.command?.text && !opts.silent && currentMode !== 'reserved2') {
       if (opts.farewell) social.exitingSessions.delete(sessionId);
@@ -13259,9 +13270,13 @@ async function main() {
   function requestedReadThroughSeqV2(st, body, isAgent) {
     if (!Object.prototype.hasOwnProperty.call(body, 'throughSeq')) return null;
     const seq = body.throughSeq;
-    const max = isAgent ? readThroughSeqV2(st) : st.lastUnreadSeq;
+    // 允许到"本轮快照真正给模型看过的最新技术"（lastShownThroughSeq）：
+    // 新一轮策略是"给最近一批 + 更早的自动标已读"，水位会比"从旧到新连续"高一位次，
+    // 只认连续水位的话模型照着 prompt 传 throughSeq 会被 400 顶回来 ✗
+    const shown = Number(st.lastShownThroughSeq) || 0;
+    const max = isAgent ? Math.max(readThroughSeqV2(st), shown) : st.lastUnreadSeq;
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > max || seq > st.lastUnreadSeq) {
-      const error = new Error('throughSeq 必须是不超过已展示连续消息水位的非负安全整数；请先读取未读消息并使用返回的 readThroughSeq');
+      const error = new Error('throughSeq 必须是不超过已展示消息水位的非负安全整数；请先读取未读消息并使用返回的 readThroughSeq');
       error.statusCode = 400;
       throw error;
     }
@@ -13296,7 +13311,7 @@ async function main() {
     const maxUnread = bounded('wakeMessageLimit', 12, 1, 100);
     const maxRecent = bounded('wakeRecentLimit', 4, 0, 20);
     const packet = { messages: [], recent: [], unreadCount: st.unread.length, includedUnreadCount: 0, readThroughSeq: readThroughSeqV2(st), partial: st.unread.length > 0 };
-    // AGY（force）专用：最新优先时的水位（看到的最新技术），最后要重新盖回去
+    // 最新优先时的水位（看到的最新技术），最后要重新盖回去（tryAdd 会按"连续"重算）
     let forcedThrough = null;
     const tryAdd = (field, msg) => {
       const previousThrough = packet.readThroughSeq;
@@ -13311,34 +13326,25 @@ async function main() {
       packet.partial = packet.messages.length < st.unread.length;
       return false;
     };
+    // 两条路都走「最新优先」：给模型的必须是**最近的一批**（触发唤醒的 @/提问一定在里面）。
+    // 更早的未读由桥接在收尾时**自动标已读**（owner 2026-11-27 明确要求："给模型最近未读时把前面的标记已读"）。
+    // 挑选逻辑在 src/agy-prompt.js 的 pickNewestWithinBudget（纯函数，有回归）；输出仍是时间正序。
+    // 水位 = 看到的最新技术（maxShown）：否则最新优先会让水位永远卡在最旧那段 ⇒ 每轮重复给同一批、旧未读永远排不出去 ✗
     if (v2ToolEnabled('getUnread')) {
-      if (force) {
-        // ⭐ AGY：**最新优先**（契约 §10 · AGY 侧报的 22:09 事故）
-        // 触发这次唤醒的 @/提问必须进快照 —— 那次未读 29 条、按最早优先只给了 8 条
-        // 10 分钟前的闲聊，@ 被切在外面；模型按"下一轮再给"回了 [] ⇒ 群里就是漏回 ✗
-        // 挑选逻辑在 src/agy-prompt.js（纯函数，有回归）；输出仍是时间正序。
-        const { picked, skippedOlder } = pickNewestWithinBudget({
-          items: st.unread,
-          maxItems: maxUnread,
-          build: (m) => compactModelMessage(m),
-          size: (arr) => JSON.stringify({ ...packet, messages: arr, includedUnreadCount: arr.length }).length,
-          budget: maxChars
-        });
-        packet.messages = picked;
-        packet.includedUnreadCount = picked.length;
-        packet.partial = picked.length < st.unread.length;
-        // 明确告诉模型"还有 N 条更早的没给"（原来只写 partial，模型不知道差多少）
-        packet.skippedOlder = skippedOlder;
-        // ⚠️ 水位必须跟着**看到的最新技术**走。
-        // 若仍用 readThroughSeqV2（"从旧到新连续"），最新优先会让水位永远卡在最旧那段：
-        // 每轮都重复给同一批最新消息、旧的未读永远排不出去（2026-11-25 22:52 实测：跑完还是 23 条）✗
-        const maxShownSeq = picked.length ? (Number(picked[picked.length - 1].seq) || 0) : 0;
-        packet.readThroughSeq = maxShownSeq || readThroughSeqV2(st, picked);
-        forcedThrough = packet.readThroughSeq;
-      } else {
-        // DSH：最早优先（ack 水位靠"从旧到新连续"才有意义，换顺序会把没看过的标成已读 ✗）
-        for (const msg of st.unread.slice(0, maxUnread)) if (!tryAdd('messages', msg)) break;
-      }
+      const { picked, skippedOlder } = pickNewestWithinBudget({
+        items: st.unread,
+        maxItems: maxUnread,
+        build: (m) => compactModelMessage(m),
+        size: (arr) => JSON.stringify({ ...packet, messages: arr, includedUnreadCount: arr.length }).length,
+        budget: maxChars
+      });
+      packet.messages = picked;
+      packet.includedUnreadCount = picked.length;
+      packet.partial = picked.length < st.unread.length;
+      packet.skippedOlder = skippedOlder;
+      const maxShownSeq = picked.length ? (Number(picked[picked.length - 1].seq) || 0) : 0;
+      packet.readThroughSeq = maxShownSeq || readThroughSeqV2(st, picked);
+      forcedThrough = packet.readThroughSeq;
     }
     if (v2ToolEnabled('getRecent') && maxRecent > 0) {
       const unread = new Set(st.unread.map((m) => m.seq));
@@ -15314,6 +15320,24 @@ async function main() {
               if (pendingWakeKeys.has(key)) {
                 pendingWakeKeys.delete(key);
                 disarmPendingWakeLease(key);
+                // ── 收尾自动提交已读水位（owner 2026-11-27 明确要求）─────────────────
+                // 本轮快照给的是**最近一批**，更早的未读在这里**一并标已读**。
+                // 不这么做的后果：模型只回话、不调 qq_mark_read ⇒ 未读一路堆到 unreadLimit（30）
+                // ⇒ 更早的消息被挤出缓冲区、上下文永久丢失（2026-11-27 凌晨实测：3 小时堆满 30 条）✗
+                try {
+                  const stAck = getSocialV2State(key);
+                  const shown = Number(stAck.lastShownThroughSeq) || 0;
+                  stAck.lastShownThroughSeq = 0;   // 一轮只认一次
+                  if (shown > 0) {
+                    const before = Number(stAck.lastReadThroughSeq) || 0;
+                    const marked = acknowledgeMessagesV2(stAck, shown);
+                    log(`[reserved2] ${key} 收尾水位：快照到 ${shown}，本次清 ${marked} 条`
+                      + `（已读 ${before} → ${stAck.lastReadThroughSeq}，剩未读 ${stAck.unread.length}）`);
+                    saveSocialV2State();
+                  }
+                } catch (error) {
+                  log(`[reserved2] ${key} 收尾提交已读失败：${error?.message ?? error}`);
+                }
                 if (wakeConfigUpdatedKeys.has(key) || markReadCalledKeys.has(key)) {
                   ensureWakeableV2(getSocialV2State(key), { key });
                   wakeConfigUpdatedKeys.delete(key);
