@@ -16,6 +16,25 @@ v1.3 对接 §10 三条 ✓   v1.4 快照最新优先 ✓   v1.5 热聊窗口 + 
 worker：**在线**（AGY 侧新增了 duty-watcher sidecar 自动拉会话，见 §1.4）
 ```
 
+### 1.9 唤醒配额与限流（2026-11-28 v1.6，AGY 侧事故驱动）
+
+事故：12:07–12:20 把 `maxWakePerHour: 12` 用光（近半是 `发送 0 条` 空醒），12:21 的 @
+被排到 **46 分钟后**才回。根因是 AGY **发一条就结束回合**（不像 DSH 一个回合内连聊只算一次唤醒）。
+
+四条（契约 §5.5 / §10）：
+
+1. 热聊窗口内**不排** `replyCheck`（窗口本来是"有新消息就醒"，再排就是空醒）
+2. `agyReleaseTurn` 补排前**丢掉已读过的**暂存（`seq <= 本轮已提交水位`）
+3. 限流延迟**上限 120s**（`wake.maxRateLimitDeferMs`）—— 撞小时额度等几十分钟就直接放弃，
+   绝不挂僵尸定时器（否则就是"半小时后诈尸回旧消息"）
+4. `maxWakePerHour` **12 → 30**
+
+**外加一条原则**：`atMention` / `question` / `nameMention` / `keyword` / `poke` / `speaker` / `private`
+**不受小时额度限制** —— 人叫它就必须答；额度只管它自己找话说的（`hotChat`/`replyCheck`/`probability`/`proactive`）。
+被放弃的唤醒不丢消息：没标已读，下一轮自然带上 ✓
+
+纯函数在 `src/wake-quota.js` + `scripts/test-wake-quota.mjs`（9 组回归）✓
+
 ### 1.8 快照与已读水位统一（2026-11-27 00:4x）
 
 owner 要求：**给模型最近的一批未读，更早的自动标已读**。

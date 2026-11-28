@@ -35,6 +35,7 @@ import { indexOfRole, shouldSwitch } from './persona-schedule.js';
 import { createAgyTransport } from './agy-transport.js';
 import { AGY_PROMPT_SPILL_BYTES, agyContextFilePath, agySpillPromptText, composeAgyPrompt, needsSpill, pickNewestWithinBudget } from './agy-prompt.js';
 import { effectiveMaxWakePerMinute, isHotChat, nextHotChatUntil, normalizeHotChatWindowMs } from './hot-chat.js';
+import { isHumanWakeReason, normalizeMaxDeferMs, rateLimitDecision } from './wake-quota.js';
 import { AGY_DEGRADE_MS, isDegraded, normalizePersonaTransport, personaRoutingTable, resolvePersonaTransport, shouldDegradeToDsh } from './persona-transport.js';
 import { applyMoodTurn, applySilenceMood, decayMoodState, markMoodInjected, moodLineFor, readMoodConfig, readMoodState, writeMoodState } from './mood.js';
 import { aggregateSpeechMode, classifySpeechIntent, formatSpeechLine, SPEECH_MODE } from './speech-mode.js';
@@ -10744,7 +10745,18 @@ async function main() {
         const pr = Array.isArray(st?.pendingWakeReasons)
           ? st.pendingWakeReasons.splice(0)
           : [];
-        const reasons = pr.map((x) => (typeof x === 'string' ? x : x?.reason)).filter(Boolean);
+        // ② 补排前先滤掉"已经处理过"的暂存（契约 §10 · AGY 侧 2026-11-28 实测）
+        // 实测 12:13:17：seq 54188 这一轮已经标已读，8 秒后却又按它补排了一次 `0008` 空醒 ✗
+        // 判据：暂存条目的 seq ≤ 本轮已提交的已读水位 ⇒ 处理过了，丢掉
+        const acked = Number(st?.lastReadThroughSeq) || 0;
+        const fresh = pr.filter((x) => {
+          const sq = Number(typeof x === 'object' ? x?.seq : 0) || 0;
+          return sq <= 0 || sq > acked;
+        });
+        const reasons = fresh.map((x) => (typeof x === 'string' ? x : x?.reason)).filter(Boolean);
+        if (pr.length && fresh.length < pr.length) {
+          log(`[agy] ${key} 丢弃 ${pr.length - fresh.length} 条已读过的暂存唤醒（水位 ${acked}）`);
+        }
         if (reasons.length) {
           const top = reasons.sort((a, b) => wakePriorityV2(b) - wakePriorityV2(a))[0];
           log(`[agy] ${key} 回合释放后补排暂存唤醒（${top}，共 ${reasons.length} 条）`);
@@ -13785,7 +13797,11 @@ async function main() {
     const inMinute = wakeTimes.filter((t) => now - t < 60000).sort((a, b) => a - b);
     const inHour = wakeTimes.filter((t) => now - t < 3600000).sort((a, b) => a - b);
     const minuteHit = maxPerMinute > 0 && inMinute.length >= maxPerMinute;
-    const hourHit = maxPerHour > 0 && inHour.length >= maxPerHour;
+    // ④ 人工触发的唤醒**不占小时额度**（契约 §10 · AGY 侧 2026-11-28 实测）
+    // 事故：12:07–12:20 热聊+空 replyCheck 把 maxWakePerHour=12 吃光 ⇒ 12:21 owner 的 @
+    // 被排到 2783s（46 分钟）后才回，群里看起来就是"诈尸"。人明确叫它，必须优先保证 ✓
+    const humanTriggered = isHumanWakeReason(reason);
+    const hourHit = !humanTriggered && maxPerHour > 0 && inHour.length >= maxPerHour;
     if (minuteHit || hourHit) {
       let waitMs = 0;
       if (minuteHit) {
@@ -13796,24 +13812,37 @@ async function main() {
         const oldestKept = inHour[Math.max(0, inHour.length - maxPerHour)];
         waitMs = Math.max(waitMs, 3600000 - (now - oldestKept) + 500);
       }
-      waitMs = Math.max(1000, Math.min(waitMs, 3600000));
-      const tries = Number(wakeRateLimitTries.get(key)) || 0;
-      if (tries >= 2) {
-        log(`[reserved2] 唤醒频率超限，已重试 ${tries} 次仍不行，放弃 ${key}（${reason}）`);
+      // ③ 延迟重试的**策略**交给纯函数（src/wake-quota.js，9 组回归）：
+      // 分钟级短等 → 重试；要等几十分钟（典型是撞小时额度）→ 放弃，绝不挂僵尸定时器 ✗
+      const decision = rateLimitDecision({
+        minuteHit,
+        hourHit,
+        waitMs,
+        maxDeferMs: normalizeMaxDeferMs(cfg.socialV2?.wake?.maxRateLimitDeferMs),
+        humanTriggered,
+        tries: Number(wakeRateLimitTries.get(key)) || 0
+      });
+      if (decision.action === 'none') {
+        // 人的唤醒被豁免了小时额度 ⇒ 继续往下投递
+      } else if (decision.action === 'drop') {
+        log(`[reserved2] 唤醒频率超限（${decision.reason}）：需等 ${Math.round(decision.waitMs / 1000)}s，放弃 ${key}（${reason}）`
+          + '—— 消息未标已读，下一条消息/收尾补排仍会带上它');
         wakeRateLimitTries.delete(key);
         return;
+      } else {
+        const tries = Number(wakeRateLimitTries.get(key)) || 0;
+        wakeRateLimitTries.set(key, tries + 1);
+        const prev = wakeRateLimitTimers.get(key);
+        if (prev) clearTimeout(prev);
+        const timer = setTimeout(() => {
+          wakeRateLimitTimers.delete(key);
+          void sendWakePromptV2(key, reason).catch((error) => log(`[reserved2] 限流重试唤醒失败 ${key}:`, error?.message ?? error));
+        }, decision.waitMs);
+        timer.unref?.();
+        wakeRateLimitTimers.set(key, timer);
+        log(`[reserved2] 唤醒频率超限，改为 ${Math.round(decision.waitMs / 1000)}s 后重试 ${key}（${reason}，第 ${tries + 1} 次）`);
+        return;
       }
-      wakeRateLimitTries.set(key, tries + 1);
-      const prev = wakeRateLimitTimers.get(key);
-      if (prev) clearTimeout(prev);
-      const timer = setTimeout(() => {
-        wakeRateLimitTimers.delete(key);
-        void sendWakePromptV2(key, reason).catch((error) => log(`[reserved2] 限流重试唤醒失败 ${key}:`, error?.message ?? error));
-      }, waitMs);
-      timer.unref?.();
-      wakeRateLimitTimers.set(key, timer);
-      log(`[reserved2] 唤醒频率超限，改为 ${Math.round(waitMs / 1000)}s 后重试 ${key}（${reason}，第 ${tries + 1} 次）`);
-      return;
     }
     // 这次真的发出去了：清掉限流重试状态，避免"正常唤醒 + 重试"各发一次 ✗
     const pendingRetry = wakeRateLimitTimers.get(key);
@@ -13897,6 +13926,14 @@ async function main() {
     const st = getSocialV2State(key);
     // 已有真实唤醒/有限睡眠/回复检查在排队时不再重复安排，避免 AI 被连环唤醒。
     if (st.pendingWakeTimer || st.sleepTimer || st.replyCheckTimer) return;
+    // ① 热聊窗口内**不排** replyCheck（契约 §10 · AGY 侧 2026-11-28 实测事故）
+    // AGY 是"发完消息就结束回合"，再排一个 45s 的 replyCheck，等于没人说话也硬醒一次
+    //（实测 12:07–12:20 的 12 次小时额度里近半是 `发送 0 条` 的空醒）。
+    // 而热聊窗口本来就靠**新消息**唤醒 ⇒ 这个 replyCheck 完全是冗余的 ✗
+    if (isHotChatV2(st)) {
+      log(`[reserved2] ${key} 跳过回复检查（热聊窗口内，有新消息会自然唤醒）`);
+      return;
+    }
     let delay = Math.max(1000, Number(cfg.socialV2?.autoReplyCheckMs) || 30000);
     const recent = Array.isArray(st.recentMessages) ? st.recentMessages : [];
     const recentSelf = recent.filter((m) => m && m.isSelf && Date.now() - Number(m.time || 0) < 15000);
@@ -13965,6 +14002,14 @@ async function main() {
     const base = String(reason ?? '').split(':')[0];
     return WAKE_PRIORITY[base] ?? 0;
   }
+
+  /**
+   * **人**明确叫它的唤醒原因：不受 `maxWakePerHour` 小时额度限制。
+   * 规则与判定在 src/wake-quota.js（纯函数 + 9 组回归）。
+   * 契约 §10 · AGY 侧 2026-11-28 实测：热聊+空 replyCheck 把 12 次/小时吃光 ⇒ owner 的 @
+   * 被排到 46 分钟后才回。人叫它就该答，"额度"只用来管**它自己找话说**的那些唤醒 ✓
+   * （仍然计入 wakeTimes —— 额度统计要看真实总量，只是不因为它去挡人的 @）
+   */
 
   // ── 生日祝贺（owner 2026-10-26）──────────────────────────────────────────
   // 数据：state/birthdays.json（owner 手动维护）；触发：北京时间 0 点；0 点不在线则当天补发；

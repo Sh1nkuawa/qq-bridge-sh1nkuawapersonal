@@ -354,6 +354,26 @@ POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
 > ⇒ 更早的消息被挤出缓冲区、上下文永久丢失（2026-11-27 凌晨实测：3 小时堆满 30 条）✗
 > 实测（2026-11-27 00:40~00:42）：29 条未读 → 收尾后剩 5 条（新的那几条），水位从 53764 → 53800 ✓
 
+### 5.5 唤醒配额与限流（2026-11-28 v1.6，AGY 侧事故驱动）
+
+**事故**：12:07–12:20 十三分钟内把 `maxWakePerHour: 12` 用光（其中近半是 `发送 0 条` 的空醒），
+12:21 owner 的 `@` 撞限流被排到 **46 分钟后**，13:07 才"诈尸"回旧消息 ✗
+根因是 **AGY 的机制**：发一条消息就结束回合（不像 DSH 一个回合内用 `qq_wait_for_messages`
+连续聊只算一次唤醒）⇒ 同样的对话强度，AGY 的"唤醒次数"天然高一截。
+
+| 规则 | 行为 |
+|---|---|
+| 谁算"人叫它" | `atMention` / `question` / `nameMention` / `keyword` / `poke` / `speaker` / `private` |
+| 人的唤醒 vs 小时额度 | **不占额度**（仍计入 `wakeTimes` 统计）⇒ 人叫它一定答 ✓ |
+| 谁的唤醒受额度管 | 它自己找话说的：`hotChat` / `replyCheck` / `probability` / `proactive` / `timeout` |
+| 小时额度 | `maxWakePerHour` **12 → 30**（AGY 一次发言=一次唤醒，12 太低） |
+| 每分钟 | 平时 1；热聊窗口内 3（`hotChatMaxWakePerMinute`） |
+| 撞限流的重试 | 最多等 **120s**（`maxRateLimitDeferMs`）；需要等更久（典型是撞小时额度）就**放弃**，绝不挂 46 分钟的僵尸定时器 ✗ |
+| 热聊窗口内 | **不排** `replyCheck`（窗口本来就是"有新消息就醒"，再排就是空醒）|
+| 收尾补排 | `pendingWakeReasons` 里 `seq <= 本轮已提交水位` 的**直接丢弃**（已经处理过了）|
+
+> 放弃不丢消息：被放弃的唤醒没标已读，下一轮自然带着它们（§5.4 的水位语义）✓
+
 ---
 
 ## 6. 错误码汇总
@@ -429,3 +449,5 @@ POST /api/agy/degrade  { "persona": "猫娘侍从", "minutes": 0 }    // 解除
 | 2026-11-26 | AGY 侧 | **v1.4 补读参数小修建议 + 角色卡注入通报**：① v1.4 快照改为最新优先后，`readThroughSeq` 现在是最新一条的 seq，但快照尾部文案写的是 `agy-api.mjs unread --key <本轮 key> --after-seq <readThroughSeq>`——查 `seq > 最新` 会返回空，建议改为 `--after-seq 0 --limit 30` 或 `recent --limit 30`（并提醒带 `--session`）；② AGY 侧 `watcher.mjs` 开新会话时已改为自动拉取 `/api/socialV2/prompt` 并把完整角色卡（`role.hint`）硬注入到首条开场消息，同时 `AGENTS.md` 强制未注入时首轮回复前必先调 `agy-api.mjs prompt` | ✅ v1.5 文案已改：补读改为 `agy-api.mjs recent --limit 30`（或 `unread --after-seq 0 --limit 30`），并**明确警告**不要用 `--after-seq <readThroughSeq>`（那个水位已在最前面，查不到东西）；② 角色卡注入的做法很对，桥接侧不用改 —— 它的 `prompt` 端点返回的就是完整角色卡 + 推荐值 ✓ |
 | 2026-11-26 | AGY 侧 | **回复后 5 分钟滑动热聊窗口 + 对齐 `scheduleReplyCheckV2`（owner 明确要求）**：00:08 实测 `@bot` 回复后，87 秒后 owner 追问「看看你的功能点是否正常」未再唤醒，排查发现：① `POST /api/agy/complete` 发完消息漏调了 `scheduleReplyCheckV2(r.turn.key)`（DSH 所有发送路径都有调）；② AGY 回完即结束回合，群停在 `diving` 导致后续不带 `@` 的追聊无法续上。按 owner 明确指定，请桥接侧实现：**① 新增「回复后 5 分钟滑动热聊窗口」**（如 `st.hotChatUntil = Date.now() + 300000`，每次 bot 成功发言（`sent > 0`）均刷新该窗口；窗口期内群内新消息无需再 `@`/关键词即可按正常合批触发唤醒，例如 `reason: "hotChat"`；超过 5 分钟未再发言或 bot 显式调 `wake-config --dive` 主动潜水时自动失效回到 `diving`，保证安静时 0 唤醒、0 token；热聊期内也建议适度放宽 `maxWakePerMinute: 1`，避免刚接一句就被限频）；**② `POST /api/agy/complete` 在 `sent > 0` 后补调 `scheduleReplyCheckV2(r.turn.key)`**；**③ `recommendedKeywords` 顺手补充 `"猫娘"`、`"侍从"`**。AGY 侧已同步扩展 `agy-api.mjs wake-config --active / --speaker-ids / --dive` 作为配合 | ✅ v1.5 全部实现（§5.2）：① `st.hotChatUntil` **滑动窗口**（每次成功发言刷新，默认 5 分钟，可配 `wake.hotChatWindowMs`，0=关闭）+ 新唤醒理由 `hotChat`（优先级 45，低于 @/提问/关键词、高于 replyCheck）；显式潜水（`wake-config` 判定为 sleeping）会**清掉窗口**；窗口期内限流放宽为 `hotChatMaxWakePerMinute`（默认 3）；② AGY `complete` 在 `sent>0` 后补调 `scheduleReplyCheckV2`；③ `recommendedKeywords` 已加「猫娘」「侍从」。纯逻辑在 `src/hot-chat.js`（7 组回归）|
 | 2026-11-26 | 桥接侧 | **通知 AGY 侧：v1.4/v1.5 之后你们要动的东西很少**（详见 `AGY_SIDE_TASKS.md` §8）：① **行为**：模型/网络失败**立刻 `requeue`**（`tool-error`/`timeout`），别干等租约 —— 桥接现在"丢回合 ⇒ 降级 10 分钟 + DSH 补投"，你们主动退能让群里几十秒内被接住；② **文案**：换班时间 05:00 → **01:00**（`qq-chat-worker.md` 两处、`sidecar.json`、`watcher.mjs` 注释）；③ 新唤醒理由 `hotChat`（正常回即可）、降级会让 `dutyTransport` 变 `dsh`（`duty-watcher` 天然兼容）；④ `status` 新增 `degradedUntil`，排障可带上 | ✅ AGY 侧已全部对齐（v1.5.0）：`AGENTS.md` / `qq-chat-worker.md` / `SKILL.md` 已补齐“失败立刻 `requeue` 不等租约”与 `hotChat` 说明；所有 `05:00` 文案已同步改为 `01:00`；`agy-status.mjs` 日志已记录 `dutyTransport` 与 `degradedUntil` |
+| 2026-11-28 | AGY 侧 | **优化 AGY 热聊空唤醒与限流超长重试（12:07–13:07 实测事故，owner 确认登记）**：AGY 通过 `complete` 发消息即结束回合（不像 DSH 在单回合内用 `qq_wait_for_messages` 连续聊只算 1 次唤醒），实测 `12:07–12:20` 13 分钟内即消耗完 `maxWakePerHour: 12`（其中近半为 `发送 0 条` 空醒），导致 `12:21` owner 的 `atMention` 撞小时限流被排到 **2783s（46 分钟）后重试**，在 `13:07:31` 才突然诈尸回复旧问题。请桥接侧评估以下 4 项修复：**① 开启 `hotChat` 窗口时跳过 `replyCheck`**（已有 5 分钟热聊窗口接管新消息，AGY `complete` 再排 45s `replyCheck` 只会造成没人说话也硬醒 `发送 0 条`）；**② `agyReleaseTurn` 补排 `pendingWakeReasons` 前过滤已读**：若暂存条目的 `seq <= 本轮已标已读水位`（如 `12:13:17` `seq 54188` 已在本轮标已读却又 8s 后补排 `0008` 空醒），直接丢弃不再补排；**③ 限流延迟重试加短上限（如 ≤ 90~120s）**：只对每分钟限流做短重试，撞每小时限流需要等几十分钟时直接放弃，绝不排 40 分钟后的僵尸定时器；**④ 适配 AGY 小时配额**：将 `maxWakePerHour` 适当上调（如 `25~30`），或让 `atMention` 不受前面 `hotChat` 挤占小时额度 | ✅ v1.6 全部采纳（见下一行）|
+| 2026-11-28 | 桥接侧 | **v1.6 采纳全部 4 条 + 一条原则**（详见 §5.5）：① 热聊窗口内**不再排** `replyCheck`；② `agyReleaseTurn` 补排前**过滤已读过的**暂存原因（`seq <= 已提交水位` 丢弃）；③ 限流延迟重试**上限 120s**（`socialV2.wake.maxRateLimitDeferMs`），超出直接放弃并写清日志；④ `maxWakePerHour` **12 → 30**；另加一条原则：**人工触发的唤醒（`atMention`/`question`/`nameMention`/`keyword`/`poke`/`speaker`/`private`）不受小时额度限制** —— 人叫它就必须答，"额度"只管它自己找话说的那些（`hotChat`/`replyCheck`/`probability`/`proactive`），但仍计入 `wakeTimes` 供统计 | ✅ AGY 侧收到（v1.6.0，无需改代码） |
